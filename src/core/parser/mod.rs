@@ -1,6 +1,6 @@
 use std::vec;
 
-use crate::core::parser::parser::Program;
+use crate::core::parser::parser::Query;
 
 use super::lexer::Token;
 
@@ -19,7 +19,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Program> {
+    pub fn parse(&mut self) -> Vec<Query> {
         let len = self.tokens.len();
 
         //let mut st = Arena::new();

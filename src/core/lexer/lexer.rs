@@ -147,7 +147,9 @@ impl Lexer {
                     }
                 }
                 c if c == '-' || c.is_numeric() => {
-                    let end_pos = self.scan_to(curr_offset, ' ');
+                    let end_pos = self.scan_until(curr_offset, |c| {
+                        c.is_numeric() == false && c != '.' && c != '-'
+                    });
                     self.pos += end_pos - curr_offset;
 
                     Token::Numeric(Slice::new(curr_offset, end_pos))
@@ -183,6 +185,29 @@ impl Lexer {
             //       e.g. tabs, newlines, plus, minus, divide, etc.
             //       nor will it handle dots or hex stuff in numbers.
             if ch == char {
+                break;
+            }
+
+            cursor += 1;
+        }
+
+        cursor
+    }
+
+    fn scan_until<F>(&self, start_offset: usize, end_func: F) -> usize
+    where
+        F: Fn(char) -> bool,
+    {
+        let mut cursor = start_offset;
+
+        loop {
+            if cursor >= self.len {
+                break;
+            }
+
+            let (_, ch) = self.chars[cursor];
+
+            if end_func(ch) {
                 break;
             }
 
@@ -305,19 +330,18 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    // TODO: This test is weird. Should this parse as a number followed by an identifier?
+    //       Probably not. It should probably just fall back into a 'unknown symbol' or something,
+    //       or maybe just a 'unknown keyword'?
     #[test]
     fn test_bad_numeric() {
-        let str = "12y0";
+        let str = "12a0";
         let lexer = Lexer::new(str.into()).lex();
         let actual = lexer.tokens;
 
-        // TODO: This currently fails as the lexer does not
-        //       stop reading the numeric token when it hits the 'y'
-        //       symbol.
         let expected = vec![
             Token::Numeric(Slice::new(0, 2)),
-            //Token::Identifier(Slice::new(3, 4)), // TODO: Not implemented identifiers yet
-            Token::Numeric(Slice::new(5, 6)),
+            Token::Identifier(Identifier::Table(Slice::new(2, 4))),
         ];
 
         assert_eq!(actual, expected);

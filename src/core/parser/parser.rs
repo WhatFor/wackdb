@@ -2,7 +2,7 @@
 //     nodes: Vec<Node>,
 // }
 
-pub enum Program {
+pub enum Query {
     Select,
     Update,
     Insert,
