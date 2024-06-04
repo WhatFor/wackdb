@@ -40,8 +40,8 @@ fn eval_command(input: &str) -> CommandResult {
     let lex_result = core::Wack::lex(input.into()); // todo into
     println!("Lexed. Tokens: {:?}", lex_result.tokens);
 
-    let _parse_result = lex_result.parse();
-    //println!("Parsed. Result: {:?}", parse_result);
+    let parse_result = lex_result.parse();
+    println!("Parsed. Result: {:?}", parse_result);
 
     CommandResult::Ok // todo err
 }

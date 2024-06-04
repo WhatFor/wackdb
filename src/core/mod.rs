@@ -1,3 +1,5 @@
+use parser::Program;
+
 use self::lexer::Token;
 
 mod lexer;
@@ -14,7 +16,9 @@ impl Wack {
         crate::core::lexer::lexer::Lexer::new(buf).lex()
     }
 
-    pub fn parse(self) {
-        let _nodes = crate::core::parser::Parser::new(self.tokens).parse();
+    pub fn parse(self) -> Result<Program, ()> {
+        // TODO: Is this how I want to interface with the parser?
+        //       Might make more sense to call it direct
+        crate::core::parser::parser::Parser::new(self.tokens).parse()
     }
 }

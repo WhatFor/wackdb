@@ -1,49 +1,179 @@
-// pub struct Arena {
-//     nodes: Vec<Node>,
-// }
+use std::error::Error;
 
-pub enum Query {
-    Select,
-    Update,
-    Insert,
-    Delete,
+use super::{Program, Query};
+use crate::core::lexer::Token;
+
+pub struct Parser {
+    tokens: Vec<Token>,
+    pub curr_pos: usize,
 }
 
-// impl fmt::Debug for ColumnDefinitionCollection {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         Ok(())
-//     }
-// }
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Parser {
+        Parser {
+            tokens,
+            curr_pos: 0,
+        }
+    }
 
-// impl Arena {
-//     pub fn new() -> Arena {
-//         Arena { nodes: vec![] }
-//     }
+    pub fn parse(&mut self) -> Result<Program, ()> {
+        let program = self.parse_program();
 
-//     pub fn add_node(&mut self, node: Program) -> usize {
-//         let index = self.nodes.len();
+        // todo: this is dumb; Choose a type, Result or Option.
+        match program {
+            Some(prog) => Ok(prog),
+            None => Err(()),
+        }
+    }
 
-//         self.nodes.push(node);
+    fn parse_program(&mut self) -> Option<Program> {
+        let mut statements = vec![];
 
-//         index
-//     }
+        loop {
+            if self.is_end() {
+                break;
+            }
 
-//     pub fn collect(&self) -> &Vec<Program> {
-//         &self.nodes
-//     }
-// }
+            self.next_significant_token();
 
-// #[derive(Debug)]
-// pub struct Node {
-//     children: Vec<Node>,
-// }
+            let query = self.parse_query();
 
-// impl Node {
-//     pub fn new() -> Node {
-//         Node { children: vec![] }
-//     }
+            // todo: this is pretty rubbish. need a concept of an error type to return
+            //       with positional info. need to also support multiple errors and recovery,
+            //       but that's advanced.
+            if query.is_none() {
+                println!("expected a query, didn't find one. Maybe at the end?");
+                break;
+            }
 
-//     pub fn add_node(&mut self, node: Node) {
-//         self.children.push(node);
-//     }
-// }
+            statements.push(query.unwrap());
+        }
+
+        // TODO: We're not exactly 'expecting' any statements with this, so return an empty program.
+        //       Need to somewhere introduce the idea of 'expect' fn.
+        if statements.is_empty() {
+            return None;
+        }
+
+        Some(Program::Stmts(statements))
+    }
+
+    fn parse_query(&mut self) -> Option<Query> {
+        let next = self.eat().clone(); // todo: clone?
+        match next {
+            Token::Keyword(crate::core::lexer::Keyword::Select) => Some(Query::Select),
+            Token::Keyword(crate::core::lexer::Keyword::Insert) => Some(Query::Insert),
+            _ => {
+                println!("Unhandled token. Probably me being lazy");
+                None
+            }
+        }
+    }
+
+    // Get the next token without consuming it
+    fn peek(&self) -> Option<&Token> {
+        match self.curr_pos < self.tokens.len() {
+            true => Some(&self.tokens[self.curr_pos]),
+            false => None,
+        }
+    }
+
+    // Throw an error if the next token is not expected
+    fn expect(&self, token: Token) {
+        if self.tokens[self.curr_pos] != token {
+            panic!("Unexpected token")
+        }
+    }
+
+    // Consume and return the next token
+    fn eat(&mut self) -> &Token {
+        if self.curr_pos >= self.tokens.len() {
+            // todo
+            panic!("AHHH")
+        }
+
+        self.curr_pos += 1;
+        &self.tokens[self.curr_pos - 1]
+    }
+
+    // Move to the next significant token
+    fn next_significant_token(&mut self) {
+        while self.is_significant_token() == false {
+            self.eat();
+        }
+    }
+
+    // Check if the current token is non-whitespace
+    fn is_significant_token(&self) -> bool {
+        let next = self.peek();
+
+        match next {
+            Some(tok) => match tok {
+                Token::Space => false,
+                _ => true,
+            },
+            None => false,
+        }
+    }
+
+    // True if all tokens parsed
+    fn is_end(&self) -> bool {
+        self.curr_pos >= self.tokens.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::{
+        lexer::{Keyword, Token},
+        parser::{parser::Parser, Program, Query},
+    };
+
+    #[test]
+    fn test_simple_select_statement() {
+        let tokens = vec![Token::Keyword(Keyword::Select)];
+        let lexer = Parser::new(tokens).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_missing_statement() {
+        let tokens = vec![Token::Semicolon];
+        let lexer = Parser::new(tokens).parse();
+
+        let expected = Err(());
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_simple_insert_statement() {
+        let tokens = vec![Token::Keyword(Keyword::Insert)];
+        let lexer = Parser::new(tokens).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Insert]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_multiple_select_statements() {
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Keyword(Keyword::Select),
+            Token::Keyword(Keyword::Select),
+        ];
+        let lexer = Parser::new(tokens).parse();
+
+        let expected = Ok(Program::Stmts(vec![
+            Query::Select,
+            Query::Select,
+            Query::Select,
+        ]));
+
+        assert_eq!(lexer, expected);
+    }
+}
