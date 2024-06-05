@@ -1,6 +1,7 @@
 use core::panic;
 use std::ops::Range;
 
+use cli_common::{ParseError, Position};
 use lexer::token::{Identifier, Keyword, Token};
 
 pub struct Node {
@@ -11,6 +12,7 @@ pub struct Node {
 #[derive(PartialEq, Debug)]
 pub enum Program {
     Stmts(Vec<Query>),
+    Empty,
 }
 
 #[derive(PartialEq, Debug)]
@@ -23,6 +25,7 @@ pub enum Query {
 
 pub struct Parser {
     tokens: Vec<Token>,
+    errors: Vec<ParseError>,
     pub curr_pos: usize,
 }
 
@@ -30,25 +33,28 @@ impl Parser {
     pub fn new(tokens: Vec<Token>) -> Parser {
         Parser {
             tokens,
+            errors: vec![],
             curr_pos: 0,
         }
     }
 
-    pub fn parse(&mut self) -> Result<Program, ()> {
+    pub fn parse(&mut self) -> Result<Program, Vec<ParseError>> {
 
         if self.tokens.is_empty() {
+            // If we don't have any tokens, bail out early.
             return Ok(Program::Stmts(vec![]));
         }
 
-        let program = self.parse_program();
+        let parse_result = self.parse_program();
 
-        // todo: this is dumb; Choose a type, Result or Option.
-        match program {
-            Some(prog) => Ok(prog),
-            None => Err(()),
+        match self.errors.is_empty() {
+            true => Ok(parse_result.unwrap()),
+            false => Err(self.errors.clone()),
         }
     }
 
+    // The main entry point of the parser.
+    // Attempts to find one or more queries.
     fn parse_program(&mut self) -> Option<Program> {
         let mut statements = vec![];
         let mut parsed_full = false;
@@ -71,25 +77,18 @@ impl Parser {
 
             let query = self.parse_query();
 
-            // todo: this is pretty rubbish. need a concept of an error type to return
-            //       with positional info. need to also support multiple errors and recovery,
-            //       but that's advanced.
-            if query.is_none() {
-                println!("expected a query, didn't find one. Maybe at the end?");
-                break;
+            match query {
+                Some(q) => statements.push(q),
+                None => break,
             }
-
-            statements.push(query.unwrap());
         }
 
-        // TODO: We're not exactly 'expecting' any statements with this, so return an empty program.
-        //       Need to somewhere introduce the idea of 'expect' fn.
         if statements.is_empty() {
-            return None;
+            return Some(Program::Empty);
         }
 
         if !parsed_full {
-            panic!("Did not find EOF.");
+            self.push_error("End of file not found");
         }
 
         Some(Program::Stmts(statements))
@@ -104,7 +103,7 @@ impl Parser {
             Some(Token::Keyword(Keyword::Update)) => self.parse_update_statement(),
             Some(Token::Keyword(Keyword::Delete)) => self.parse_delete_statement(),
             _ => {
-                println!("Unhandled token. Probably me being lazy");
+                self.push_error("Unexpected token. Expected one of Select, Insert, Update or Delete.");
                 None
             }
         }
@@ -119,16 +118,17 @@ impl Parser {
             Some(Query::Select)
 
         } else {
-            panic!("todo: error. expected select statement, didn't find token.");
+            self.push_error("Unexpected token. Expected Select keyword.");
+            None
         }
     }
 
     fn parse_select_expression_body(&mut self) -> () {
         self.match_(Token::Keyword(Keyword::Select));
         self.parse_select_item_list();
-        // optionally parse fromClause?
-        // optionally parse whereClause?
-        // optionally parse groupByClause?
+        self.parse_from_clause_optional();
+        self.parse_where_clause_optional();
+        self.parse_group_by_clause_optional();
 
         ()
     }
@@ -161,10 +161,22 @@ impl Parser {
                 self.eat();
             },
             None => {
-                panic!("todo error: expected an identifier!");
+                self.push_error("Unexpected token. Expected identifier.");
             }
         }
 
+        ()
+    }
+
+    fn parse_from_clause_optional(&mut self) -> () {
+        ()
+    }
+
+    fn parse_where_clause_optional(&mut self) -> () {
+        ()
+    }
+
+    fn parse_group_by_clause_optional(&mut self) -> () {
         ()
     }
 
@@ -173,7 +185,8 @@ impl Parser {
             Some(Query::Insert)
 
         } else {
-            panic!("todo: error. expected insert statement, didn't find token.");
+            self.push_error("Unexpected token. Expected Insert keyword.");
+            None
         }
     }
 
@@ -182,7 +195,8 @@ impl Parser {
             Some(Query::Update)
 
         } else {
-            panic!("todo: error. expected update statement, didn't find token.");
+            self.push_error("Unexpected token. Expected Update keyword.");
+            None
         }
     }
 
@@ -191,7 +205,8 @@ impl Parser {
             Some(Query::Delete)
 
         } else {
-            panic!("todo: error. expected delete statement, didn't find token.");
+            self.push_error("Unexpected token. Expected Delete keyword.");
+            None
         }
     }
 
@@ -257,12 +272,22 @@ impl Parser {
     fn is_end(&self) -> bool {
         self.curr_pos >= self.tokens.len()
     }
+
+    fn push_error(&mut self, message: &str) {
+       let _current_token = self.peek(); 
+       // todo: need to store position on tokens, I think.
+
+       self.errors.push(
+        ParseError {
+            message: String::from(message),
+            pos: Position::new(0, 0) // todo, probs pull from token
+        })
+    }
 }
 
 #[cfg(test)]
 mod parser_tests {
     use lexer::token::Slice;
-
     use crate::{*};
 
     #[test]
@@ -329,9 +354,13 @@ mod parser_tests {
         let tokens = vec![Token::Semicolon];
         let lexer = Parser::new(tokens).parse();
 
-        let expected = Err(());
+        let errors = match lexer {
+            Ok(_) => vec![],
+            Err(e) => e,
+        };
 
-        assert_eq!(lexer, expected);
+        //  TODO: Not actually checking which error.
+        assert_eq!(errors.len(), 1);
     }
 
     #[test]

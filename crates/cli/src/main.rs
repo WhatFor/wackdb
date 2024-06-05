@@ -4,6 +4,7 @@ use std::{
     process::exit,
 };
 
+use cli_common::{ParseError, Position};
 use lexer::Lexer;
 use parser::Parser;
 
@@ -22,37 +23,33 @@ fn main() {
     let looks_like_file = args[1].to_lowercase().ends_with(FILE_EXT);
 
     let _ = match looks_like_file {
-        true => {
-            let file_result = eval_file(&args[1]);
-
-            match file_result {
-                Ok(r) => r,
-                Err(err) => {
-                    println!("{err}");
-                    CommandResult::Error
-                }
-            }
-        }
+        true => eval_file(&args[1]),
         false => eval_command(&args[1]),
     };
 }
 
 fn eval_command(input: &str) -> CommandResult {
-    let lexer = Lexer::new(input.into()); //TODO: consider removing the cast, into
+    let lexer = Lexer::new(input.into());
     let lex_result = lexer.lex();
-    println!("Lexed. Tokens: {:?}", lex_result.tokens);
 
     let mut parser = Parser::new(lex_result.tokens);
     let parse_result = parser.parse();
-    println!("Parsed. Result: {:?}", parse_result);
 
-    CommandResult::Ok //TODO: need to handle errors
+    match parse_result {
+        Ok(_) => CommandResult::Ok, // todo: want to do anything with the parse result?
+        Err(e) => CommandResult::Error(e),
+    }
 }
 
-fn eval_file(file: &str) -> Result<CommandResult, &str> {
+fn eval_file(file: &str) -> CommandResult {
     match fs::read_to_string(file) {
-        Ok(file_content) => Ok(eval_command(&file_content)),
-        Err(_) => Err("Failed to read file."),
+        Ok(file_content) => eval_command(&file_content),
+        // todo: error is a bit jank
+        Err(_) => CommandResult::Error(
+            vec![ParseError {
+                message: String::from("Failed to read file"),
+                pos: Position::new(0, 0)}]
+        ),
     }
 }
 
@@ -70,8 +67,11 @@ fn repl() {
                         CommandResult::_UnrecognisedCommand => {
                             println!("Error! Unrecognised command.");
                         }
-                        CommandResult::Error => {
-                            println!("Unknown error!");
+                        CommandResult::Error(err) => {
+                            for e in err {
+                                let message = e.message;
+                                println!("Error: {message}");
+                            }
                         }
                         CommandResult::Ok => {}
                     },
@@ -145,6 +145,6 @@ enum ReplResult {
 #[derive(Debug)]
 enum CommandResult {
     _UnrecognisedCommand,
-    Error,
+    Error(Vec<ParseError>),
     Ok,
 }
