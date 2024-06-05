@@ -4,7 +4,8 @@ use std::{
     process::exit,
 };
 
-pub mod core;
+use lexer::Lexer;
+use parser::Parser;
 
 const FILE_EXT: &str = ".wak";
 
@@ -37,13 +38,15 @@ fn main() {
 }
 
 fn eval_command(input: &str) -> CommandResult {
-    let lex_result = core::Wack::lex(input.into()); // todo into
+    let lexer = Lexer::new(input.into()); //TODO: consider removing the cast, into
+    let lex_result = lexer.lex();
     println!("Lexed. Tokens: {:?}", lex_result.tokens);
 
-    let parse_result = lex_result.parse();
+    let mut parser = Parser::new(lex_result.tokens);
+    let parse_result = parser.parse();
     println!("Parsed. Result: {:?}", parse_result);
 
-    CommandResult::Ok // todo err
+    CommandResult::Ok //TODO: need to handle errors
 }
 
 fn eval_file(file: &str) -> Result<CommandResult, &str> {
@@ -64,7 +67,7 @@ fn repl() {
 
                 match command_status {
                     ReplResult::Ok(command_result) => match command_result {
-                        CommandResult::UnrecognisedCommand => {
+                        CommandResult::_UnrecognisedCommand => {
                             println!("Error! Unrecognised command.");
                         }
                         CommandResult::Error => {
@@ -141,7 +144,7 @@ enum ReplResult {
 
 #[derive(Debug)]
 enum CommandResult {
-    UnrecognisedCommand,
+    _UnrecognisedCommand,
     Error,
     Ok,
 }

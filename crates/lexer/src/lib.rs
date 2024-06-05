@@ -1,12 +1,16 @@
-use crate::core::Wack;
-
-use super::{Arithmetic, Identifier, Slice, Token, Value};
+use token::{*};
+pub mod token;
 
 pub struct Lexer {
     buf: String,
     chars: Vec<(usize, char)>,
     len: usize,
     pos: usize,
+}
+
+pub struct LexResult {
+    pub tokens: Vec<Token>,
+    pub buf: String,
 }
 
 impl Lexer {
@@ -21,7 +25,7 @@ impl Lexer {
         }
     }
 
-    pub fn lex(mut self) -> Wack {
+    pub fn lex(mut self) -> LexResult {
         let mut tokens = Vec::new();
 
         loop {
@@ -135,13 +139,13 @@ impl Lexer {
 
                     match slice {
                         s if s.eq_ignore_ascii_case("select") => {
-                            Token::Keyword(super::Keyword::Select)
+                            Token::Keyword(Keyword::Select)
                         }
                         s if s.eq_ignore_ascii_case("insert") => {
-                            Token::Keyword(super::Keyword::Insert)
+                            Token::Keyword(Keyword::Insert)
                         }
                         s if s.eq_ignore_ascii_case("where") => {
-                            Token::Keyword(super::Keyword::Where)
+                            Token::Keyword(Keyword::Where)
                         }
                         _ => Token::Identifier(Identifier::Table(Slice::new(curr_offset, end_pos))),
                     }
@@ -163,7 +167,7 @@ impl Lexer {
             tokens.push(token);
         }
 
-        Wack {
+        LexResult {
             buf: self.buf,
             tokens,
         }
@@ -220,8 +224,7 @@ impl Lexer {
 
 #[cfg(test)]
 mod tests {
-    use super::{Arithmetic, Identifier, Slice, Token, Value};
-    use crate::core::lexer::{lexer::Lexer, Keyword};
+    use crate::{*};
 
     #[test]
     fn test_simple_tokens() {

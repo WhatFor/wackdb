@@ -1,7 +1,24 @@
-use std::error::Error;
+use std::ops::Range;
 
-use super::{Program, Query};
-use crate::core::lexer::Token;
+use lexer::token::{Keyword, Token};
+
+pub struct Node {
+    pub pos: Range<usize>,
+    pub tok: Token,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Program {
+    Stmts(Vec<Query>),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum Query {
+    Select,
+    Update,
+    Insert,
+    Delete,
+}
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -59,10 +76,10 @@ impl Parser {
     }
 
     fn parse_query(&mut self) -> Option<Query> {
-        let next = self.eat().clone(); // todo: clone?
+        let next = self.eat();
         match next {
-            Token::Keyword(crate::core::lexer::Keyword::Select) => Some(Query::Select),
-            Token::Keyword(crate::core::lexer::Keyword::Insert) => Some(Query::Insert),
+            Token::Keyword(Keyword::Select) => Some(Query::Select),
+            Token::Keyword(Keyword::Insert) => Some(Query::Insert),
             _ => {
                 println!("Unhandled token. Probably me being lazy");
                 None
@@ -79,7 +96,7 @@ impl Parser {
     }
 
     // Throw an error if the next token is not expected
-    fn expect(&self, token: Token) {
+    fn _expect(&self, token: Token) {
         if self.tokens[self.curr_pos] != token {
             panic!("Unexpected token")
         }
@@ -124,10 +141,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{
-        lexer::{Keyword, Token},
-        parser::{parser::Parser, Program, Query},
-    };
+    use crate::{*};
 
     #[test]
     fn test_simple_select_statement() {

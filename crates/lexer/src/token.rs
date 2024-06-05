@@ -1,5 +1,3 @@
-pub mod lexer;
-
 #[derive(Debug, PartialEq)]
 pub enum Keyword {
     Select,
@@ -28,8 +26,8 @@ pub enum Arithmetic {
 
 #[derive(Debug, PartialEq)]
 pub struct Slice {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Slice {
