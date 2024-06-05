@@ -4,13 +4,21 @@ While this grammar is not parsed by ANTLR, it uses the ANTLR grammar format.
 grammar Wack;
 
 // -------------------------
+// Program
+// -------------------------
+program
+    : query* EOF
+    ;
+
+// -------------------------
 // Query Statement
 // -------------------------
 
-query: (simpleStatement SEMICOLON_SYMBOL?)? EOF
+query
+    : (simpleStatement SEMICOLON_SYMBOL?)?
     ;
 
-simpleStatement:
+simpleStatement
     :
     selectStatement
     | insertStatement

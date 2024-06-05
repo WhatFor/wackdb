@@ -30,6 +30,7 @@ impl Lexer {
 
         loop {
             if self.pos >= self.len {
+                tokens.push(Token::EOF);
                 break;
             }
 
@@ -133,7 +134,10 @@ impl Lexer {
                 }
                 // Alphabetical
                 c if c.is_alphabetic() => {
-                    let end_pos = self.scan_to(curr_offset, ' ');
+                    let end_pos = self.scan_until(
+                        curr_offset,
+                        |c| c == ' ' || c == ',');
+
                     let slice = &self.buf[curr_offset..end_pos];
                     self.pos += slice.len();
 
@@ -223,7 +227,7 @@ impl Lexer {
 }
 
 #[cfg(test)]
-mod tests {
+mod lexer_tests {
     use crate::{*};
 
     #[test]
@@ -246,6 +250,7 @@ mod tests {
             Token::Space,
             Token::NewLine,
             Token::NewLine,
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -263,6 +268,7 @@ mod tests {
             Token::Arithmetic(Arithmetic::Modulo),
             Token::Arithmetic(Arithmetic::Minus),
             Token::Arithmetic(Arithmetic::Plus),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -280,6 +286,26 @@ mod tests {
             Token::Keyword(Keyword::Insert),
             Token::Space,
             Token::Keyword(Keyword::Where),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_keyword_list() {
+        let str = "select hello, world";
+        let lexer = Lexer::new(str.into()).lex();
+        let actual = lexer.tokens;
+
+        let expected = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(Identifier::Table(Slice::new(7, 12))),
+            Token::Comma,
+            Token::Space,
+            Token::Identifier(Identifier::Table(Slice::new(14, 19))),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -292,7 +318,10 @@ mod tests {
         let actual = lexer.tokens;
 
         // Should not match on Token::Keyword for Select!
-        let expected = vec![Token::Identifier(Identifier::Table(Slice::new(0, 9)))];
+        let expected = vec![
+            Token::Identifier(Identifier::Table(Slice::new(0, 9))),
+            Token::EOF,
+        ];
 
         assert_eq!(actual, expected);
     }
@@ -313,6 +342,7 @@ mod tests {
             Token::NewLine,
             Token::NewLine,
             Token::Arithmetic(Arithmetic::Minus),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -328,6 +358,7 @@ mod tests {
             Token::Numeric(Slice::new(0, 2)),
             Token::Space,
             Token::Numeric(Slice::new(3, 4)),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -345,6 +376,7 @@ mod tests {
         let expected = vec![
             Token::Numeric(Slice::new(0, 2)),
             Token::Identifier(Identifier::Table(Slice::new(2, 4))),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -360,6 +392,7 @@ mod tests {
             Token::Numeric(Slice::new(0, 3)),
             Token::Space,
             Token::Numeric(Slice::new(4, 5)),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -375,6 +408,7 @@ mod tests {
             Token::Numeric(Slice::new(0, 4)),
             Token::Space,
             Token::Numeric(Slice::new(5, 8)),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);
@@ -395,6 +429,7 @@ mod tests {
             Token::Comma,
             Token::Space,
             Token::Value(Value::SingleQuoted(Slice::new(22, 25))),
+            Token::EOF,
         ];
 
         assert_eq!(actual, expected);

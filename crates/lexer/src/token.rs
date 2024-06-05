@@ -2,6 +2,8 @@
 pub enum Keyword {
     Select,
     Insert,
+    Update,
+    Delete,
     Where,
 }
 
@@ -55,5 +57,6 @@ pub enum Token {
     Numeric(Slice),
     Identifier(Identifier),
     Value(Value),
+    EOF,
     Unknown,
 }
