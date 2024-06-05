@@ -230,8 +230,7 @@ impl Parser {
     // Consume and return the next token
     fn eat(&mut self) -> &Token {
         if self.curr_pos >= self.tokens.len() {
-            // todo
-            panic!("AHHH")
+            panic!("Unexpected end of token stream. This should never happen.")
         }
 
         self.curr_pos += 1;
