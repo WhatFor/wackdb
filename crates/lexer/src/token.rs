@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Keyword {
     Select,
     Insert,
@@ -7,17 +7,17 @@ pub enum Keyword {
     Where,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Identifier {
     Table(Slice),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     SingleQuoted(Slice),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Arithmetic {
     Multiply,
     Divide,
@@ -26,7 +26,7 @@ pub enum Arithmetic {
     Minus,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Slice {
     pub start: usize,
     pub end: usize,
@@ -38,7 +38,7 @@ impl Slice {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token {
     Space,
     NewLine,
@@ -59,4 +59,16 @@ pub enum Token {
     Value(Value),
     EOF,
     Unknown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LocatableToken {
+    pub token: Token,
+    pub position: usize,
+}
+
+impl LocatableToken {
+    pub fn at_position(token: Token, position: usize) -> Self {
+        LocatableToken { token, position }
+    }
 }

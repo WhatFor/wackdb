@@ -1,4 +1,4 @@
-use token::{*};
+use token::*;
 pub mod token;
 
 pub struct Lexer {
@@ -9,7 +9,7 @@ pub struct Lexer {
 }
 
 pub struct LexResult {
-    pub tokens: Vec<Token>,
+    pub tokens: Vec<LocatableToken>,
     pub buf: String,
 }
 
@@ -30,7 +30,7 @@ impl Lexer {
 
         loop {
             if self.pos >= self.len {
-                tokens.push(Token::EOF);
+                tokens.push(LocatableToken::at_position(Token::EOF, self.len));
                 break;
             }
 
@@ -134,23 +134,15 @@ impl Lexer {
                 }
                 // Alphabetical
                 c if c.is_alphabetic() => {
-                    let end_pos = self.scan_until(
-                        curr_offset,
-                        |c| c == ' ' || c == ',');
+                    let end_pos = self.scan_until(curr_offset, |c| c == ' ' || c == ',');
 
                     let slice = &self.buf[curr_offset..end_pos];
                     self.pos += slice.len();
 
                     match slice {
-                        s if s.eq_ignore_ascii_case("select") => {
-                            Token::Keyword(Keyword::Select)
-                        }
-                        s if s.eq_ignore_ascii_case("insert") => {
-                            Token::Keyword(Keyword::Insert)
-                        }
-                        s if s.eq_ignore_ascii_case("where") => {
-                            Token::Keyword(Keyword::Where)
-                        }
+                        s if s.eq_ignore_ascii_case("select") => Token::Keyword(Keyword::Select),
+                        s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
+                        s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
                         _ => Token::Identifier(Identifier::Table(Slice::new(curr_offset, end_pos))),
                     }
                 }
@@ -165,10 +157,7 @@ impl Lexer {
                 _ => Token::Unknown,
             };
 
-            //println!("{:?}", token);
-            //std::thread::sleep(core::time::Duration::from_millis(1000));
-
-            tokens.push(token);
+            tokens.push(LocatableToken::at_position(token, curr_offset)); // todo: position is manipluated a lot. this is probably wrong a bunch.
         }
 
         LexResult {
@@ -179,6 +168,8 @@ impl Lexer {
 
     /// Given a start point and a char to find, scan until the char is found
     /// and return the end_offset.
+    /// Only really works when we expect to end the current token by one and one
+    /// character only. For more complex scenarios, use scan_until.
     fn scan_to(&self, start_offset: usize, char: char) -> usize {
         let mut cursor = start_offset;
 
@@ -189,9 +180,6 @@ impl Lexer {
 
             let (_, ch) = self.chars[cursor];
 
-            // todo: char doesn't quite work. lots of things can end a string.
-            //       e.g. tabs, newlines, plus, minus, divide, etc.
-            //       nor will it handle dots or hex stuff in numbers.
             if ch == char {
                 break;
             }
@@ -202,6 +190,8 @@ impl Lexer {
         cursor
     }
 
+    /// Given the function end_func, scan the input until the func returns true,
+    /// returning the index at that point.
     fn scan_until<F>(&self, start_offset: usize, end_func: F) -> usize
     where
         F: Fn(char) -> bool,
@@ -228,13 +218,17 @@ impl Lexer {
 
 #[cfg(test)]
 mod lexer_tests {
-    use crate::{*};
+    use crate::*;
+
+    fn to_token_vec_without_locations(tokens: Vec<LocatableToken>) -> Vec<Token> {
+        tokens.iter().map(|t| t.token).collect()
+    }
 
     #[test]
     fn test_simple_tokens() {
         let str = ",.(){}[];: \n\r";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Comma,
@@ -253,14 +247,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_arithmetic_tokens() {
         let str = "*/%-+";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Arithmetic(Arithmetic::Multiply),
@@ -271,6 +265,24 @@ mod lexer_tests {
             Token::EOF,
         ];
 
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_simple_char_positioning() {
+        let str = "*/%-+";
+        let lexer = Lexer::new(str.into()).lex();
+        let actual = lexer.tokens;
+
+        let expected = vec![
+            LocatableToken::at_position(Token::Arithmetic(Arithmetic::Multiply), 0),
+            LocatableToken::at_position(Token::Arithmetic(Arithmetic::Divide), 1),
+            LocatableToken::at_position(Token::Arithmetic(Arithmetic::Modulo), 2),
+            LocatableToken::at_position(Token::Arithmetic(Arithmetic::Minus), 3),
+            LocatableToken::at_position(Token::Arithmetic(Arithmetic::Plus), 4),
+            LocatableToken::at_position(Token::EOF, 5),
+        ];
+
         assert_eq!(actual, expected);
     }
 
@@ -278,7 +290,7 @@ mod lexer_tests {
     fn test_keywords() {
         let str = "select inSERt WHERE";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Keyword(Keyword::Select),
@@ -289,6 +301,24 @@ mod lexer_tests {
             Token::EOF,
         ];
 
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_keywords_positioning() {
+        let str = "select inSERt WHERE";
+        let lexer = Lexer::new(str.into()).lex();
+        let actual = lexer.tokens;
+
+        let expected = vec![
+            LocatableToken::at_position(Token::Keyword(Keyword::Select), 0),
+            LocatableToken::at_position(Token::Space, 6),
+            LocatableToken::at_position(Token::Keyword(Keyword::Insert), 7),
+            LocatableToken::at_position(Token::Space, 13),
+            LocatableToken::at_position(Token::Keyword(Keyword::Where), 14),
+            LocatableToken::at_position(Token::EOF, 19),
+        ];
+
         assert_eq!(actual, expected);
     }
 
@@ -296,7 +326,7 @@ mod lexer_tests {
     fn test_keyword_list() {
         let str = "select hello, world";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Keyword(Keyword::Select),
@@ -308,14 +338,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_keywords_not_greedy() {
         let str = "selecting";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         // Should not match on Token::Keyword for Select!
         let expected = vec![
@@ -323,7 +353,7 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
@@ -333,7 +363,7 @@ mod lexer_tests {
 
 -";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Arithmetic(Arithmetic::Multiply),
@@ -345,14 +375,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_numeric() {
         let str = "12 4";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Numeric(Slice::new(0, 2)),
@@ -361,7 +391,7 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     // TODO: This test is weird. Should this parse as a number followed by an identifier?
@@ -371,7 +401,7 @@ mod lexer_tests {
     fn test_bad_numeric() {
         let str = "12a0";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Numeric(Slice::new(0, 2)),
@@ -379,14 +409,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_numeric_negative() {
         let str = "-12 4";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Numeric(Slice::new(0, 3)),
@@ -395,14 +425,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_numeric_float() {
         let str = "12.1 1.9";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Numeric(Slice::new(0, 4)),
@@ -411,14 +441,14 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_basic_insert() {
         let str = "insert users 'John', 'Doe'";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Keyword(Keyword::Insert),
@@ -432,16 +462,16 @@ mod lexer_tests {
             Token::EOF,
         ];
 
-        assert_eq!(actual, expected);
+        assert_eq!(actual_without_locations, expected);
     }
 
     #[test]
     fn test_string_indexing() {
         let str = "insert users ";
         let lexer = Lexer::new(str.into()).lex();
-        let actual = lexer.tokens;
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
-        let identifier_str = match &actual[2] {
+        let identifier_str = match &actual_without_locations[2] {
             Token::Identifier(Identifier::Table(x)) => Some(&str[x.start..x.end]),
             _ => None,
         };

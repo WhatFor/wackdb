@@ -4,7 +4,7 @@ use std::{
     process::exit,
 };
 
-use cli_common::{ParseError, Position};
+use cli_common::ParseError;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -45,11 +45,7 @@ fn eval_file(file: &str) -> CommandResult {
     match fs::read_to_string(file) {
         Ok(file_content) => eval_command(&file_content),
         // todo: error is a bit jank
-        Err(_) => CommandResult::Error(
-            vec![ParseError {
-                message: String::from("Failed to read file"),
-                pos: Position::new(0, 0)}]
-        ),
+        Err(_) => CommandResult::Failed(String::from("Failed to open file.")),
     }
 }
 
@@ -67,10 +63,13 @@ fn repl() {
                         CommandResult::_UnrecognisedCommand => {
                             println!("Error! Unrecognised command.");
                         }
+                        CommandResult::Failed(err) => {
+                            println!("Program Error: {err}");
+                        }
                         CommandResult::Error(err) => {
                             for e in err {
                                 let message = e.message;
-                                println!("Error: {message}");
+                                println!("Syntax Error: {message}");
                             }
                         }
                         CommandResult::Ok => {}
@@ -146,5 +145,6 @@ enum ReplResult {
 enum CommandResult {
     _UnrecognisedCommand,
     Error(Vec<ParseError>),
+    Failed(String),
     Ok,
 }
