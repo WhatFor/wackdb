@@ -60,12 +60,11 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     Token::NewLine
                 }
-                // TODO: Not sure how to handle dots, considering `.5` is a valid number.
-                // //Dot
-                // '.' => {
-                //     self.pos += 1;
-                //     Token::Dot
-                // }
+                //Dot - only if the next char isn't numeric
+                '.' if self.pos + 1 < self.len && !self.chars[self.pos + 1].1.is_numeric() => {
+                    self.pos += 1;
+                    Token::Dot
+                }
                 // Comment, double dashed
                 '-' if self.pos + 1 < self.len && self.chars[self.pos + 1].1 == '-' => {
                     let end_pos = self.scan_until(curr_offset, |c| c == '\r' || c == '\n');
@@ -317,12 +316,13 @@ mod lexer_tests {
 
     #[test]
     fn test_simple_tokens() {
-        let str = String::from(",(){}[];: \n\r");
+        let str = String::from(",.(){}[];: \n\r");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Comma,
+            Token::Dot,
             Token::ParenOpen,
             Token::ParenClose,
             Token::SquiglyOpen,
