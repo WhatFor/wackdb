@@ -69,7 +69,8 @@ fn repl() {
                         CommandResult::Error(err) => {
                             for e in err {
                                 let message = e.message;
-                                println!("Syntax Error: {message}");
+                                let pos = e.position;
+                                println!("Syntax Error: {message} (Position {pos})");
                             }
                         }
                         CommandResult::Ok => {}
