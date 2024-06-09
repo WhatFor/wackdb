@@ -64,6 +64,7 @@ pub enum Token {
     Identifier(Ident),
     Value(Value),
     EOF,
+    Null,
     Unknown,
 }
 

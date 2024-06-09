@@ -60,11 +60,12 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     Token::NewLine
                 }
-                //Dot
-                '.' => {
-                    self.pos += 1;
-                    Token::Dot
-                }
+                // TODO: Not sure how to handle dots, considering `.5` is a valid number.
+                // //Dot
+                // '.' => {
+                //     self.pos += 1;
+                //     Token::Dot
+                // }
                 //Comma
                 ',' => {
                     self.pos += 1;
@@ -132,8 +133,8 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     Token::Arithmetic(Arithmetic::Minus)
                 }
-                // Alphabetical
-                c if c.is_alphabetic() => {
+                // Alphabetical (can start with _, # or @)
+                c if c.is_alphabetic() || c == '_' || c == '#' || c == '@' => {
                     let end_pos = self.scan_until(curr_offset, |c| c == ' ' || c == ',');
 
                     let slice = &self.buf[curr_offset..end_pos];
@@ -143,21 +144,46 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("select") => Token::Keyword(Keyword::Select),
                         s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
                         s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
+                        s if s.eq_ignore_ascii_case("null") => Token::Null,
                         _ => Token::Identifier(Ident::new(Slice::new(curr_offset, end_pos))),
                     }
                 }
-                c if c == '-' || c.is_numeric() => {
+                c if c == '-' || c == '.' || c.is_numeric() => {
+                    // Very greedily collect the number and include alphabetical to be handled later.
                     let end_pos = self.scan_until(curr_offset, |c| {
-                        c.is_numeric() == false && c != '.' && c != '-'
+                        c.is_numeric() == false
+                            && c.is_alphabetic() == false
+                            && c != '.'
+                            && c != '-'
                     });
+
                     self.pos += end_pos - curr_offset;
 
-                    Token::Numeric(Slice::new(curr_offset, end_pos))
+                    let mut seen_dot = false;
+                    let mut is_unknown = false;
+
+                    for i in self.buf[curr_offset + 1..end_pos].to_string().chars() {
+                        if i == '.' {
+                            if seen_dot {
+                                is_unknown = true;
+                            }
+                            seen_dot = true;
+                        }
+
+                        if i.is_alphabetic() {
+                            is_unknown = true;
+                        }
+                    }
+
+                    match is_unknown {
+                        true => Token::Unknown,
+                        false => Token::Numeric(Slice::new(curr_offset, end_pos)),
+                    }
                 }
                 _ => Token::Unknown,
             };
 
-            tokens.push(LocatableToken::at_position(token, curr_offset)); // todo: position is manipluated a lot. this is probably wrong a bunch.
+            tokens.push(LocatableToken::at_position(token, curr_offset));
         }
 
         LexResult {
@@ -226,13 +252,12 @@ mod lexer_tests {
 
     #[test]
     fn test_simple_tokens() {
-        let str = String::from(",.(){}[];: \n\r");
+        let str = String::from(",(){}[];: \n\r");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Comma,
-            Token::Dot,
             Token::ParenOpen,
             Token::ParenClose,
             Token::SquiglyOpen,
@@ -298,6 +323,24 @@ mod lexer_tests {
             Token::Keyword(Keyword::Insert),
             Token::Space,
             Token::Keyword(Keyword::Where),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_null() {
+        let str = String::from("null Null NULL");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Null,
+            Token::Space,
+            Token::Null,
+            Token::Space,
+            Token::Null,
             Token::EOF,
         ];
 
@@ -393,20 +436,82 @@ mod lexer_tests {
         assert_eq!(actual_without_locations, expected);
     }
 
-    // TODO: This test is weird. Should this parse as a number followed by an identifier?
-    //       Probably not. It should probably just fall back into a 'unknown symbol' or something,
-    //       or maybe just a 'unknown keyword'?
     #[test]
-    fn test_bad_numeric() {
+    fn test_bad_numeric_invalid_identifier_unknown_token() {
+        // This should not lex as a number, nor as an identifier.
+        // It is not valid as a number due to the 'a' char,
+        // and identifiers cannot begin with a number.
         let str = String::from("12a0");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
-        let expected = vec![
-            Token::Numeric(Slice::new(0, 2)),
-            Token::Identifier(Ident::new(Slice::new(2, 4))),
-            Token::EOF,
-        ];
+        let expected = vec![Token::Unknown, Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_starts_with_underscore() {
+        let str = String::from("_hello");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 6))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_starts_with_hash() {
+        let str = String::from("#hello");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 6))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_starts_with_at() {
+        let str = String::from("@hello");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 6))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_end_with_underscore() {
+        let str = String::from("hello_");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 6))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_contains_underscore() {
+        let str = String::from("hello_world");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 11))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_contains_number() {
+        let str = String::from("hello999world");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 13))), Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
     }
@@ -439,6 +544,28 @@ mod lexer_tests {
             Token::Numeric(Slice::new(5, 8)),
             Token::EOF,
         ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_numeric_float_short_syntax() {
+        let str = String::from(".1");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Numeric(Slice::new(0, 2)), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_invalid_numeric_float_with_multiple_dots() {
+        let str = String::from("12.1.1");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Unknown, Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
     }
