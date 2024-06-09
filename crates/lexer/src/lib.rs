@@ -143,7 +143,7 @@ impl Lexer {
                         s if s.eq_ignore_ascii_case("select") => Token::Keyword(Keyword::Select),
                         s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
                         s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
-                        _ => Token::Identifier(Identifier::Table(Slice::new(curr_offset, end_pos))),
+                        _ => Token::Identifier(Ident::new(Slice::new(curr_offset, end_pos))),
                     }
                 }
                 c if c == '-' || c.is_numeric() => {
@@ -331,10 +331,10 @@ mod lexer_tests {
         let expected = vec![
             Token::Keyword(Keyword::Select),
             Token::Space,
-            Token::Identifier(Identifier::Table(Slice::new(7, 12))),
+            Token::Identifier(Ident::new(Slice::new(7, 12))),
             Token::Comma,
             Token::Space,
-            Token::Identifier(Identifier::Table(Slice::new(14, 19))),
+            Token::Identifier(Ident::new(Slice::new(14, 19))),
             Token::EOF,
         ];
 
@@ -348,10 +348,7 @@ mod lexer_tests {
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         // Should not match on Token::Keyword for Select!
-        let expected = vec![
-            Token::Identifier(Identifier::Table(Slice::new(0, 9))),
-            Token::EOF,
-        ];
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 9))), Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
     }
@@ -405,7 +402,7 @@ mod lexer_tests {
 
         let expected = vec![
             Token::Numeric(Slice::new(0, 2)),
-            Token::Identifier(Identifier::Table(Slice::new(2, 4))),
+            Token::Identifier(Ident::new(Slice::new(2, 4))),
             Token::EOF,
         ];
 
@@ -453,7 +450,7 @@ mod lexer_tests {
         let expected = vec![
             Token::Keyword(Keyword::Insert),
             Token::Space,
-            Token::Identifier(Identifier::Table(Slice::new(7, 12))),
+            Token::Identifier(Ident::new(Slice::new(7, 12))),
             Token::Space,
             Token::Value(Value::SingleQuoted(Slice::new(14, 18))),
             Token::Comma,
@@ -472,7 +469,7 @@ mod lexer_tests {
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let identifier_str = match &actual_without_locations[2] {
-            Token::Identifier(Identifier::Table(x)) => Some(&str[x.start..x.end]),
+            Token::Identifier(Ident { value: x }) => Some(&str[x.start..x.end]),
             _ => None,
         };
 

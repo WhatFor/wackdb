@@ -2,7 +2,7 @@ use core::panic;
 use std::ops::Range;
 
 use cli_common::ParseError;
-use lexer::token::{Identifier as LexerIdentifier, Keyword, LocatableToken, Token};
+use lexer::token::{Ident as LexerIdent, Keyword, LocatableToken, Token};
 
 pub struct Node {
     pub pos: Range<usize>,
@@ -187,9 +187,7 @@ impl Parser {
 
     fn parse_select_item(&mut self) -> Option<SelectItem> {
         let identifier = match self.peek() {
-            // todo: this should probably not be as specific as a 'table' identifier,
-            //       and should probably just be a string or something.
-            Some(Token::Identifier(LexerIdentifier::Table(table))) => Some(table),
+            Some(Token::Identifier(LexerIdent { value })) => Some(value),
             _ => None,
         };
 
@@ -343,7 +341,7 @@ mod parser_tests {
     fn test_simple_select_statement() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::EOF,
         ];
 
@@ -359,9 +357,9 @@ mod parser_tests {
     fn test_select_statement_with_multiple_select_items() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Comma,
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::EOF,
         ];
 
@@ -393,7 +391,7 @@ mod parser_tests {
     fn test_incomplete_input_missing_select_item_after_comma() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Comma,
         ];
         let _ = Parser::new_positionless(tokens).parse();
@@ -448,11 +446,11 @@ mod parser_tests {
     fn test_multiple_select_statements() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdentifier::Table(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::EOF,
         ];
 

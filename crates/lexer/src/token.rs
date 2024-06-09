@@ -8,8 +8,14 @@ pub enum Keyword {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Identifier {
-    Table(Slice),
+pub struct Ident {
+    pub value: Slice,
+}
+
+impl Ident {
+    pub fn new(value: Slice) -> Self {
+        Ident { value }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,7 +61,7 @@ pub enum Token {
     Keyword(Keyword),
     Arithmetic(Arithmetic),
     Numeric(Slice),
-    Identifier(Identifier),
+    Identifier(Ident),
     Value(Value),
     EOF,
     Unknown,
