@@ -33,6 +33,34 @@ pub enum Arithmetic {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Logical {
+    In,
+    Not,
+    Like,
+    Then,
+    Else,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Comparison {
+    Equal,              // =
+    Equal2,             // ==
+    GreaterThanOrEqual, // >=
+    LessThanOrEqual,    // <=
+    NotEqual,           // <>
+    GreaterThan,        // >
+    LessThan,           // <
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Bitwise {
+    LeftShift,  // <<
+    RightShift, // >>
+    And,        // &
+    Or,         // |
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Slice {
     pub start: usize,
     pub end: usize,
@@ -60,6 +88,9 @@ pub enum Token {
     Semicolon,
     Keyword(Keyword),
     Arithmetic(Arithmetic),
+    Logical(Logical),
+    Comparison(Comparison),
+    Bitwise(Bitwise),
     Numeric(Slice),
     Identifier(Ident),
     Value(Value),

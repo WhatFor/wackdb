@@ -128,6 +128,36 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     Token::Arithmetic(Arithmetic::Plus)
                 }
+                // Comparison and Bitwise
+                '|' => {
+                    self.pos += 1;
+                    Token::Bitwise(Bitwise::Or)
+                }
+                '&' => {
+                    self.pos += 1;
+                    Token::Bitwise(Bitwise::And)
+                }
+                '=' | '!' | '>' | '<' => {
+                    let end_pos = self.scan_until(curr_offset, |c| {
+                        c != '=' && c != '!' && c != '>' && c != '<'
+                    });
+
+                    let slice = &self.buf[curr_offset..end_pos];
+                    self.pos += slice.len();
+
+                    match slice {
+                        ">=" => Token::Comparison(Comparison::GreaterThanOrEqual),
+                        "<=" => Token::Comparison(Comparison::LessThanOrEqual),
+                        "<>" => Token::Comparison(Comparison::NotEqual),
+                        ">" => Token::Comparison(Comparison::GreaterThan),
+                        "<" => Token::Comparison(Comparison::LessThan),
+                        "==" => Token::Comparison(Comparison::Equal2),
+                        "=" => Token::Comparison(Comparison::Equal),
+                        ">>" => Token::Bitwise(Bitwise::RightShift),
+                        "<<" => Token::Bitwise(Bitwise::LeftShift),
+                        _ => break,
+                    }
+                }
                 // Only include minus if the next char isn't a number
                 '-' if !(self.pos + 1 < self.len && self.chars[self.pos + 1].1.is_numeric()) => {
                     self.pos += 1;
@@ -141,9 +171,17 @@ impl<'a> Lexer<'a> {
                     self.pos += slice.len();
 
                     match slice {
+                        // Keywords
                         s if s.eq_ignore_ascii_case("select") => Token::Keyword(Keyword::Select),
                         s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
                         s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
+                        // Logical
+                        s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
+                        s if s.eq_ignore_ascii_case("not") => Token::Logical(Logical::Not),
+                        s if s.eq_ignore_ascii_case("like") => Token::Logical(Logical::Like),
+                        s if s.eq_ignore_ascii_case("then") => Token::Logical(Logical::Then),
+                        s if s.eq_ignore_ascii_case("else") => Token::Logical(Logical::Else),
+                        // Other
                         s if s.eq_ignore_ascii_case("null") => Token::Null,
                         _ => Token::Identifier(Ident::new(Slice::new(curr_offset, end_pos))),
                     }
@@ -341,6 +379,74 @@ mod lexer_tests {
             Token::Null,
             Token::Space,
             Token::Null,
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_comparison() {
+        let str = String::from("= == >= <= <> > <");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Comparison(Comparison::Equal),
+            Token::Space,
+            Token::Comparison(Comparison::Equal2),
+            Token::Space,
+            Token::Comparison(Comparison::GreaterThanOrEqual),
+            Token::Space,
+            Token::Comparison(Comparison::LessThanOrEqual),
+            Token::Space,
+            Token::Comparison(Comparison::NotEqual),
+            Token::Space,
+            Token::Comparison(Comparison::GreaterThan),
+            Token::Space,
+            Token::Comparison(Comparison::LessThan),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_bitwise() {
+        let str = String::from("<< >> | &");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Bitwise(Bitwise::LeftShift),
+            Token::Space,
+            Token::Bitwise(Bitwise::RightShift),
+            Token::Space,
+            Token::Bitwise(Bitwise::Or),
+            Token::Space,
+            Token::Bitwise(Bitwise::And),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_logical() {
+        let str = String::from("In Not THEN like elSE");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Logical(Logical::In),
+            Token::Space,
+            Token::Logical(Logical::Not),
+            Token::Space,
+            Token::Logical(Logical::Then),
+            Token::Space,
+            Token::Logical(Logical::Like),
+            Token::Space,
+            Token::Logical(Logical::Else),
             Token::EOF,
         ];
 
