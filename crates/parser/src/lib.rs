@@ -383,28 +383,44 @@ mod parser_tests {
     #[test]
     fn test_empty_tokens() {
         let tokens = vec![];
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let actual = Parser::new_positionless(tokens, &String::from("")).parse();
         let expected = Ok(Program::Stmts(vec![]));
 
-        assert_eq!(lexer, expected);
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    #[should_panic] // todo: real errors instead of panic
     fn test_incomplete_input_missing_select_items_list() {
-        let tokens = vec![Token::Keyword(Keyword::Select)];
-        let _ = Parser::new_positionless(tokens, &String::from("")).parse();
+        let tokens = vec![Token::Keyword(Keyword::Select), Token::EOF];
+        let actual = Parser::new_positionless(tokens, &String::from("")).parse();
+
+        let errors = match actual {
+            Ok(_) => vec![],
+            Err(e) => e,
+        };
+
+        //  TODO: Not actually checking which error.
+        assert_eq!(errors.len(), 1);
     }
 
     #[test]
-    #[should_panic] // todo: real errors instead of panic
     fn test_incomplete_input_missing_select_item_after_comma() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
             Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Comma,
+            Token::EOF,
         ];
-        let _ = Parser::new_positionless(tokens, &String::from("")).parse();
+
+        let actual = Parser::new_positionless(tokens, &String::from("select a,")).parse();
+
+        let errors = match actual {
+            Ok(_) => vec![],
+            Err(e) => e,
+        };
+
+        //  TODO: Not actually checking which error.
+        assert_eq!(errors.len(), 1);
     }
 
     #[test]
