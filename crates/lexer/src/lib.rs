@@ -184,6 +184,24 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("select") => Token::Keyword(Keyword::Select),
                         s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
                         s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
+
+                        s if s.eq_ignore_ascii_case("from") => Token::Keyword(Keyword::From),
+                        s if s.eq_ignore_ascii_case("and") => Token::Keyword(Keyword::And),
+                        s if s.eq_ignore_ascii_case("or") => Token::Keyword(Keyword::Or),
+                        s if s.eq_ignore_ascii_case("update") => Token::Keyword(Keyword::Update),
+                        s if s.eq_ignore_ascii_case("delete") => Token::Keyword(Keyword::Delete),
+                        s if s.eq_ignore_ascii_case("set") => Token::Keyword(Keyword::Set),
+                        s if s.eq_ignore_ascii_case("into") => Token::Keyword(Keyword::Into),
+                        s if s.eq_ignore_ascii_case("values") => Token::Keyword(Keyword::Values),
+                        s if s.eq_ignore_ascii_case("inner") => Token::Keyword(Keyword::Inner),
+                        s if s.eq_ignore_ascii_case("join") => Token::Keyword(Keyword::Join),
+                        s if s.eq_ignore_ascii_case("left") => Token::Keyword(Keyword::Left),
+                        s if s.eq_ignore_ascii_case("right") => Token::Keyword(Keyword::Right),
+                        s if s.eq_ignore_ascii_case("on") => Token::Keyword(Keyword::On),
+                        s if s.eq_ignore_ascii_case("limit") => Token::Keyword(Keyword::Limit),
+                        s if s.eq_ignore_ascii_case("offset") => Token::Keyword(Keyword::Offset),
+                        s if s.eq_ignore_ascii_case("between") => Token::Keyword(Keyword::Between),
+                        s if s.eq_ignore_ascii_case("array") => Token::Keyword(Keyword::Array),
                         // Logical
                         s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
                         s if s.eq_ignore_ascii_case("not") => Token::Logical(Logical::Not),
@@ -360,16 +378,48 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select inSERt WHERE");
+        let str = String::from("select from inSERt WHERE Update and or set into values inner left right join on limit offset between array");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
             Token::Keyword(Keyword::Select),
             Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
             Token::Keyword(Keyword::Insert),
             Token::Space,
             Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Keyword(Keyword::Update),
+            Token::Space,
+            Token::Keyword(Keyword::And),
+            Token::Space,
+            Token::Keyword(Keyword::Or),
+            Token::Space,
+            Token::Keyword(Keyword::Set),
+            Token::Space,
+            Token::Keyword(Keyword::Into),
+            Token::Space,
+            Token::Keyword(Keyword::Values),
+            Token::Space,
+            Token::Keyword(Keyword::Inner),
+            Token::Space,
+            Token::Keyword(Keyword::Left),
+            Token::Space,
+            Token::Keyword(Keyword::Right),
+            Token::Space,
+            Token::Keyword(Keyword::Join),
+            Token::Space,
+            Token::Keyword(Keyword::On),
+            Token::Space,
+            Token::Keyword(Keyword::Limit),
+            Token::Space,
+            Token::Keyword(Keyword::Offset),
+            Token::Space,
+            Token::Keyword(Keyword::Between),
+            Token::Space,
+            Token::Keyword(Keyword::Array),
             Token::EOF,
         ];
 

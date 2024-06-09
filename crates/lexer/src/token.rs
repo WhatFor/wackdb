@@ -1,10 +1,25 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Keyword {
     Select,
+    From,
     Insert,
     Update,
     Delete,
     Where,
+    And,
+    Or,
+    Set,
+    Into,
+    Values,
+    Inner,
+    Left,
+    Right,
+    Join,
+    On,
+    Limit,
+    Offset,
+    Between,
+    Array,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
