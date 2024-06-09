@@ -43,24 +43,26 @@ pub struct Identifier {
     pub name: String, //  todo: should be &str indexing into input buffer? not sure
 }
 
-pub struct Parser {
+pub struct Parser<'a> {
     tokens: Vec<LocatableToken>,
+    buf: &'a String,
     errors: Vec<ParseError>,
     pub curr_pos: usize,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<LocatableToken>) -> Parser {
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<LocatableToken>, buf: &'a String) -> Parser {
         Parser {
             tokens,
+            buf,
             errors: vec![],
             curr_pos: 0,
         }
     }
 
-    /// Create a new parser, but without token positions.
+    /// Create a new parser, but without token positions or the input buf.
     /// Largely used just for testing.
-    pub fn new_positionless(tokens: Vec<Token>) -> Parser {
+    pub fn new_positionless(tokens: Vec<Token>, buf: &'a String) -> Parser<'a> {
         Parser {
             tokens: tokens
                 .iter()
@@ -69,6 +71,7 @@ impl Parser {
                     position: 0,
                 })
                 .collect(),
+            buf,
             errors: vec![],
             curr_pos: 0,
         }
@@ -345,7 +348,7 @@ mod parser_tests {
             Token::EOF,
         ];
 
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         //let expected = Ok(Program::Stmts(vec![Query::Select]));
 
@@ -363,7 +366,7 @@ mod parser_tests {
             Token::EOF,
         ];
 
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         // let expected = Ok(Program::Stmts(vec![Query::Select]));
 
@@ -373,7 +376,7 @@ mod parser_tests {
     #[test]
     fn test_empty_tokens() {
         let tokens = vec![];
-        let lexer = Parser::new(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
         let expected = Ok(Program::Stmts(vec![]));
 
         assert_eq!(lexer, expected);
@@ -383,7 +386,7 @@ mod parser_tests {
     #[should_panic] // todo: real errors instead of panic
     fn test_incomplete_input_missing_select_items_list() {
         let tokens = vec![Token::Keyword(Keyword::Select)];
-        let _ = Parser::new_positionless(tokens).parse();
+        let _ = Parser::new_positionless(tokens, &String::from("")).parse();
     }
 
     #[test]
@@ -394,13 +397,13 @@ mod parser_tests {
             Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
             Token::Comma,
         ];
-        let _ = Parser::new_positionless(tokens).parse();
+        let _ = Parser::new_positionless(tokens, &String::from("")).parse();
     }
 
     #[test]
     fn test_missing_statement() {
         let tokens = vec![Token::Semicolon];
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         let errors = match lexer {
             Ok(_) => vec![],
@@ -414,7 +417,7 @@ mod parser_tests {
     #[test]
     fn test_simple_insert_statement() {
         let tokens = vec![Token::Keyword(Keyword::Insert), Token::EOF];
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Insert]));
 
@@ -424,7 +427,7 @@ mod parser_tests {
     #[test]
     fn test_simple_update_statement() {
         let tokens = vec![Token::Keyword(Keyword::Update), Token::EOF];
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Update]));
 
@@ -434,7 +437,7 @@ mod parser_tests {
     #[test]
     fn test_simple_delete_statement() {
         let tokens = vec![Token::Keyword(Keyword::Delete), Token::EOF];
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Delete]));
 
@@ -454,7 +457,7 @@ mod parser_tests {
             Token::EOF,
         ];
 
-        let lexer = Parser::new_positionless(tokens).parse();
+        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
 
         // let expected = Ok(Program::Stmts(vec![
         //     Query::Select,

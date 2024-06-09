@@ -29,10 +29,11 @@ fn main() {
 }
 
 fn eval_command(input: &str) -> CommandResult {
-    let lexer = Lexer::new(input.into());
+    let input_str = input.to_string();
+    let lexer = Lexer::new(&input_str);
     let lex_result = lexer.lex();
 
-    let mut parser = Parser::new(lex_result.tokens);
+    let mut parser = Parser::new(lex_result.tokens, &input_str);
     let parse_result = parser.parse();
 
     match parse_result {
