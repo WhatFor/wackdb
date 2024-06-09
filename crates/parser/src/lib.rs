@@ -2,7 +2,7 @@ use core::panic;
 use std::ops::Range;
 
 use cli_common::ParseError;
-use lexer::token::{Ident as LexerIdent, Keyword, LocatableToken, Token};
+use lexer::token::{Ident as LexerIdent, Keyword, LocatableToken, Slice, Token};
 
 pub struct Node {
     pub pos: Range<usize>,
@@ -40,7 +40,7 @@ pub struct SelectItem {
 
 #[derive(PartialEq, Debug)]
 pub struct Identifier {
-    pub name: String, //  todo: should be &str indexing into input buffer? not sure
+    pub value: String,
 }
 
 pub struct Parser<'a> {
@@ -195,19 +195,21 @@ impl<'a> Parser<'a> {
         };
 
         match identifier {
-            Some(_) => {
+            Some(value) => {
+                let identifier_str = String::from(self.resolve_slice(value));
                 self.eat();
+
+                Some(SelectItem {
+                    identifier: Identifier {
+                        value: identifier_str,
+                    },
+                })
             }
             None => {
                 self.push_error("Unexpected token. Expected identifier.");
+                None
             }
         }
-
-        Some(SelectItem {
-            identifier: Identifier {
-                name: String::from(""), // todo: Slice is just a pointer to a part of the lexed string.
-            },
-        })
     }
 
     fn parse_from_clause_optional(&mut self) -> Option<()> {
@@ -272,6 +274,11 @@ impl<'a> Parser<'a> {
             true => Some(&self.tokens[self.curr_pos]),
             false => None,
         }
+    }
+
+    /// For a slice, resolve the string value from the input buffer.
+    fn resolve_slice(&self, slice: &Slice) -> &str {
+        &self.buf[slice.start..slice.end]
     }
 
     /// Consume and return the next token

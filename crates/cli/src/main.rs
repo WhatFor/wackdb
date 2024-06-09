@@ -36,8 +36,10 @@ fn eval_command(input: &str) -> CommandResult {
     let mut parser = Parser::new(lex_result.tokens, &input_str);
     let parse_result = parser.parse();
 
+    dbg!(&parse_result);
+
     match parse_result {
-        Ok(_) => CommandResult::Ok, // todo: want to do anything with the parse result?
+        Ok(_) => CommandResult::Ok,
         Err(e) => CommandResult::Error(e),
     }
 }
@@ -45,7 +47,6 @@ fn eval_command(input: &str) -> CommandResult {
 fn eval_file(file: &str) -> CommandResult {
     match fs::read_to_string(file) {
         Ok(file_content) => eval_command(&file_content),
-        // todo: error is a bit jank
         Err(_) => CommandResult::Failed(String::from("Failed to open file.")),
     }
 }
