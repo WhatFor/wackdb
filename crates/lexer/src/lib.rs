@@ -27,6 +27,7 @@ impl<'a> Lexer<'a> {
 
     pub fn lex(mut self) -> LexResult<'a> {
         let mut tokens = Vec::new();
+        let mut prev_index = self.pos;
 
         loop {
             if self.pos >= self.len {
@@ -248,6 +249,12 @@ impl<'a> Lexer<'a> {
             };
 
             tokens.push(LocatableToken::at_position(token, curr_offset));
+
+            if prev_index == self.pos {
+                panic!("Critical Lexer Error: Lexer iteration did not collect a token and is stuck. This is a bug.");
+            }
+
+            prev_index = self.pos;
         }
 
         LexResult {
