@@ -66,6 +66,15 @@ impl<'a> Lexer<'a> {
                 //     self.pos += 1;
                 //     Token::Dot
                 // }
+                // Comment, double dashed
+                '-' if self.pos + 1 < self.len && self.chars[self.pos + 1].1 == '-' => {
+                    let end_pos = self.scan_until(curr_offset, |c| c == '\r' || c == '\n');
+
+                    let slice = &self.buf[curr_offset..end_pos];
+                    self.pos += slice.len();
+
+                    Token::Comment(Slice::new(curr_offset, end_pos))
+                }
                 //Comma
                 ',' => {
                     self.pos += 1;
@@ -447,6 +456,47 @@ mod lexer_tests {
             Token::Logical(Logical::Like),
             Token::Space,
             Token::Logical(Logical::Else),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_doubledash_comment() {
+        let str = String::from("LIKE --comment");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Logical(Logical::Like),
+            Token::Space,
+            Token::Comment(Slice::new(5, 14)),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_doubledash_comment_multiline() {
+        let str = String::from(
+            "*
+/
+--comment
+-",
+        );
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Arithmetic(Arithmetic::Multiply),
+            Token::NewLine,
+            Token::Arithmetic(Arithmetic::Divide),
+            Token::NewLine,
+            Token::Comment(Slice::new(4, 13)),
+            Token::NewLine,
+            Token::Arithmetic(Arithmetic::Minus),
             Token::EOF,
         ];
 

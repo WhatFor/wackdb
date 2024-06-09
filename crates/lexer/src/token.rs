@@ -93,6 +93,7 @@ pub enum Token {
     Bitwise(Bitwise),
     Numeric(Slice),
     Identifier(Ident),
+    Comment(Slice),
     Value(Value),
     EOF,
     Null,
