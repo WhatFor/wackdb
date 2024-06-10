@@ -174,7 +174,8 @@ impl<'a> Lexer<'a> {
                 }
                 // Alphabetical (can start with _, # or @)
                 c if c.is_alphabetic() || c == '_' || c == '#' || c == '@' => {
-                    let end_pos = self.scan_until(curr_offset, |c| c == ' ' || c == ',');
+                    let end_pos =
+                        self.scan_until(curr_offset, |c| c == ' ' || c == ',' || c == ';');
 
                     let slice = &self.buf[curr_offset..end_pos];
                     self.pos += slice.len();
@@ -603,6 +604,23 @@ mod lexer_tests {
             Token::Comma,
             Token::Space,
             Token::Identifier(Ident::new(Slice::new(14, 19))),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_not_greedily_consuming_semicolon() {
+        let str = String::from("select hello;");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(Ident::new(Slice::new(7, 12))),
+            Token::Semicolon,
             Token::EOF,
         ];
 
