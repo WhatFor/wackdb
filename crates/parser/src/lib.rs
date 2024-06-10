@@ -4,6 +4,8 @@ use std::ops::Range;
 use cli_common::ParseError;
 use lexer::token::{Ident as LexerIdent, Keyword, LocatableToken, Slice, Token};
 
+mod consts;
+
 pub struct Node {
     pub pos: Range<usize>,
     pub tok: Token,
@@ -45,13 +47,13 @@ pub struct Identifier {
 
 pub struct Parser<'a> {
     tokens: Vec<LocatableToken>,
-    buf: &'a String,
+    buf: &'a str,
     errors: Vec<ParseError>,
     pub curr_pos: usize,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<LocatableToken>, buf: &'a String) -> Parser {
+    pub fn new(tokens: Vec<LocatableToken>, buf: &'a str) -> Parser {
         Parser {
             tokens,
             buf,
@@ -62,7 +64,7 @@ impl<'a> Parser<'a> {
 
     /// Create a new parser, but without token positions or the input buf.
     /// Largely used just for testing.
-    pub fn new_positionless(tokens: Vec<Token>, buf: &'a String) -> Parser<'a> {
+    pub fn new_positionless(tokens: Vec<Token>, buf: &'a str) -> Parser<'a> {
         Parser {
             tokens: tokens
                 .iter()
@@ -134,18 +136,23 @@ impl<'a> Parser<'a> {
     //query: (simpleStatement SEMICOLON_SYMBOL?)?
     fn parse_query(&mut self) -> Option<Query> {
         let next = self.peek();
-        match next {
+        let query = match next {
             Some(Token::Keyword(Keyword::Select)) => self.parse_select_statement(),
             Some(Token::Keyword(Keyword::Insert)) => self.parse_insert_statement(),
             Some(Token::Keyword(Keyword::Update)) => self.parse_update_statement(),
             Some(Token::Keyword(Keyword::Delete)) => self.parse_delete_statement(),
             _ => {
-                self.push_error(
-                    "Unexpected token. Expected one of Select, Insert, Update or Delete.",
-                );
+                self.push_error(consts::EXPECT_STMT);
                 None
             }
+        };
+
+        self.next_significant_token();
+        if self.lookahead(Token::Semicolon) {
+            self.match_(Token::Semicolon);
         }
+
+        query
     }
 
     fn parse_select_statement(&mut self) -> Option<Query> {
@@ -189,13 +196,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_select_item(&mut self) -> Option<SelectItem> {
-        let identifier = match self.peek() {
-            Some(Token::Identifier(LexerIdent { value })) => Some(value),
-            _ => None,
-        };
-
-        match identifier {
-            Some(value) => {
+        match self.peek() {
+            Some(Token::Identifier(LexerIdent { value })) => {
                 let identifier_str = String::from(self.resolve_slice(value));
                 self.eat();
 
@@ -205,8 +207,8 @@ impl<'a> Parser<'a> {
                     },
                 })
             }
-            None => {
-                self.push_error("Unexpected token. Expected identifier.");
+            _ => {
+                self.push_error(consts::EXPECT_IDENT);
                 None
             }
         }
@@ -346,44 +348,165 @@ mod parser_tests {
     use crate::*;
     use lexer::token::Slice;
 
+    const EMPTY_QUERY: &'static str = "";
+
     #[test]
-    #[ignore = "waiting on more fleshed out select parsing"]
     fn test_simple_select_statement() {
+        let query = String::from("select a");
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
             Token::EOF,
         ];
 
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        //let expected = Ok(Program::Stmts(vec![Query::Select]));
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    identifier: Identifier {
+                        value: String::from("a"),
+                    },
+                }],
+            },
+        })]));
 
-        //assert_eq!(lexer, expected);
+        assert_eq!(lexer, expected);
     }
 
     #[test]
-    #[ignore = "waiting on more fleshed out select parsing"]
     fn test_select_statement_with_multiple_select_items() {
+        let query = String::from("select a,b");
         let tokens = vec![
             Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
             Token::Comma,
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
+            Token::Identifier(LexerIdent::new(Slice::new(9, 10))),
             Token::EOF,
         ];
 
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        // let expected = Ok(Program::Stmts(vec![Query::Select]));
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![
+                    SelectItem {
+                        identifier: Identifier {
+                            value: String::from("a"),
+                        },
+                    },
+                    SelectItem {
+                        identifier: Identifier {
+                            value: String::from("b"),
+                        },
+                    },
+                ],
+            },
+        })]));
 
-        // assert_eq!(lexer, expected);
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_multiple_select_statements() {
+        let query = String::from("select a;select b;select c;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Semicolon,
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(16, 17))),
+            Token::Semicolon,
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(25, 26))),
+            Token::Semicolon,
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![
+            Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem {
+                        identifier: Identifier {
+                            value: String::from("a"),
+                        },
+                    }],
+                },
+            }),
+            Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem {
+                        identifier: Identifier {
+                            value: String::from("b"),
+                        },
+                    }],
+                },
+            }),
+            Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem {
+                        identifier: Identifier {
+                            value: String::from("c"),
+                        },
+                    }],
+                },
+            }),
+        ]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_multiple_select_statements_no_semicolon() {
+        let query = String::from("select a select b");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(16, 17))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![
+            Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem {
+                        identifier: Identifier {
+                            value: String::from("a"),
+                        },
+                    }],
+                },
+            }),
+            Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem {
+                        identifier: Identifier {
+                            value: String::from("b"),
+                        },
+                    }],
+                },
+            }),
+        ]));
+
+        assert_eq!(lexer, expected);
     }
 
     #[test]
     fn test_empty_tokens() {
         let tokens = vec![];
-        let actual = Parser::new_positionless(tokens, &String::from("")).parse();
+        let actual = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
         let expected = Ok(Program::Stmts(vec![]));
 
         assert_eq!(actual, expected);
@@ -392,15 +515,21 @@ mod parser_tests {
     #[test]
     fn test_incomplete_input_missing_select_items_list() {
         let tokens = vec![Token::Keyword(Keyword::Select), Token::EOF];
-        let actual = Parser::new_positionless(tokens, &String::from("")).parse();
+        let actual = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
         let errors = match actual {
             Ok(_) => vec![],
             Err(e) => e,
         };
 
-        //  TODO: Not actually checking which error.
         assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0],
+            ParseError {
+                position: 0,
+                message: String::from(consts::EXPECT_IDENT),
+            }
+        );
     }
 
     #[test]
@@ -419,28 +548,40 @@ mod parser_tests {
             Err(e) => e,
         };
 
-        //  TODO: Not actually checking which error.
         assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0],
+            ParseError {
+                position: 0,
+                message: String::from(consts::EXPECT_IDENT),
+            }
+        );
     }
 
     #[test]
     fn test_missing_statement() {
         let tokens = vec![Token::Semicolon];
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
         let errors = match lexer {
             Ok(_) => vec![],
             Err(e) => e,
         };
 
-        //  TODO: Not actually checking which error.
         assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0],
+            ParseError {
+                position: 0,
+                message: String::from(consts::EXPECT_STMT),
+            }
+        );
     }
 
     #[test]
     fn test_simple_insert_statement() {
         let tokens = vec![Token::Keyword(Keyword::Insert), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Insert]));
 
@@ -450,7 +591,7 @@ mod parser_tests {
     #[test]
     fn test_simple_update_statement() {
         let tokens = vec![Token::Keyword(Keyword::Update), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Update]));
 
@@ -460,34 +601,10 @@ mod parser_tests {
     #[test]
     fn test_simple_delete_statement() {
         let tokens = vec![Token::Keyword(Keyword::Delete), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
+        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Stmts(vec![Query::Delete]));
 
         assert_eq!(lexer, expected);
-    }
-
-    #[test]
-    #[ignore = "waiting on more fleshed out select parsing"]
-    fn test_multiple_select_statements() {
-        let tokens = vec![
-            Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
-            Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
-            Token::Keyword(Keyword::Select),
-            Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
-            Token::EOF,
-        ];
-
-        let lexer = Parser::new_positionless(tokens, &String::from("")).parse();
-
-        // let expected = Ok(Program::Stmts(vec![
-        //     Query::Select,
-        //     Query::Select,
-        //     Query::Select,
-        // ]));
-
-        // assert_eq!(lexer, expected);
     }
 }
