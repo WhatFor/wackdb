@@ -346,7 +346,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod parser_tests {
     use crate::*;
-    use lexer::token::Slice;
+    use lexer::token::{Comparison, Slice, Value};
 
     const EMPTY_QUERY: &'static str = "";
 
@@ -499,6 +499,54 @@ mod parser_tests {
                 },
             }),
         ]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    #[ignore = "not implemented"]
+    fn test_full_select_statement() {
+        let query = String::from("select a from b where c = 1 order by a desc;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Space,
+            Token::Comparison(Comparison::Equal),
+            Token::Space,
+            Token::Value(Value::Raw(Slice::new(26, 27))),
+            Token::Keyword(Keyword::Order),
+            Token::Space,
+            Token::Keyword(Keyword::By),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(37, 38))),
+            Token::Space,
+            Token::Keyword(Keyword::Desc),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    identifier: Identifier {
+                        value: String::from("a"),
+                    },
+                }],
+            },
+            // select_from: {},
+            // where_clause: {},
+            // order_by_clause: {},
+        })]));
 
         assert_eq!(lexer, expected);
     }

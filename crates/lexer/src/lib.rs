@@ -202,6 +202,10 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("offset") => Token::Keyword(Keyword::Offset),
                         s if s.eq_ignore_ascii_case("between") => Token::Keyword(Keyword::Between),
                         s if s.eq_ignore_ascii_case("array") => Token::Keyword(Keyword::Array),
+                        s if s.eq_ignore_ascii_case("order") => Token::Keyword(Keyword::Order),
+                        s if s.eq_ignore_ascii_case("by") => Token::Keyword(Keyword::By),
+                        s if s.eq_ignore_ascii_case("asc") => Token::Keyword(Keyword::Asc),
+                        s if s.eq_ignore_ascii_case("desc") => Token::Keyword(Keyword::Desc),
                         // Logical
                         s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
                         s if s.eq_ignore_ascii_case("not") => Token::Logical(Logical::Not),
@@ -385,7 +389,7 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select from inSERt WHERE Update and or set into values inner left right join on limit offset between array");
+        let str = String::from("select from inSERt WHERE Update and or set into values inner left right join on limit offset between array order by asc desc");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -427,6 +431,14 @@ mod lexer_tests {
             Token::Keyword(Keyword::Between),
             Token::Space,
             Token::Keyword(Keyword::Array),
+            Token::Space,
+            Token::Keyword(Keyword::Order),
+            Token::Space,
+            Token::Keyword(Keyword::By),
+            Token::Space,
+            Token::Keyword(Keyword::Asc),
+            Token::Space,
+            Token::Keyword(Keyword::Desc),
             Token::EOF,
         ];
 

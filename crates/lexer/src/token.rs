@@ -20,6 +20,10 @@ pub enum Keyword {
     Offset,
     Between,
     Array,
+    Order,
+    By,
+    Asc,
+    Desc,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,6 +40,7 @@ impl Ident {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Value {
     SingleQuoted(Slice),
+    Raw(Slice),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
