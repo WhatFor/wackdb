@@ -419,7 +419,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else {
-                self.push_error("Expected By keyword following Order."); // TODO consts
+                self.push_error(&consts::ORDER_BY_NOT_CLOSED);
                 None
             }
         } else {
