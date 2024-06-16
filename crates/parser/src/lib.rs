@@ -1,402 +1,14 @@
-use core::{fmt, panic};
-use std::ops::Range;
-
 use cli_common::ParseError;
+use core::panic;
+
+use ast::*;
 use lexer::token::{
     Arithmetic, Bitwise, Comparison, Ident as LexerIdent, Keyword, LocatableToken, Logical, Slice,
     Token, Value as LexerValue,
 };
 
+mod ast;
 mod consts;
-
-pub struct Node {
-    pub pos: Range<usize>,
-    pub tok: Token,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Program {
-    Stmts(Vec<Query>),
-    Empty,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Query {
-    Select(SelectExpressionBody),
-    Update,
-    Insert,
-    Delete,
-}
-
-#[derive(PartialEq)]
-pub struct SelectExpressionBody {
-    pub select_item_list: SelectItemList,
-    pub from_clause: Option<FromClause>,
-    pub where_clause: Option<WhereClause>,
-    pub order_by_clause: Option<OrderByClause>,
-}
-
-impl fmt::Display for SelectExpressionBody {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SELECT {} ", self.select_item_list)?;
-
-        match &self.from_clause {
-            Some(c) => write!(f, "FROM {} ", c)?,
-            _ => {}
-        }
-
-        match &self.where_clause {
-            Some(c) => write!(f, "WHERE {} ", c)?,
-            _ => {}
-        }
-
-        match &self.order_by_clause {
-            Some(c) => write!(f, "ORDER BY {}", c)?,
-            _ => {}
-        }
-
-        Ok(())
-    }
-}
-
-impl fmt::Debug for SelectExpressionBody {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub struct SelectItemList {
-    pub item_list: Vec<SelectItem>,
-}
-
-impl SelectItemList {
-    pub fn from(items: Vec<SelectItem>) -> Self {
-        SelectItemList { item_list: items }
-    }
-}
-
-impl fmt::Display for SelectItemList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.item_list)
-    }
-}
-
-impl fmt::Debug for SelectItemList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub struct SelectItem {
-    pub expr: Expr,
-    pub alias: Option<Identifier>,
-}
-
-impl fmt::Display for SelectItem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.expr)?;
-
-        match &self.alias {
-            Some(alias) => write!(f, "AS {}", alias),
-            None => Ok(()),
-        }
-    }
-}
-
-impl fmt::Debug for SelectItem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-impl SelectItem {
-    pub fn new(expr: Expr) -> Self {
-        SelectItem { expr, alias: None }
-    }
-
-    pub fn simple_identifier(identifier: &str) -> Self {
-        SelectItem {
-            expr: Expr::Value(Value::String(String::from(identifier))),
-            alias: None,
-        }
-    }
-
-    pub fn aliased(expr: Expr, alias: Identifier) -> Self {
-        SelectItem {
-            expr,
-            alias: Some(alias),
-        }
-    }
-}
-
-#[derive(PartialEq)]
-pub struct FromClause {
-    pub identifier: Identifier,
-}
-
-impl fmt::Display for FromClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.identifier)
-    }
-}
-
-impl fmt::Debug for FromClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub struct WhereClause {
-    pub expr: Expr,
-}
-
-impl fmt::Display for WhereClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.expr)
-    }
-}
-
-impl fmt::Debug for WhereClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum Expr {
-    IsTrue(Box<Expr>),
-    IsNotTrue(Box<Expr>),
-    IsFalse(Box<Expr>),
-    IsNotFalse(Box<Expr>),
-    IsNull(Box<Expr>),
-    IsNotNull(Box<Expr>),
-    IsIn {
-        expr: Box<Expr>,
-        list: Vec<Expr>,
-    },
-    IsNotIn {
-        expr: Box<Expr>,
-        list: Vec<Expr>,
-    },
-    Between {
-        expr: Box<Expr>,
-        lower: Box<Expr>,
-        higher: Box<Expr>,
-    },
-    NotBetween {
-        expr: Box<Expr>,
-        lower: Box<Expr>,
-        higher: Box<Expr>,
-    },
-    Like {
-        expr: Box<Expr>,
-        pattern: Box<Expr>,
-    },
-    NotLike {
-        expr: Box<Expr>,
-        pattern: Box<Expr>,
-    },
-    BinaryOperator {
-        left: Box<Expr>,
-        op: BinaryOperator,
-        right: Box<Expr>,
-    },
-    Value(Value),
-    Identifier(Identifier),
-    Wildcard,
-}
-
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::IsTrue(s) => write!(f, "{s}"),
-            Expr::IsNotTrue(e) => write!(f, "{e} IS NOT TRUE"),
-            Expr::IsFalse(e) => write!(f, "{e} IS FALSE"),
-            Expr::IsNotFalse(e) => write!(f, "{e} IS NOT FALSE"),
-            Expr::IsNull(e) => write!(f, "{e} IS NULL"),
-            Expr::IsNotNull(e) => write!(f, "{e} IS NOT NULL"),
-            Expr::IsIn { expr, list } => write!(f, "{expr} IS IN {list:?}"),
-            Expr::IsNotIn { expr, list } => write!(f, "{expr} IS NOT IN {list:?}"),
-            Expr::Between {
-                expr,
-                lower,
-                higher,
-            } => write!(f, "{expr} BETWEEN {lower} AND {higher}"),
-            Expr::NotBetween {
-                expr,
-                lower,
-                higher,
-            } => write!(f, "{expr} NOT BETWEEN {lower} AND {higher}"),
-            Expr::Like { expr, pattern } => write!(f, "{expr} LIKE {pattern}"),
-            Expr::NotLike { expr, pattern } => write!(f, "{expr} NOT LIKE {pattern}"),
-            Expr::BinaryOperator { left, op, right } => write!(f, "({left} {op} {right})"),
-            Expr::Value(v) => write!(f, "{v:?}"),
-            Expr::Identifier(i) => write!(f, "{i:?}"),
-            Expr::Wildcard => write!(f, "*"),
-        }
-    }
-}
-
-impl fmt::Debug for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq, Clone, Copy)]
-pub enum BinaryOperator {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
-    Modulo,
-    GreaterThan,
-    GreaterThanOrEqual,
-    LessThan,
-    LessThanOrEqual,
-    Equal,
-    NotEqual,
-    And,
-    Or,
-    Xor,
-    BitwiseOr,
-    BitwiseAnd,
-    BitwiseXor,
-}
-
-impl fmt::Display for BinaryOperator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BinaryOperator::Plus => f.write_str("+"),
-            BinaryOperator::Minus => f.write_str("-"),
-            BinaryOperator::Multiply => f.write_str("*"),
-            BinaryOperator::Divide => f.write_str("/"),
-            BinaryOperator::Modulo => f.write_str("%"),
-            BinaryOperator::GreaterThan => f.write_str(">"),
-            BinaryOperator::GreaterThanOrEqual => f.write_str(">="),
-            BinaryOperator::LessThan => f.write_str("<"),
-            BinaryOperator::LessThanOrEqual => f.write_str("<="),
-            BinaryOperator::Equal => f.write_str("="),
-            BinaryOperator::NotEqual => f.write_str("<>"),
-            BinaryOperator::And => f.write_str("AND"),
-            BinaryOperator::Or => f.write_str("OR"),
-            BinaryOperator::Xor => f.write_str("XOR"),
-            BinaryOperator::BitwiseOr => f.write_str("|"),
-            BinaryOperator::BitwiseAnd => f.write_str("&"),
-            BinaryOperator::BitwiseXor => f.write_str("^"),
-        }
-    }
-}
-
-impl fmt::Debug for BinaryOperator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum Value {
-    Number(String),
-    String(String),
-    Boolean(bool),
-    Null,
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Number(n) => f.write_str(n),
-            Value::String(s) => f.write_str(s),
-            Value::Boolean(b) => f.write_str(match b {
-                true => "TRUE",
-                false => "FALSE",
-            }),
-            Value::Null => f.write_str("NULL"),
-        }
-    }
-}
-
-impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub enum OrderDirection {
-    Asc,
-    Desc,
-}
-
-impl fmt::Display for OrderDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OrderDirection::Asc => write!(f, "ASC"),
-            OrderDirection::Desc => write!(f, "DESC"),
-        }
-    }
-}
-
-impl fmt::Debug for OrderDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub struct OrderByClause {
-    pub identifier: Identifier,
-    pub dir: OrderDirection,
-}
-
-impl fmt::Display for OrderByClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.identifier, self.dir)
-    }
-}
-
-impl fmt::Debug for OrderByClause {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-#[derive(PartialEq)]
-pub struct Identifier {
-    pub value: String,
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl fmt::Debug for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Passthrough to fmt::Display
-        write!(f, "{}", self)
-    }
-}
-
-impl Identifier {
-    pub fn from(value: String) -> Self {
-        Identifier { value }
-    }
-}
 
 pub struct Parser<'a> {
     tokens: Vec<LocatableToken>,
@@ -541,7 +153,6 @@ impl<'a> Parser<'a> {
         let mut item_list = vec![];
 
         self.next_significant_token();
-        dbg!("Parsing SELECT item list...");
         item_list.push(self.parse_select_item()?);
         self.next_significant_token();
 
@@ -584,7 +195,6 @@ impl<'a> Parser<'a> {
 
     fn parse_from_clause_optional(&mut self) -> Option<FromClause> {
         self.next_significant_token();
-        dbg!("Parsing FROM clause...");
 
         if self.match_(Token::Keyword(Keyword::From)) {
             self.next_significant_token();
@@ -613,7 +223,6 @@ impl<'a> Parser<'a> {
         self.next_significant_token();
 
         if self.match_(Token::Keyword(Keyword::Where)) {
-            dbg!("parsing WHERE clause expression...");
             let expr = self.parse_expr()?;
 
             Some(WhereClause { expr })
@@ -629,32 +238,23 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_subexpr(&mut self, precedence: u8) -> Option<Expr> {
-        dbg!("Starting to parse subexpr");
         let mut expr = self.parse_prefix()?;
-
-        dbg!("Expression found: {:?}", &expr);
 
         loop {
             let next_precedence = self.next_expr_precedence();
-            dbg!("Next precedence: {:?}", &next_precedence);
 
             if precedence >= next_precedence {
-                dbg!("Precedence matched. Breaking loop...");
                 break;
             }
 
             expr = self.parse_infix(expr, next_precedence)?;
-            dbg!("infix: {:?}", &expr);
         }
 
-        dbg!("Expression completed: {:?}", &expr);
         Some(expr)
     }
 
     fn parse_prefix(&mut self) -> Option<Expr> {
         self.next_significant_token();
-
-        dbg!(self.peek());
 
         let expr = match self.peek() {
             Some(token) => match token {
@@ -669,7 +269,6 @@ impl<'a> Parser<'a> {
                     Some(Expr::Identifier(Identifier::from(val)))
                 }
                 Token::Numeric(n) | Token::Value(LexerValue::SingleQuoted(n)) => {
-                    dbg!("prefix numeric or string: {:?}", n);
                     let val = self.parse_value();
                     Some(Expr::Value(val?))
                 }
@@ -709,11 +308,7 @@ impl<'a> Parser<'a> {
         if let Some(op) = binary_op {
             self.eat();
 
-            dbg!("Found binary_op: {}", &binary_op);
-
             let right = self.parse_subexpr(precedence)?;
-
-            dbg!("Found righthand expression: {}", &right);
 
             return Some(Expr::BinaryOperator {
                 left: Box::new(expr),
@@ -729,7 +324,6 @@ impl<'a> Parser<'a> {
 
     fn next_expr_precedence(&mut self) -> u8 {
         self.next_significant_token();
-        dbg!(self.peek());
         match self.peek() {
             Some(token) => match token {
                 Token::Comparison(Comparison::Equal)
@@ -799,11 +393,6 @@ impl<'a> Parser<'a> {
                         let identifier_str = String::from(self.resolve_slice(value));
                         self.eat();
                         self.next_significant_token();
-
-                        println!(
-                            "next token in order by: {:?}",
-                            self.tokens[self.curr_pos].token
-                        );
 
                         // todo: refactor
                         let dir = if self.match_(Token::Keyword(Keyword::Asc)) {
