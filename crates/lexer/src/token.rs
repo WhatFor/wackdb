@@ -58,6 +58,7 @@ pub enum Arithmetic {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Logical {
+    Is,
     In,
     Not,
     Like,

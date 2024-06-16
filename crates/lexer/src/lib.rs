@@ -214,6 +214,7 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("asc") => Token::Keyword(Keyword::Asc),
                         s if s.eq_ignore_ascii_case("desc") => Token::Keyword(Keyword::Desc),
                         // Logical
+                        s if s.eq_ignore_ascii_case("is") => Token::Logical(Logical::Is),
                         s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
                         s if s.eq_ignore_ascii_case("not") => Token::Logical(Logical::Not),
                         s if s.eq_ignore_ascii_case("like") => Token::Logical(Logical::Like),
@@ -530,11 +531,13 @@ mod lexer_tests {
 
     #[test]
     fn test_logical() {
-        let str = String::from("In Not THEN like elSE");
+        let str = String::from("Is In Not THEN like elSE");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![
+            Token::Logical(Logical::Is),
+            Token::Space,
             Token::Logical(Logical::In),
             Token::Space,
             Token::Logical(Logical::Not),

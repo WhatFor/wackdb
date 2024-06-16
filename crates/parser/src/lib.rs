@@ -379,6 +379,7 @@ impl<'a> Parser<'a> {
 
     fn parse_infix(&mut self, expr: Expr, precedence: u8) -> Option<Expr> {
         self.next_significant_token();
+
         let binary_op = match self.peek()? {
             Token::Arithmetic(Arithmetic::Plus) => Some(BinaryOperator::Plus),
             Token::Arithmetic(Arithmetic::Minus) => Some(BinaryOperator::Minus),
@@ -414,7 +415,64 @@ impl<'a> Parser<'a> {
             });
         }
 
-        // todo: handle stuff like IS, IS NOT, etc.
+        // Handle IS [NOT] TRUE/FALSE/NULL
+        if self.lookahead(Token::Logical(Logical::Is)) {
+            self.eat();
+            self.next_significant_token();
+
+            let logical_expr = match self.peek() {
+                Some(token) => match token {
+                    // IS NULL
+                    Token::Null => Some(Expr::IsNull(Box::new(expr))),
+                    // IS TRUE
+                    Token::Keyword(Keyword::True) => Some(Expr::IsTrue(Box::new(expr))),
+                    // IS FALSE
+                    Token::Keyword(Keyword::False) => Some(Expr::IsFalse(Box::new(expr))),
+                    // IS NOT...
+                    Token::Logical(Logical::Not) => {
+                        self.eat();
+                        self.next_significant_token();
+
+                        match self.peek() {
+                            Some(is_not_token) => match is_not_token {
+                                // IS NOT NULL
+                                Token::Null => Some(Expr::IsNotNull(Box::new(expr))),
+                                // IS NOT TRUE
+                                Token::Keyword(Keyword::True) => {
+                                    Some(Expr::IsNotTrue(Box::new(expr)))
+                                }
+                                // IS NOT FALSE
+                                Token::Keyword(Keyword::False) => {
+                                    Some(Expr::IsNotFalse(Box::new(expr)))
+                                }
+                                _ => {
+                                    self.push_error("Invalid token after IS NOT"); // todo
+                                    None
+                                }
+                            },
+                            None => {
+                                self.push_error("IS NOT statement not finished"); // todo
+                                None
+                            }
+                        }
+                    }
+                    _ => {
+                        self.push_error("Invalid token after IS"); // todo
+                        None
+                    }
+                },
+                None => {
+                    self.push_error("IS statement not finished"); // todo
+                    None
+                }
+            };
+
+            if logical_expr.is_some() {
+                self.eat();
+            }
+
+            return logical_expr;
+        }
 
         None
     }
@@ -423,6 +481,7 @@ impl<'a> Parser<'a> {
         self.next_significant_token();
         match self.peek() {
             Some(token) => match token {
+                Token::Logical(Logical::Is) => 17,
                 Token::Comparison(Comparison::Equal)
                 | Token::Comparison(Comparison::Equal2)
                 | Token::Comparison(Comparison::NotEqual)
@@ -1037,6 +1096,185 @@ mod parser_tests {
             ]),
             from_clause: None,
             where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_select_statement_with_greater_than_comparison() {
+        let query = String::from("select a from b where c > d");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Space,
+            Token::Comparison(Comparison::GreaterThan),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(26, 27))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("b"),
+                },
+            }),
+            where_clause: Some(WhereClause {
+                expr: Expr::BinaryOperator {
+                    left: Box::new(Expr::Identifier(Identifier {
+                        value: String::from("c"),
+                    })),
+                    op: BinaryOperator::GreaterThan,
+                    right: Box::new(Expr::Identifier(Identifier {
+                        value: String::from("d"),
+                    })),
+                },
+            }),
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    fn test_select_statement_with_is_null_clause() {
+        let query = String::from("select a from b where c is null");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Space,
+            Token::Logical(Logical::Is),
+            Token::Space,
+            Token::Null,
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("b"),
+                },
+            }),
+            where_clause: Some(WhereClause {
+                expr: Expr::IsNull(Box::new(Expr::Identifier(Identifier {
+                    value: String::from("c"),
+                }))),
+            }),
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_select_statement_with_is_true_clause() {
+        let query = String::from("select a from b where c is true");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Space,
+            Token::Logical(Logical::Is),
+            Token::Space,
+            Token::Keyword(Keyword::True),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("b"),
+                },
+            }),
+            where_clause: Some(WhereClause {
+                expr: Expr::IsTrue(Box::new(Expr::Identifier(Identifier {
+                    value: String::from("c"),
+                }))),
+            }),
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_select_statement_with_is_not_null_clause() {
+        let query = String::from("select a from b where c is NOT null");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Space,
+            Token::Logical(Logical::Is),
+            Token::Space,
+            Token::Logical(Logical::Not),
+            Token::Space,
+            Token::Null,
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("b"),
+                },
+            }),
+            where_clause: Some(WhereClause {
+                expr: Expr::IsNotNull(Box::new(Expr::Identifier(Identifier {
+                    value: String::from("c"),
+                }))),
+            }),
             order_by_clause: None,
             group_by_clause: None,
         })]));
