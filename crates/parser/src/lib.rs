@@ -268,7 +268,7 @@ impl<'a> Parser<'a> {
 
                     Some(Expr::Identifier(Identifier::from(val)))
                 }
-                Token::Numeric(n) | Token::Value(LexerValue::SingleQuoted(n)) => {
+                Token::Numeric(_) | Token::Value(LexerValue::SingleQuoted(_)) => {
                     let val = self.parse_value();
                     Some(Expr::Value(val?))
                 }
