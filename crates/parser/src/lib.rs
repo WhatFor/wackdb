@@ -113,6 +113,13 @@ impl SelectItem {
         SelectItem { expr, alias: None }
     }
 
+    pub fn simple_identifier(identifier: &str) -> Self {
+        SelectItem {
+            expr: Expr::Value(Value::String(String::from(identifier))),
+            alias: None,
+        }
+    }
+
     pub fn aliased(expr: Expr, alias: Identifier) -> Self {
         SelectItem {
             expr,
@@ -553,7 +560,7 @@ impl<'a> Parser<'a> {
                 self.eat();
 
                 // todo: support AS aliases
-                Some(SelectItem::new(Expr::Value(Value::String(identifier_str))))
+                Some(SelectItem::simple_identifier(&identifier_str))
             }
             _ => {
                 let expr = self.parse_expr();
@@ -961,9 +968,7 @@ mod parser_tests {
 
         let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
             select_item_list: SelectItemList {
-                item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                    "a",
-                ))))],
+                item_list: vec![SelectItem::simple_identifier("a")],
             },
             from_clause: None,
             where_clause: None,
@@ -1313,8 +1318,8 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
             select_item_list: SelectItemList {
                 item_list: vec![
-                    SelectItem::new(Expr::Value(Value::String(String::from("a")))),
-                    SelectItem::new(Expr::Value(Value::String(String::from("b")))),
+                    SelectItem::simple_identifier("a"),
+                    SelectItem::simple_identifier("b"),
                 ],
             },
             from_clause: None,
@@ -1349,9 +1354,7 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "a",
-                    ))))],
+                    item_list: vec![SelectItem::simple_identifier("a")],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -1359,9 +1362,7 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "b",
-                    ))))],
+                    item_list: vec![SelectItem::simple_identifier("b")],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -1369,9 +1370,7 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "c",
-                    ))))],
+                    item_list: vec![SelectItem::simple_identifier("c")],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -1401,9 +1400,7 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "a",
-                    ))))],
+                    item_list: vec![SelectItem::simple_identifier("a")],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -1411,9 +1408,7 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "b",
-                    ))))],
+                    item_list: vec![SelectItem::simple_identifier("b")],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -1426,29 +1421,32 @@ mod parser_tests {
 
     #[test]
     fn test_full_select_statement() {
-        let query = String::from("select Name from Users where c = 1 order by Name desc;");
+        let query = String::from("select Name, Age from Users where c = 1 order by Name desc;");
         let tokens = vec![
             Token::Keyword(Keyword::Select),
             Token::Space,
             Token::Identifier(LexerIdent::new(Slice::new(7, 11))),
+            Token::Comma,
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(13, 16))),
             Token::Space,
             Token::Keyword(Keyword::From),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(17, 22))),
+            Token::Identifier(LexerIdent::new(Slice::new(22, 27))),
             Token::Space,
             Token::Keyword(Keyword::Where),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(29, 30))),
+            Token::Identifier(LexerIdent::new(Slice::new(34, 35))),
             Token::Space,
             Token::Comparison(Comparison::Equal),
             Token::Space,
-            Token::Numeric(Slice::new(33, 34)),
+            Token::Numeric(Slice::new(38, 39)),
             Token::Space,
             Token::Keyword(Keyword::Order),
             Token::Space,
             Token::Keyword(Keyword::By),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(44, 48))),
+            Token::Identifier(LexerIdent::new(Slice::new(49, 53))),
             Token::Space,
             Token::Keyword(Keyword::Desc),
             Token::EOF,
@@ -1459,9 +1457,10 @@ mod parser_tests {
         let expected: Result<Program, Vec<ParseError>> =
             Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "Name",
-                    ))))],
+                    item_list: vec![
+                        SelectItem::simple_identifier("Name"),
+                        SelectItem::simple_identifier("Age"),
+                    ],
                 },
                 from_clause: Some(FromClause {
                     identifier: Identifier {
