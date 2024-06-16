@@ -1153,7 +1153,7 @@ mod parser_tests {
     }
 
     #[test]
-    fn test_incomplete_input_missing_select_items_list() {
+    fn test_select_statement_missing_select_items_list() {
         let tokens = vec![Token::Keyword(Keyword::Select), Token::EOF];
         let actual = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
 
@@ -1173,7 +1173,7 @@ mod parser_tests {
     }
 
     #[test]
-    fn test_incomplete_input_missing_select_item_after_comma() {
+    fn test_select_statement_missing_select_item_after_comma() {
         let tokens = vec![
             Token::Keyword(Keyword::Select),
             Token::Identifier(LexerIdent::new(Slice::new(0, 1))),
