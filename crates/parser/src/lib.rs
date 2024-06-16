@@ -405,13 +405,16 @@ impl<'a> Parser<'a> {
                         self.eat();
                         self.next_significant_token();
 
-                        // todo: refactor
-                        let dir = if self.match_(Token::Keyword(Keyword::Asc)) {
-                            OrderDirection::Asc
-                        } else if self.match_(Token::Keyword(Keyword::Desc)) {
-                            OrderDirection::Desc
-                        } else {
-                            OrderDirection::Asc
+                        let dir = match self.peek() {
+                            Some(Token::Keyword(Keyword::Asc)) => {
+                                self.eat();
+                                OrderDirection::Asc
+                            }
+                            Some(Token::Keyword(Keyword::Desc)) => {
+                                self.eat();
+                                OrderDirection::Desc
+                            }
+                            _ => OrderDirection::Asc,
                         };
 
                         Some(OrderByClause {
