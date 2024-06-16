@@ -1426,29 +1426,29 @@ mod parser_tests {
 
     #[test]
     fn test_full_select_statement() {
-        let query = String::from("select a from b where c = 1 order by a desc;");
+        let query = String::from("select Name from Users where c = 1 order by Name desc;");
         let tokens = vec![
             Token::Keyword(Keyword::Select),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Identifier(LexerIdent::new(Slice::new(7, 11))),
             Token::Space,
             Token::Keyword(Keyword::From),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Identifier(LexerIdent::new(Slice::new(17, 22))),
             Token::Space,
             Token::Keyword(Keyword::Where),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(22, 23))),
+            Token::Identifier(LexerIdent::new(Slice::new(29, 30))),
             Token::Space,
             Token::Comparison(Comparison::Equal),
             Token::Space,
-            Token::Numeric(Slice::new(26, 27)),
+            Token::Numeric(Slice::new(33, 34)),
             Token::Space,
             Token::Keyword(Keyword::Order),
             Token::Space,
             Token::Keyword(Keyword::By),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(37, 38))),
+            Token::Identifier(LexerIdent::new(Slice::new(44, 48))),
             Token::Space,
             Token::Keyword(Keyword::Desc),
             Token::EOF,
@@ -1460,12 +1460,12 @@ mod parser_tests {
             Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
                     item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
-                        "a",
+                        "Name",
                     ))))],
                 },
                 from_clause: Some(FromClause {
                     identifier: Identifier {
-                        value: String::from("b"),
+                        value: String::from("Users"),
                     },
                 }),
                 where_clause: Some(WhereClause {
@@ -1480,7 +1480,7 @@ mod parser_tests {
                 order_by_clause: Some(OrderByClause {
                     dir: OrderDirection::Desc,
                     identifier: Identifier {
-                        value: String::from("a"),
+                        value: String::from("Name"),
                     },
                 }),
             })]));
