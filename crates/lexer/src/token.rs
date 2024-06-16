@@ -22,6 +22,7 @@ pub enum Keyword {
     Between,
     Array,
     Order,
+    Group,
     By,
     Asc,
     Desc,

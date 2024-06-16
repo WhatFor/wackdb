@@ -20,6 +20,7 @@ pub struct SelectExpressionBody {
     pub from_clause: Option<FromClause>,
     pub where_clause: Option<WhereClause>,
     pub order_by_clause: Option<OrderByClause>,
+    pub group_by_clause: Option<GroupByClause>,
 }
 
 impl fmt::Display for SelectExpressionBody {
@@ -33,6 +34,11 @@ impl fmt::Display for SelectExpressionBody {
 
         match &self.where_clause {
             Some(c) => write!(f, "WHERE {} ", c)?,
+            _ => {}
+        }
+
+        match &self.group_by_clause {
+            Some(c) => write!(f, "GROUP BY {} ", c)?,
             _ => {}
         }
 
@@ -169,6 +175,24 @@ impl fmt::Display for OrderByClause {
 }
 
 impl fmt::Debug for OrderByClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
+pub struct GroupByClause {
+    pub identifier: Identifier,
+}
+
+impl fmt::Display for GroupByClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.identifier)
+    }
+}
+
+impl fmt::Debug for GroupByClause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Passthrough to fmt::Display
         write!(f, "{}", self)

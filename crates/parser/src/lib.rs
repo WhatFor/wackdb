@@ -98,7 +98,6 @@ impl<'a> Parser<'a> {
         Some(Program::Stmts(statements))
     }
 
-    //query: (simpleStatement SEMICOLON_SYMBOL?)?
     fn parse_query(&mut self) -> Option<Query> {
         let next = self.peek();
         let query = match next {
@@ -123,7 +122,6 @@ impl<'a> Parser<'a> {
     fn parse_select_statement(&mut self) -> Option<Query> {
         if self.lookahead(Token::Keyword(Keyword::Select)) {
             let exp_body = self.parse_select_expression_body()?;
-            // optionally parse orderClause?
             // optionally parse limitClause?
 
             Some(Query::Select(exp_body))
@@ -139,13 +137,15 @@ impl<'a> Parser<'a> {
         let select_item_list = self.parse_select_item_list()?;
         let from_clause = self.parse_from_clause_optional();
         let where_clause = self.parse_where_clause_optional();
-        let order_by_clause = self.parse_group_by_clause_optional();
+        let group_by_clause = self.parse_group_by_clause_optional();
+        let order_by_clause = self.parse_order_by_clause_optional();
 
         Some(SelectExpressionBody {
             select_item_list,
             from_clause,
             where_clause,
             order_by_clause,
+            group_by_clause,
         })
     }
 
@@ -226,6 +226,92 @@ impl<'a> Parser<'a> {
             let expr = self.parse_expr()?;
 
             Some(WhereClause { expr })
+        } else {
+            None
+        }
+    }
+
+    fn parse_order_by_clause_optional(&mut self) -> Option<OrderByClause> {
+        self.next_significant_token();
+
+        if self.match_(Token::Keyword(Keyword::Order)) {
+            self.next_significant_token();
+
+            if self.match_(Token::Keyword(Keyword::By)) {
+                self.next_significant_token();
+
+                match self.peek() {
+                    Some(Token::Identifier(LexerIdent { value })) => {
+                        let identifier_str = String::from(self.resolve_slice(value));
+                        self.eat();
+
+                        let dir = self.parse_order_direction();
+
+                        Some(OrderByClause {
+                            identifier: Identifier {
+                                value: identifier_str,
+                            },
+                            dir,
+                        })
+                    }
+                    _ => {
+                        self.push_error(consts::EXPECT_IDENT);
+                        None
+                    }
+                }
+            } else {
+                self.push_error(&consts::ORDER_BY_NOT_CLOSED);
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn parse_order_direction(&mut self) -> OrderDirection {
+        self.next_significant_token();
+        match self.peek() {
+            Some(Token::Keyword(Keyword::Asc)) => {
+                self.eat();
+                OrderDirection::Asc
+            }
+            Some(Token::Keyword(Keyword::Desc)) => {
+                self.eat();
+                OrderDirection::Desc
+            }
+            _ => OrderDirection::Asc,
+        }
+    }
+
+    fn parse_group_by_clause_optional(&mut self) -> Option<GroupByClause> {
+        self.next_significant_token();
+
+        if self.match_(Token::Keyword(Keyword::Group)) {
+            self.next_significant_token();
+
+            if self.match_(Token::Keyword(Keyword::By)) {
+                self.next_significant_token();
+
+                match self.peek() {
+                    Some(Token::Identifier(LexerIdent { value })) => {
+                        let identifier_str = String::from(self.resolve_slice(value));
+                        self.eat();
+
+                        Some(GroupByClause {
+                            identifier: Identifier {
+                                value: identifier_str,
+                            },
+                        })
+                    }
+                    _ => {
+                        self.push_error(consts::EXPECT_IDENT);
+                        None
+                    }
+                }
+            } else {
+                self.push_error(&consts::GROUP_BY_NOT_CLOSED);
+                None
+            }
         } else {
             None
         }
@@ -390,58 +476,6 @@ impl<'a> Parser<'a> {
         value
     }
 
-    fn parse_group_by_clause_optional(&mut self) -> Option<OrderByClause> {
-        self.next_significant_token();
-
-        if self.match_(Token::Keyword(Keyword::Order)) {
-            self.next_significant_token();
-
-            if self.match_(Token::Keyword(Keyword::By)) {
-                self.next_significant_token();
-
-                match self.peek() {
-                    Some(Token::Identifier(LexerIdent { value })) => {
-                        let identifier_str = String::from(self.resolve_slice(value));
-                        self.eat();
-
-                        let dir = self.parse_order_direction();
-
-                        Some(OrderByClause {
-                            identifier: Identifier {
-                                value: identifier_str,
-                            },
-                            dir,
-                        })
-                    }
-                    _ => {
-                        self.push_error(consts::EXPECT_IDENT);
-                        None
-                    }
-                }
-            } else {
-                self.push_error(&consts::ORDER_BY_NOT_CLOSED);
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    fn parse_order_direction(&mut self) -> OrderDirection {
-        self.next_significant_token();
-        match self.peek() {
-            Some(Token::Keyword(Keyword::Asc)) => {
-                self.eat();
-                OrderDirection::Asc
-            }
-            Some(Token::Keyword(Keyword::Desc)) => {
-                self.eat();
-                OrderDirection::Desc
-            }
-            _ => OrderDirection::Asc,
-        }
-    }
-
     fn parse_insert_statement(&mut self) -> Option<Query> {
         if self.match_(Token::Keyword(Keyword::Insert)) {
             Some(Query::Insert)
@@ -585,6 +619,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -615,6 +650,7 @@ mod parser_tests {
             }),
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -640,6 +676,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -665,6 +702,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -698,6 +736,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -731,6 +770,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -764,6 +804,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -797,6 +838,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -846,6 +888,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -890,6 +933,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -935,6 +979,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -993,6 +1038,7 @@ mod parser_tests {
             from_clause: None,
             where_clause: None,
             order_by_clause: None,
+            group_by_clause: None,
         })]));
 
         assert_eq!(lexer, expected);
@@ -1025,18 +1071,21 @@ mod parser_tests {
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
+                group_by_clause: None,
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("b")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
+                group_by_clause: None,
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("c")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
+                group_by_clause: None,
             }),
         ]));
 
@@ -1065,12 +1114,14 @@ mod parser_tests {
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
+                group_by_clause: None,
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("b")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
+                group_by_clause: None,
             }),
         ]));
 
@@ -1079,7 +1130,10 @@ mod parser_tests {
 
     #[test]
     fn test_full_select_statement() {
-        let query = String::from("select Name, Age from Users where c = 1 order by Name desc;");
+        let query = String::from(
+            "select Name, Age from Users where c = 1 group by Name order by Name desc;",
+        );
+
         let tokens = vec![
             Token::Keyword(Keyword::Select),
             Token::Space,
@@ -1100,11 +1154,17 @@ mod parser_tests {
             Token::Space,
             Token::Numeric(Slice::new(38, 39)),
             Token::Space,
-            Token::Keyword(Keyword::Order),
+            Token::Keyword(Keyword::Group),
             Token::Space,
             Token::Keyword(Keyword::By),
             Token::Space,
             Token::Identifier(LexerIdent::new(Slice::new(49, 53))),
+            Token::Space,
+            Token::Keyword(Keyword::Order),
+            Token::Space,
+            Token::Keyword(Keyword::By),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(63, 67))),
             Token::Space,
             Token::Keyword(Keyword::Desc),
             Token::EOF,
@@ -1132,6 +1192,11 @@ mod parser_tests {
                         right: Box::new(Expr::Value(Value::Number(String::from("1")))),
                     },
                 }),
+                group_by_clause: Some(GroupByClause {
+                    identifier: Identifier {
+                        value: String::from("Name"),
+                    },
+                }),
                 order_by_clause: Some(OrderByClause {
                     dir: OrderDirection::Desc,
                     identifier: Identifier {
@@ -1139,6 +1204,47 @@ mod parser_tests {
                     },
                 }),
             })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_select_statement_with_group_by() {
+        let query = String::from("select a from b group by c;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::Space,
+            Token::Keyword(Keyword::Group),
+            Token::Space,
+            Token::Keyword(Keyword::By),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(25, 26))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("b"),
+                },
+            }),
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: Some(GroupByClause {
+                identifier: Identifier {
+                    value: String::from("c"),
+                },
+            }),
+        })]));
 
         assert_eq!(lexer, expected);
     }
