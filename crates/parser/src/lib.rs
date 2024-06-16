@@ -272,6 +272,17 @@ impl<'a> Parser<'a> {
                     let val = self.parse_value();
                     Some(Expr::Value(val?))
                 }
+                Token::ParenOpen => {
+                    self.match_(Token::ParenOpen);
+                    let sub_expr = self.parse_subexpr(0);
+
+                    if self.match_(Token::ParenClose) {
+                        sub_expr
+                    } else {
+                        self.push_error(&consts::EXPR_NOT_CLOSED);
+                        None
+                    }
+                }
                 _ => None,
             },
             _ => None,
@@ -491,6 +502,7 @@ impl<'a> Parser<'a> {
         &self.tokens[self.curr_pos - 1]
     }
 
+    /// If the next token is as expected, consume it and return true
     fn match_(&mut self, token: Token) -> bool {
         let matched = self.lookahead(token);
 
@@ -874,6 +886,82 @@ mod parser_tests {
         })]));
 
         assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_arithmetic_precedence_respects_parens() {
+        let query = String::from("select (1 + 2) * 3;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::ParenOpen,
+            Token::Numeric(Slice::new(8, 9)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(12, 13)),
+            Token::ParenClose,
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Multiply),
+            Token::Space,
+            Token::Numeric(Slice::new(17, 18)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem {
+                expr: Expr::BinaryOperator {
+                    // (1 + 2)
+                    left: Box::new(Expr::BinaryOperator {
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Plus,
+                        right: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                    }),
+                    op: BinaryOperator::Multiply,
+                    // * 3
+                    right: Box::new(Expr::Value(Value::Number(String::from("3")))),
+                },
+                alias: None,
+            }]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_parens_not_closed() {
+        let query = String::from("select (1 + 2;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::ParenOpen,
+            Token::Numeric(Slice::new(8, 9)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(12, 13)),
+            Token::EOF,
+        ];
+
+        let actual = Parser::new_positionless(tokens, &query).parse();
+
+        let errors = match actual {
+            Ok(_) => vec![],
+            Err(e) => e,
+        };
+
+        assert_eq!(
+            errors[0],
+            ParseError {
+                position: 0,
+                message: String::from(consts::EXPR_NOT_CLOSED),
+            }
+        );
     }
 
     #[test]
