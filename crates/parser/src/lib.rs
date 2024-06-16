@@ -403,19 +403,8 @@ impl<'a> Parser<'a> {
                     Some(Token::Identifier(LexerIdent { value })) => {
                         let identifier_str = String::from(self.resolve_slice(value));
                         self.eat();
-                        self.next_significant_token();
 
-                        let dir = match self.peek() {
-                            Some(Token::Keyword(Keyword::Asc)) => {
-                                self.eat();
-                                OrderDirection::Asc
-                            }
-                            Some(Token::Keyword(Keyword::Desc)) => {
-                                self.eat();
-                                OrderDirection::Desc
-                            }
-                            _ => OrderDirection::Asc,
-                        };
+                        let dir = self.parse_order_direction();
 
                         Some(OrderByClause {
                             identifier: Identifier {
@@ -435,6 +424,21 @@ impl<'a> Parser<'a> {
             }
         } else {
             None
+        }
+    }
+
+    fn parse_order_direction(&mut self) -> OrderDirection {
+        self.next_significant_token();
+        match self.peek() {
+            Some(Token::Keyword(Keyword::Asc)) => {
+                self.eat();
+                OrderDirection::Asc
+            }
+            Some(Token::Keyword(Keyword::Desc)) => {
+                self.eat();
+                OrderDirection::Desc
+            }
+            _ => OrderDirection::Asc,
         }
     }
 
