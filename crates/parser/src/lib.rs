@@ -1152,6 +1152,7 @@ mod parser_tests {
         assert_eq!(lexer, expected);
     }
 
+    #[test]
     fn test_select_statement_with_is_null_clause() {
         let query = String::from("select a from b where c is null");
         let tokens = vec![
