@@ -8,6 +8,7 @@ pub enum Keyword {
     Where,
     And,
     Or,
+    Xor,
     Set,
     Into,
     Values,
@@ -24,6 +25,8 @@ pub enum Keyword {
     By,
     Asc,
     Desc,
+    True,
+    False,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,6 +81,7 @@ pub enum Bitwise {
     RightShift, // >>
     And,        // &
     Or,         // |
+    Xor,        // ^
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

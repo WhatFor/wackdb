@@ -1,8 +1,11 @@
-use core::panic;
+use core::{fmt, panic};
 use std::ops::Range;
 
 use cli_common::ParseError;
-use lexer::token::{Ident as LexerIdent, Keyword, LocatableToken, Slice, Token};
+use lexer::token::{
+    Arithmetic, Bitwise, Comparison, Ident as LexerIdent, Keyword, LocatableToken, Logical, Slice,
+    Token, Value as LexerValue,
+};
 
 mod consts;
 
@@ -25,7 +28,7 @@ pub enum Query {
     Delete,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub struct SelectExpressionBody {
     pub select_item_list: SelectItemList,
     pub from_clause: Option<FromClause>,
@@ -33,27 +36,128 @@ pub struct SelectExpressionBody {
     pub order_by_clause: Option<OrderByClause>,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for SelectExpressionBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SELECT {} ", self.select_item_list)?;
+
+        match &self.from_clause {
+            Some(c) => write!(f, "FROM {} ", c)?,
+            _ => {}
+        }
+
+        match &self.where_clause {
+            Some(c) => write!(f, "WHERE {} ", c)?,
+            _ => {}
+        }
+
+        match &self.order_by_clause {
+            Some(c) => write!(f, "ORDER BY {}", c)?,
+            _ => {}
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Debug for SelectExpressionBody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub struct SelectItemList {
     pub item_list: Vec<SelectItem>,
 }
 
-#[derive(PartialEq, Debug)]
-pub struct SelectItem {
-    pub identifier: Identifier,
+impl fmt::Display for SelectItemList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.item_list)
+    }
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Debug for SelectItemList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
+pub struct SelectItem {
+    pub expr: Expr,
+    pub alias: Option<Identifier>,
+}
+
+impl fmt::Display for SelectItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.expr)?;
+
+        match &self.alias {
+            Some(alias) => write!(f, "AS {}", alias),
+            None => Ok(()),
+        }
+    }
+}
+
+impl fmt::Debug for SelectItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+impl SelectItem {
+    pub fn new(expr: Expr) -> Self {
+        SelectItem { expr, alias: None }
+    }
+
+    pub fn aliased(expr: Expr, alias: Identifier) -> Self {
+        SelectItem {
+            expr,
+            alias: Some(alias),
+        }
+    }
+}
+
+#[derive(PartialEq)]
 pub struct FromClause {
     pub identifier: Identifier,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for FromClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.identifier)
+    }
+}
+
+impl fmt::Debug for FromClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub struct WhereClause {
     pub expr: Expr,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for WhereClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.expr)
+    }
+}
+
+impl fmt::Debug for WhereClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum Expr {
     IsTrue(Box<Expr>),
     IsNotTrue(Box<Expr>),
@@ -87,11 +191,107 @@ pub enum Expr {
         expr: Box<Expr>,
         pattern: Box<Expr>,
     },
+    BinaryOperator {
+        left: Box<Expr>,
+        op: BinaryOperator,
+        right: Box<Expr>,
+    },
     Value(Value),
+    Identifier(Identifier),
     Wildcard,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::IsTrue(s) => write!(f, "{s}"),
+            Expr::IsNotTrue(e) => write!(f, "{e} IS NOT TRUE"),
+            Expr::IsFalse(e) => write!(f, "{e} IS FALSE"),
+            Expr::IsNotFalse(e) => write!(f, "{e} IS NOT FALSE"),
+            Expr::IsNull(e) => write!(f, "{e} IS NULL"),
+            Expr::IsNotNull(e) => write!(f, "{e} IS NOT NULL"),
+            Expr::IsIn { expr, list } => write!(f, "{expr} IS IN {list:?}"),
+            Expr::IsNotIn { expr, list } => write!(f, "{expr} IS NOT IN {list:?}"),
+            Expr::Between {
+                expr,
+                lower,
+                higher,
+            } => write!(f, "{expr} BETWEEN {lower} AND {higher}"),
+            Expr::NotBetween {
+                expr,
+                lower,
+                higher,
+            } => write!(f, "{expr} NOT BETWEEN {lower} AND {higher}"),
+            Expr::Like { expr, pattern } => write!(f, "{expr} LIKE {pattern}"),
+            Expr::NotLike { expr, pattern } => write!(f, "{expr} NOT LIKE {pattern}"),
+            Expr::BinaryOperator { left, op, right } => write!(f, "({left} {op} {right})"),
+            Expr::Value(v) => write!(f, "{v:?}"),
+            Expr::Identifier(i) => write!(f, "{i:?}"),
+            Expr::Wildcard => write!(f, "*"),
+        }
+    }
+}
+
+impl fmt::Debug for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum BinaryOperator {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Modulo,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+    Xor,
+    BitwiseOr,
+    BitwiseAnd,
+    BitwiseXor,
+}
+
+impl fmt::Display for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryOperator::Plus => f.write_str("+"),
+            BinaryOperator::Minus => f.write_str("-"),
+            BinaryOperator::Multiply => f.write_str("*"),
+            BinaryOperator::Divide => f.write_str("/"),
+            BinaryOperator::Modulo => f.write_str("%"),
+            BinaryOperator::GreaterThan => f.write_str(">"),
+            BinaryOperator::GreaterThanOrEqual => f.write_str(">="),
+            BinaryOperator::LessThan => f.write_str("<"),
+            BinaryOperator::LessThanOrEqual => f.write_str("<="),
+            BinaryOperator::Equal => f.write_str("="),
+            BinaryOperator::NotEqual => f.write_str("<>"),
+            BinaryOperator::And => f.write_str("AND"),
+            BinaryOperator::Or => f.write_str("OR"),
+            BinaryOperator::Xor => f.write_str("XOR"),
+            BinaryOperator::BitwiseOr => f.write_str("|"),
+            BinaryOperator::BitwiseAnd => f.write_str("&"),
+            BinaryOperator::BitwiseXor => f.write_str("^"),
+        }
+    }
+}
+
+impl fmt::Debug for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum Value {
     Number(String),
     String(String),
@@ -99,21 +299,90 @@ pub enum Value {
     Null,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => f.write_str(n),
+            Value::String(s) => f.write_str(s),
+            Value::Boolean(b) => f.write_str(match b {
+                true => "TRUE",
+                false => "FALSE",
+            }),
+            Value::Null => f.write_str("NULL"),
+        }
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub enum OrderDirection {
     Asc,
     Desc,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for OrderDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OrderDirection::Asc => write!(f, "ASC"),
+            OrderDirection::Desc => write!(f, "DESC"),
+        }
+    }
+}
+
+impl fmt::Debug for OrderDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub struct OrderByClause {
     pub identifier: Identifier,
     pub dir: OrderDirection,
 }
 
-#[derive(PartialEq, Debug)]
+impl fmt::Display for OrderByClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.identifier, self.dir)
+    }
+}
+
+impl fmt::Debug for OrderByClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
 pub struct Identifier {
     pub value: String,
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+impl Identifier {
+    pub fn from(value: String) -> Self {
+        Identifier { value }
+    }
 }
 
 pub struct Parser<'a> {
@@ -133,7 +402,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Create a new parser, but without token positions or the input buf.
+    /// Create a new parser, but without token positions.
     /// Largely used just for testing.
     pub fn new_positionless(tokens: Vec<Token>, buf: &'a str) -> Parser<'a> {
         Parser {
@@ -259,6 +528,7 @@ impl<'a> Parser<'a> {
         let mut item_list = vec![];
 
         self.next_significant_token();
+        dbg!("Parsing SELECT item list...");
         item_list.push(self.parse_select_item()?);
         self.next_significant_token();
 
@@ -272,26 +542,36 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_select_item(&mut self) -> Option<SelectItem> {
+        // todo: handle qualified identifiers, e.g. u.name
         match self.peek() {
+            Some(Token::Arithmetic(Arithmetic::Multiply)) => {
+                self.eat();
+                Some(SelectItem::new(Expr::Wildcard))
+            }
             Some(Token::Identifier(LexerIdent { value })) => {
                 let identifier_str = String::from(self.resolve_slice(value));
                 self.eat();
 
-                Some(SelectItem {
-                    identifier: Identifier {
-                        value: identifier_str,
-                    },
-                })
+                // todo: support AS aliases
+                Some(SelectItem::new(Expr::Value(Value::String(identifier_str))))
             }
             _ => {
-                self.push_error(consts::EXPECT_IDENT);
-                None
+                let expr = self.parse_expr();
+
+                match expr {
+                    Some(e) => Some(SelectItem::new(e)),
+                    None => {
+                        self.push_error(consts::EXPECT_IDENT);
+                        None
+                    }
+                }
             }
         }
     }
 
     fn parse_from_clause_optional(&mut self) -> Option<FromClause> {
         self.next_significant_token();
+        dbg!("Parsing FROM clause...");
 
         if self.match_(Token::Keyword(Keyword::From)) {
             self.next_significant_token();
@@ -320,20 +600,176 @@ impl<'a> Parser<'a> {
         self.next_significant_token();
 
         if self.match_(Token::Keyword(Keyword::Where)) {
-            self.next_significant_token();
-            let expr = self.parse_expr();
+            dbg!("parsing WHERE clause expression...");
+            let expr = self.parse_expr()?;
 
-            match expr {
-                Some(e) => Some(WhereClause { expr: e }),
-                None => None,
-            }
+            Some(WhereClause { expr })
         } else {
             None
         }
     }
 
-    fn parse_expr(&mut self) -> Option<Expr> {
-        Some(Expr::Wildcard) // todo
+    // todo: implement recursion depth tracking to prevent stack overflows
+    /// Parse a new expression
+    pub fn parse_expr(&mut self) -> Option<Expr> {
+        self.parse_subexpr(0)
+    }
+
+    fn parse_subexpr(&mut self, precedence: u8) -> Option<Expr> {
+        dbg!("Starting to parse subexpr");
+        let mut expr = self.parse_prefix()?;
+
+        dbg!("Expression found: {:?}", &expr);
+
+        loop {
+            let next_precedence = self.next_expr_precedence();
+            dbg!("Next precedence: {:?}", &next_precedence);
+
+            if precedence >= next_precedence {
+                dbg!("Precedence matched. Breaking loop...");
+                break;
+            }
+
+            expr = self.parse_infix(expr, next_precedence)?;
+            dbg!("infix: {:?}", &expr);
+        }
+
+        dbg!("Expression completed: {:?}", &expr);
+        Some(expr)
+    }
+
+    fn parse_prefix(&mut self) -> Option<Expr> {
+        self.next_significant_token();
+
+        dbg!(self.peek());
+
+        let expr = match self.peek() {
+            Some(token) => match token {
+                Token::Keyword(Keyword::True) | Token::Keyword(Keyword::False) | Token::Null => {
+                    let val = self.parse_value();
+                    Some(Expr::Value(val?))
+                }
+                Token::Identifier(i) => {
+                    let val = self.buf[i.value.start..i.value.end].to_string();
+                    self.eat();
+
+                    Some(Expr::Identifier(Identifier::from(val)))
+                }
+                Token::Numeric(n) | Token::Value(LexerValue::SingleQuoted(n)) => {
+                    dbg!("prefix numeric or string: {:?}", n);
+                    let val = self.parse_value();
+                    Some(Expr::Value(val?))
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+
+        expr
+    }
+
+    fn parse_infix(&mut self, expr: Expr, precedence: u8) -> Option<Expr> {
+        self.next_significant_token();
+        let binary_op = match self.peek()? {
+            Token::Arithmetic(Arithmetic::Plus) => Some(BinaryOperator::Plus),
+            Token::Arithmetic(Arithmetic::Minus) => Some(BinaryOperator::Minus),
+            Token::Arithmetic(Arithmetic::Multiply) => Some(BinaryOperator::Multiply),
+            Token::Arithmetic(Arithmetic::Divide) => Some(BinaryOperator::Divide),
+            Token::Arithmetic(Arithmetic::Modulo) => Some(BinaryOperator::Modulo),
+            Token::Comparison(Comparison::GreaterThan) => Some(BinaryOperator::GreaterThan),
+            Token::Comparison(Comparison::GreaterThanOrEqual) => {
+                Some(BinaryOperator::GreaterThanOrEqual)
+            }
+            Token::Comparison(Comparison::LessThan) => Some(BinaryOperator::LessThan),
+            Token::Comparison(Comparison::LessThanOrEqual) => Some(BinaryOperator::LessThanOrEqual),
+            Token::Comparison(Comparison::Equal) => Some(BinaryOperator::Equal),
+            Token::Comparison(Comparison::NotEqual) => Some(BinaryOperator::NotEqual),
+            Token::Keyword(Keyword::And) => Some(BinaryOperator::And),
+            Token::Keyword(Keyword::Or) => Some(BinaryOperator::Or),
+            Token::Keyword(Keyword::Xor) => Some(BinaryOperator::Xor),
+            Token::Bitwise(Bitwise::Or) => Some(BinaryOperator::BitwiseOr),
+            Token::Bitwise(Bitwise::And) => Some(BinaryOperator::BitwiseAnd),
+            Token::Bitwise(Bitwise::Xor) => Some(BinaryOperator::BitwiseXor),
+            _ => None,
+        };
+
+        if let Some(op) = binary_op {
+            self.eat();
+
+            dbg!("Found binary_op: {}", &binary_op);
+
+            let right = self.parse_subexpr(precedence)?;
+
+            dbg!("Found righthand expression: {}", &right);
+
+            return Some(Expr::BinaryOperator {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+            });
+        }
+
+        // todo: handle stuff like IS, IS NOT, etc.
+
+        None
+    }
+
+    fn next_expr_precedence(&mut self) -> u8 {
+        self.next_significant_token();
+        dbg!(self.peek());
+        match self.peek() {
+            Some(token) => match token {
+                Token::Comparison(Comparison::Equal)
+                | Token::Comparison(Comparison::Equal2)
+                | Token::Comparison(Comparison::NotEqual)
+                | Token::Comparison(Comparison::GreaterThan)
+                | Token::Comparison(Comparison::GreaterThanOrEqual)
+                | Token::Comparison(Comparison::LessThan)
+                | Token::Comparison(Comparison::LessThanOrEqual) => 20,
+                Token::Bitwise(Bitwise::Or) => 21, // todo: bitwise?
+                Token::Arithmetic(Arithmetic::Plus) | Token::Arithmetic(Arithmetic::Minus) => 30,
+                Token::Arithmetic(Arithmetic::Multiply)
+                | Token::Arithmetic(Arithmetic::Divide)
+                | Token::Arithmetic(Arithmetic::Modulo) => 40,
+                Token::Logical(Logical::Not) => 50,
+                Token::ParenOpen => 50,
+                _ => 0,
+            },
+            None => 0,
+        }
+    }
+
+    fn parse_value(&mut self) -> Option<Value> {
+        let value = match self.peek() {
+            Some(s) => match s {
+                Token::Null => Some(Value::Null),
+                Token::Keyword(Keyword::True) => Some(Value::Boolean(true)),
+                Token::Keyword(Keyword::False) => Some(Value::Boolean(false)),
+                // todo: string interning? we indexing into buf here and maybe not great
+                Token::Value(LexerValue::SingleQuoted(s)) => {
+                    // todo: do i care that we've reduced the quoted-string into just a string value? probably
+                    Some(Value::String(self.buf[s.start..s.end].to_string()))
+                }
+                Token::Numeric(s) => {
+                    // todo: don't like this. should probably parse the number, too.
+                    Some(Value::Number(self.buf[s.start..s.end].to_string()))
+                }
+                _ => {
+                    self.push_error(consts::EXPECT_VALUE);
+                    None
+                }
+            },
+            _ => {
+                self.push_error(consts::EXPECT_VALUE);
+                None
+            }
+        };
+
+        if value.is_some() {
+            self.eat();
+        }
+
+        value
     }
 
     fn parse_group_by_clause_optional(&mut self) -> Option<OrderByClause> {
@@ -506,7 +942,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod parser_tests {
     use crate::*;
-    use lexer::token::{Comparison, Slice, Value};
+    use lexer::token::{Comparison, Slice, Value as LexerValue};
+    use pretty_assertions::assert_eq;
 
     const EMPTY_QUERY: &'static str = "";
 
@@ -524,10 +961,331 @@ mod parser_tests {
 
         let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
             select_item_list: SelectItemList {
+                item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                    "a",
+                ))))],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_simple_select_wildcard_statement() {
+        let query = String::from("select * from a");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Multiply),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem::new(Expr::Wildcard)],
+            },
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("a"),
+                },
+            }),
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number() {
+        let query = String::from("select 1;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
                 item_list: vec![SelectItem {
-                    identifier: Identifier {
-                        value: String::from("a"),
+                    expr: Expr::Value(Value::Number(String::from("1"))),
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn text_expression_constant_string() {
+        let query = String::from("select 'hello';");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Value(LexerValue::SingleQuoted(Slice::new(8, 13))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::Value(Value::String(String::from("hello"))),
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number_plus() {
+        let query = String::from("select 1 + 2;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Plus,
+                        right: Box::new(Expr::Value(Value::Number(String::from("2")))),
                     },
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number_minus() {
+        let query = String::from("select 1 - 2;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Minus),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Minus,
+                        right: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                    },
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number_divide() {
+        let query = String::from("select 1 / 2;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Divide),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Divide,
+                        right: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                    },
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number_multiply() {
+        let query = String::from("select 1 * 2;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Multiply),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Multiply,
+                        right: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                    },
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_number_plus_multiple() {
+        let query = String::from("select 1 + 2 + 3 + 4;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(15, 16)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(19, 20)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::BinaryOperator {
+                            left: Box::new(Expr::BinaryOperator {
+                                left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                                op: BinaryOperator::Plus,
+                                right: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                            }),
+                            op: BinaryOperator::Plus,
+                            right: Box::new(Expr::Value(Value::Number(String::from("3")))),
+                        }),
+                        op: BinaryOperator::Plus,
+                        right: Box::new(Expr::Value(Value::Number(String::from("4")))),
+                    },
+                    alias: None,
+                }],
+            },
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_expression_constant_arithmetic_precedence() {
+        let query = String::from("select 1 + 2 * 3;");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Numeric(Slice::new(7, 8)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(11, 12)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Multiply),
+            Token::Space,
+            Token::Numeric(Slice::new(15, 16)),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList {
+                item_list: vec![SelectItem {
+                    expr: Expr::BinaryOperator {
+                        // (1 +
+                        left: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                        op: BinaryOperator::Plus,
+                        // (2 * 3)
+                        right: Box::new(Expr::BinaryOperator {
+                            left: Box::new(Expr::Value(Value::Number(String::from("2")))),
+                            op: BinaryOperator::Multiply,
+                            right: Box::new(Expr::Value(Value::Number(String::from("3")))),
+                        }),
+                        // )
+                    },
+                    alias: None,
                 }],
             },
             from_clause: None,
@@ -555,16 +1313,8 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
             select_item_list: SelectItemList {
                 item_list: vec![
-                    SelectItem {
-                        identifier: Identifier {
-                            value: String::from("a"),
-                        },
-                    },
-                    SelectItem {
-                        identifier: Identifier {
-                            value: String::from("b"),
-                        },
-                    },
+                    SelectItem::new(Expr::Value(Value::String(String::from("a")))),
+                    SelectItem::new(Expr::Value(Value::String(String::from("b")))),
                 ],
             },
             from_clause: None,
@@ -599,11 +1349,9 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem {
-                        identifier: Identifier {
-                            value: String::from("a"),
-                        },
-                    }],
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "a",
+                    ))))],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -611,11 +1359,9 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem {
-                        identifier: Identifier {
-                            value: String::from("b"),
-                        },
-                    }],
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "b",
+                    ))))],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -623,11 +1369,9 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem {
-                        identifier: Identifier {
-                            value: String::from("c"),
-                        },
-                    }],
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "c",
+                    ))))],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -657,11 +1401,9 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem {
-                        identifier: Identifier {
-                            value: String::from("a"),
-                        },
-                    }],
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "a",
+                    ))))],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -669,11 +1411,9 @@ mod parser_tests {
             }),
             Query::Select(SelectExpressionBody {
                 select_item_list: SelectItemList {
-                    item_list: vec![SelectItem {
-                        identifier: Identifier {
-                            value: String::from("b"),
-                        },
-                    }],
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "b",
+                    ))))],
                 },
                 from_clause: None,
                 where_clause: None,
@@ -702,7 +1442,8 @@ mod parser_tests {
             Token::Space,
             Token::Comparison(Comparison::Equal),
             Token::Space,
-            Token::Value(Value::Raw(Slice::new(26, 27))),
+            Token::Numeric(Slice::new(26, 27)),
+            Token::Space,
             Token::Keyword(Keyword::Order),
             Token::Space,
             Token::Keyword(Keyword::By),
@@ -715,29 +1456,34 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
-            select_item_list: SelectItemList {
-                item_list: vec![SelectItem {
+        let expected: Result<Program, Vec<ParseError>> =
+            Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+                select_item_list: SelectItemList {
+                    item_list: vec![SelectItem::new(Expr::Value(Value::String(String::from(
+                        "a",
+                    ))))],
+                },
+                from_clause: Some(FromClause {
+                    identifier: Identifier {
+                        value: String::from("b"),
+                    },
+                }),
+                where_clause: Some(WhereClause {
+                    expr: Expr::BinaryOperator {
+                        left: Box::new(Expr::Identifier(Identifier {
+                            value: String::from("c"),
+                        })),
+                        op: BinaryOperator::Equal,
+                        right: Box::new(Expr::Value(Value::Number(String::from("1")))),
+                    },
+                }),
+                order_by_clause: Some(OrderByClause {
+                    dir: OrderDirection::Desc,
                     identifier: Identifier {
                         value: String::from("a"),
                     },
-                }],
-            },
-            from_clause: Some(FromClause {
-                identifier: Identifier {
-                    value: String::from("b"),
-                },
-            }),
-            where_clause: Some(WhereClause {
-                expr: Expr::Wildcard,
-            }), // TODO
-            order_by_clause: Some(OrderByClause {
-                dir: OrderDirection::Desc,
-                identifier: Identifier {
-                    value: String::from("a"),
-                },
-            }),
-        })]));
+                }),
+            })]));
 
         assert_eq!(lexer, expected);
     }

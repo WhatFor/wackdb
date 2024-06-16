@@ -146,6 +146,10 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     Token::Bitwise(Bitwise::And)
                 }
+                '^' => {
+                    self.pos += 1;
+                    Token::Bitwise(Bitwise::Xor)
+                }
                 '=' | '!' | '>' | '<' => {
                     let end_pos = self.scan_until(curr_offset, |c| {
                         c != '=' && c != '!' && c != '>' && c != '<'
@@ -189,6 +193,7 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("from") => Token::Keyword(Keyword::From),
                         s if s.eq_ignore_ascii_case("and") => Token::Keyword(Keyword::And),
                         s if s.eq_ignore_ascii_case("or") => Token::Keyword(Keyword::Or),
+                        s if s.eq_ignore_ascii_case("xor") => Token::Keyword(Keyword::Xor),
                         s if s.eq_ignore_ascii_case("update") => Token::Keyword(Keyword::Update),
                         s if s.eq_ignore_ascii_case("delete") => Token::Keyword(Keyword::Delete),
                         s if s.eq_ignore_ascii_case("set") => Token::Keyword(Keyword::Set),
@@ -215,6 +220,8 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("else") => Token::Logical(Logical::Else),
                         // Other
                         s if s.eq_ignore_ascii_case("null") => Token::Null,
+                        s if s.eq_ignore_ascii_case("true") => Token::Keyword(Keyword::True),
+                        s if s.eq_ignore_ascii_case("false") => Token::Keyword(Keyword::False),
                         _ => Token::Identifier(Ident::new(Slice::new(curr_offset, end_pos))),
                     }
                 }
@@ -390,7 +397,7 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select from inSERt WHERE Update and or set into values inner left right join on limit offset between array order by asc desc");
+        let str = String::from("select from inSERt WHERE Update and or xor set into values inner left right join on limit offset between array order by asc desc True FALSE");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -408,6 +415,8 @@ mod lexer_tests {
             Token::Keyword(Keyword::And),
             Token::Space,
             Token::Keyword(Keyword::Or),
+            Token::Space,
+            Token::Keyword(Keyword::Xor),
             Token::Space,
             Token::Keyword(Keyword::Set),
             Token::Space,
@@ -440,6 +449,10 @@ mod lexer_tests {
             Token::Keyword(Keyword::Asc),
             Token::Space,
             Token::Keyword(Keyword::Desc),
+            Token::Space,
+            Token::Keyword(Keyword::True),
+            Token::Space,
+            Token::Keyword(Keyword::False),
             Token::EOF,
         ];
 
@@ -492,7 +505,7 @@ mod lexer_tests {
 
     #[test]
     fn test_bitwise() {
-        let str = String::from("<< >> | &");
+        let str = String::from("<< >> | & ^");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -504,6 +517,8 @@ mod lexer_tests {
             Token::Bitwise(Bitwise::Or),
             Token::Space,
             Token::Bitwise(Bitwise::And),
+            Token::Space,
+            Token::Bitwise(Bitwise::Xor),
             Token::EOF,
         ];
 

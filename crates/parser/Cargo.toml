@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 lexer = { path = "../lexer" }
 cli_common = { path = "../cli_common" }
+
+[dev-dependencies]
+pretty_assertions = "1.4.0"
