@@ -113,7 +113,20 @@ impl SelectItem {
 
     pub fn simple_identifier(identifier: &str) -> Self {
         SelectItem {
+            // todo: change to identifier
             expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            alias: None,
+        }
+    }
+
+    pub fn qualified_identifier(identifiers: Vec<&str>) -> Self {
+        let idents = identifiers
+            .iter()
+            .map(|i| Identifier::from(i.to_string()))
+            .collect();
+
+        SelectItem {
+            expr: Expr::QualifiedIdentifier(idents),
             alias: None,
         }
     }
@@ -127,7 +140,20 @@ impl SelectItem {
 
     pub fn aliased_identifier(identifier: &str, alias: Identifier) -> Self {
         SelectItem {
+            // todo: change to identifier
             expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            alias: Some(alias),
+        }
+    }
+
+    pub fn aliased_qualified_identifier(identifiers: Vec<&str>, alias: Identifier) -> Self {
+        let idents = identifiers
+            .iter()
+            .map(|i| Identifier::from(i.to_string()))
+            .collect();
+
+        SelectItem {
+            expr: Expr::QualifiedIdentifier(idents),
             alias: Some(alias),
         }
     }
@@ -251,6 +277,7 @@ pub enum Expr {
     },
     Value(Value),
     Identifier(Identifier),
+    QualifiedIdentifier(Vec<Identifier>),
     Wildcard,
 }
 
@@ -280,6 +307,15 @@ impl fmt::Display for Expr {
             Expr::BinaryOperator { left, op, right } => write!(f, "({left} {op} {right})"),
             Expr::Value(v) => write!(f, "{v:?}"),
             Expr::Identifier(i) => write!(f, "{i:?}"),
+            Expr::QualifiedIdentifier(i) => {
+                let joined = i
+                    .iter()
+                    .map(|x| x.value.to_string())
+                    .collect::<Vec<String>>()
+                    .join(".");
+
+                write!(f, "{joined:?}")
+            }
             Expr::Wildcard => write!(f, "*"),
         }
     }

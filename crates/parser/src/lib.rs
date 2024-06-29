@@ -165,7 +165,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_select_item(&mut self) -> Option<SelectItem> {
-        // todo: handle qualified identifiers, e.g. u.name
         match self.peek() {
             Some(Token::Arithmetic(Arithmetic::Multiply)) => {
                 self.eat();
@@ -174,7 +173,29 @@ impl<'a> Parser<'a> {
             Some(Token::Identifier(LexerIdent { value })) => {
                 let identifier_str = String::from(self.resolve_slice(value));
                 self.eat();
+                self.next_significant_token();
 
+                // todo: break this out into a method to build qualified identifiers
+                let qualified_identifier = match self.peek() {
+                    Some(Token::Dot) => {
+                        self.eat();
+
+                        match self.peek() {
+                            Some(Token::Identifier(LexerIdent { value })) => {
+                                let identifier = Some(String::from(self.resolve_slice(value)));
+                                self.eat();
+                                identifier
+                            }
+                            _ => {
+                                self.push_error(ParseErrorKind::ExpectedIdentifier);
+                                None
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+
+                // todo: break this out into a method to select aliased values
                 self.next_significant_token();
                 let alias = match self.peek() {
                     Some(Token::Keyword(Keyword::As)) => {
@@ -186,6 +207,7 @@ impl<'a> Parser<'a> {
                                 let value = Identifier {
                                     value: String::from(self.resolve_slice(&ident.value)),
                                 };
+                                self.eat();
                                 Some(value)
                             }
                             _ => None,
@@ -194,16 +216,29 @@ impl<'a> Parser<'a> {
                     _ => None,
                 };
 
-                let select_item = match alias {
-                    Some(alias) => {
-                        // Eat the identifier
-                        self.eat();
-                        SelectItem::aliased_identifier(&identifier_str, alias)
-                    }
-                    None => SelectItem::simple_identifier(&identifier_str),
-                };
+                match qualified_identifier {
+                    Some(qualified) => {
+                        let qualified_select_item = match alias {
+                            Some(alias) => SelectItem::aliased_qualified_identifier(
+                                vec![&identifier_str, &qualified],
+                                alias,
+                            ),
+                            None => {
+                                SelectItem::qualified_identifier(vec![&identifier_str, &qualified])
+                            }
+                        };
 
-                Some(select_item)
+                        Some(qualified_select_item)
+                    }
+                    None => {
+                        let select_item = match alias {
+                            Some(alias) => SelectItem::aliased_identifier(&identifier_str, alias),
+                            None => SelectItem::simple_identifier(&identifier_str),
+                        };
+
+                        Some(select_item)
+                    }
+                }
             }
             _ => {
                 let expr = self.parse_expr();
@@ -735,6 +770,67 @@ mod parser_tests {
                 "a",
                 Identifier {
                     value: String::from("b"),
+                },
+            )]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_simple_qualified_select_statement() {
+        let query = String::from("select a.b");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Dot,
+            Token::Identifier(LexerIdent::new(Slice::new(9, 10))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(vec![
+                "a", "b",
+            ])]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_simple_qualified_aliased_select_statement() {
+        let query = String::from("select a.b AS c");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Dot,
+            Token::Identifier(LexerIdent::new(Slice::new(9, 10))),
+            Token::Space,
+            Token::Keyword(Keyword::As),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(14, 15))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::aliased_qualified_identifier(
+                vec!["a", "b"],
+                Identifier {
+                    value: "c".to_string(),
                 },
             )]),
             from_clause: None,
