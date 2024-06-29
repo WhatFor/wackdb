@@ -113,7 +113,7 @@ impl SelectItem {
 
     pub fn simple_identifier(identifier: &str) -> Self {
         SelectItem {
-            expr: Expr::Value(Value::String(String::from(identifier))),
+            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
             alias: None,
         }
     }
@@ -334,9 +334,16 @@ impl fmt::Debug for BinaryOperator {
 }
 
 #[derive(PartialEq)]
+pub enum QuoteType {
+    None,
+    Single,
+    Double,
+}
+
+#[derive(PartialEq)]
 pub enum Value {
     Number(String),
-    String(String),
+    String(String, QuoteType),
     Boolean(bool),
     Null,
 }
@@ -345,7 +352,19 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Number(n) => f.write_str(n),
-            Value::String(s) => f.write_str(s),
+            Value::String(s, quote_type) => match quote_type {
+                QuoteType::None => f.write_str(s),
+                QuoteType::Single => {
+                    f.write_str("'")?;
+                    f.write_str(s)?;
+                    f.write_str("'")
+                }
+                QuoteType::Double => {
+                    f.write_str("\"")?;
+                    f.write_str(s)?;
+                    f.write_str("\"")
+                }
+            },
             Value::Boolean(b) => f.write_str(match b {
                 true => "TRUE",
                 false => "FALSE",

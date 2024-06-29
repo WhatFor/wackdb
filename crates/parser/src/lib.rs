@@ -496,7 +496,7 @@ impl<'a> Parser<'a> {
                 | Token::Comparison(Comparison::GreaterThanOrEqual)
                 | Token::Comparison(Comparison::LessThan)
                 | Token::Comparison(Comparison::LessThanOrEqual) => 20,
-                Token::Bitwise(Bitwise::Or) => 21, // todo: bitwise?
+                Token::Bitwise(Bitwise::Or) => 21,
                 Token::Arithmetic(Arithmetic::Plus) | Token::Arithmetic(Arithmetic::Minus) => 30,
                 Token::Arithmetic(Arithmetic::Multiply)
                 | Token::Arithmetic(Arithmetic::Divide)
@@ -516,10 +516,10 @@ impl<'a> Parser<'a> {
                 Token::Keyword(Keyword::True) => Some(Value::Boolean(true)),
                 Token::Keyword(Keyword::False) => Some(Value::Boolean(false)),
                 // todo: string interning? we indexing into buf here and maybe not great
-                Token::Value(LexerValue::SingleQuoted(s)) => {
-                    // todo: do i care that we've reduced the quoted-string into just a string value? probably
-                    Some(Value::String(self.buf[s.start..s.end].to_string()))
-                }
+                Token::Value(LexerValue::SingleQuoted(s)) => Some(Value::String(
+                    self.buf[s.start..s.end].to_string(),
+                    QuoteType::Single,
+                )),
                 Token::Numeric(s) => {
                     // todo: don't like this. should probably parse the number, too.
                     Some(Value::Number(self.buf[s.start..s.end].to_string()))
@@ -759,7 +759,7 @@ mod parser_tests {
 
         let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
             select_item_list: SelectItemList::from(vec![SelectItem {
-                expr: Expr::Value(Value::String(String::from("hello"))),
+                expr: Expr::Value(Value::String(String::from("hello"), QuoteType::Single)),
                 alias: None,
             }]),
             from_clause: None,
