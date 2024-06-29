@@ -7,6 +7,8 @@ pub enum Keyword {
     Update,
     Delete,
     Where,
+    Create,
+    Table,
     And,
     Or,
     Xor,
@@ -29,6 +31,7 @@ pub enum Keyword {
     Desc,
     True,
     False,
+    Int,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

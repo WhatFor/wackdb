@@ -12,9 +12,12 @@ pub enum ParseErrorKind {
     ExpectedValue,
     ExpectedStatemnt,
     ExpectedIdentifier,
+    ExpectedDataType,
+    ExpectedParentheses(String),
     ExpressionNotClosed,
     ExpectedKeyword(String),
     MaximumRecursionDepthReached,
+    UnsupportedSyntax,
 }
 
 impl fmt::Display for ParseErrorKind {
@@ -29,10 +32,15 @@ impl fmt::Display for ParseErrorKind {
             ParseErrorKind::MaximumRecursionDepthReached => {
                 write!(f, "Maximum recursion depth reached.")?
             }
+            ParseErrorKind::ExpectedParentheses(message) => {
+                write!(f, "Expected parentheses. Expected {message}.")?
+            }
             ParseErrorKind::ExpectedValue => write!(f, "Value expected.")?,
+            ParseErrorKind::ExpectedDataType => write!(f, "Datatype expected.")?,
             ParseErrorKind::ExpectedStatemnt => write!(f, "Statement expected.")?,
             ParseErrorKind::ExpectedIdentifier => write!(f, "Identifier expected.")?,
             ParseErrorKind::ExpressionNotClosed => write!(f, "Expression not closed.")?,
+            ParseErrorKind::UnsupportedSyntax => write!(f, "Unsupported syntax.")?,
         }
 
         Ok(())

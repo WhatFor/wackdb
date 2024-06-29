@@ -214,6 +214,8 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("by") => Token::Keyword(Keyword::By),
                         s if s.eq_ignore_ascii_case("asc") => Token::Keyword(Keyword::Asc),
                         s if s.eq_ignore_ascii_case("desc") => Token::Keyword(Keyword::Desc),
+                        s if s.eq_ignore_ascii_case("create") => Token::Keyword(Keyword::Create),
+                        s if s.eq_ignore_ascii_case("table") => Token::Keyword(Keyword::Table),
                         // Logical
                         s if s.eq_ignore_ascii_case("is") => Token::Logical(Logical::Is),
                         s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
@@ -221,6 +223,8 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("like") => Token::Logical(Logical::Like),
                         s if s.eq_ignore_ascii_case("then") => Token::Logical(Logical::Then),
                         s if s.eq_ignore_ascii_case("else") => Token::Logical(Logical::Else),
+                        // Datatypes
+                        s if s.eq_ignore_ascii_case("int") => Token::Keyword(Keyword::Int),
                         // Other
                         s if s.eq_ignore_ascii_case("null") => Token::Null,
                         s if s.eq_ignore_ascii_case("true") => Token::Keyword(Keyword::True),
@@ -400,7 +404,7 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select from inSERt WHERE AS Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE");
+        let str = String::from("select from inSERt WHERE AS Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE CREATE TABLE");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -460,8 +464,23 @@ mod lexer_tests {
             Token::Keyword(Keyword::True),
             Token::Space,
             Token::Keyword(Keyword::False),
+            Token::Space,
+            Token::Keyword(Keyword::Create),
+            Token::Space,
+            Token::Keyword(Keyword::Table),
             Token::EOF,
         ];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_datatypes() {
+        let str = String::from("INT ");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Keyword(Keyword::Int), Token::Space, Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
     }
