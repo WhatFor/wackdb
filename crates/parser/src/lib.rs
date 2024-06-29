@@ -703,6 +703,7 @@ impl<'a> Parser<'a> {
 
             let create_statement = match self.peek() {
                 Some(Token::Keyword(Keyword::Table)) => self.parse_create_table_statement(),
+                Some(Token::Keyword(Keyword::Database)) => self.parse_create_database_statement(),
                 _ => {
                     self.push_error(ParseErrorKind::UnsupportedSyntax);
                     None
@@ -723,7 +724,7 @@ impl<'a> Parser<'a> {
         // Eat the 'TABLE' keyword
         self.eat();
 
-        let table_name = self.parse_table_object_name()?;
+        let table_name = self.parse_unqualified_object_name()?;
         let column_list = self.parse_table_create_column_list()?;
 
         Some(CreateExpression::Table(CreateTableBody {
@@ -732,7 +733,18 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    fn parse_table_object_name(&mut self) -> Option<Identifier> {
+    fn parse_create_database_statement(&mut self) -> Option<CreateExpression> {
+        // Eat the 'DATABASE' keyword
+        self.eat();
+
+        let database_name = self.parse_unqualified_object_name()?;
+
+        Some(CreateExpression::Database(CreateDatabaseBody {
+            database_name,
+        }))
+    }
+
+    fn parse_unqualified_object_name(&mut self) -> Option<Identifier> {
         self.next_significant_token();
         let identifier = match self.peek() {
             Some(Token::Identifier(LexerIdent { value })) => Some(value),
@@ -2050,6 +2062,28 @@ mod parser_tests {
                     datatype: DataType::Int,
                     nullable: false,
                 }],
+            }),
+        )]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_simple_create_database_statement() {
+        let query = String::from("CREATE Database Db");
+        let tokens = vec![
+            Token::Keyword(Keyword::Create),
+            Token::Space,
+            Token::Keyword(Keyword::Database),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(16, 18))),
+            Token::EOF,
+        ];
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Statement::Create(
+            CreateExpression::Database(CreateDatabaseBody {
+                database_name: Identifier::from("Db".to_string()),
             }),
         )]));
 

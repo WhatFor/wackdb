@@ -9,6 +9,7 @@ pub enum Keyword {
     Where,
     Create,
     Table,
+    Database,
     And,
     Or,
     Xor,

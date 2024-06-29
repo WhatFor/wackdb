@@ -216,6 +216,9 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("desc") => Token::Keyword(Keyword::Desc),
                         s if s.eq_ignore_ascii_case("create") => Token::Keyword(Keyword::Create),
                         s if s.eq_ignore_ascii_case("table") => Token::Keyword(Keyword::Table),
+                        s if s.eq_ignore_ascii_case("database") => {
+                            Token::Keyword(Keyword::Database)
+                        }
                         // Logical
                         s if s.eq_ignore_ascii_case("is") => Token::Logical(Logical::Is),
                         s if s.eq_ignore_ascii_case("in") => Token::Logical(Logical::In),
@@ -404,7 +407,7 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select from inSERt WHERE AS Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE CREATE TABLE");
+        let str = String::from("select from inSERt WHERE AS Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE CREATE TABLE Database");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -468,6 +471,8 @@ mod lexer_tests {
             Token::Keyword(Keyword::Create),
             Token::Space,
             Token::Keyword(Keyword::Table),
+            Token::Space,
+            Token::Keyword(Keyword::Database),
             Token::EOF,
         ];
 

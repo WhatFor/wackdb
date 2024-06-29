@@ -27,6 +27,7 @@ pub struct SelectExpressionBody {
 #[derive(PartialEq, Debug)]
 pub enum CreateExpression {
     Table(CreateTableBody),
+    Database(CreateDatabaseBody),
 }
 
 #[derive(PartialEq, Debug)]
@@ -45,6 +46,11 @@ pub struct ColumnDefinition {
 #[derive(PartialEq, Debug)]
 pub enum DataType {
     Int,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct CreateDatabaseBody {
+    pub database_name: Identifier,
 }
 
 impl fmt::Display for SelectExpressionBody {
