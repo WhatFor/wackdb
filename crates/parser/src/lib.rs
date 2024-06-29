@@ -170,76 +170,7 @@ impl<'a> Parser<'a> {
                 self.eat();
                 Some(SelectItem::new(Expr::Wildcard))
             }
-            Some(Token::Identifier(LexerIdent { value })) => {
-                let identifier_str = String::from(self.resolve_slice(value));
-                self.eat();
-                self.next_significant_token();
-
-                // todo: break this out into a method to build qualified identifiers
-                let qualified_identifier = match self.peek() {
-                    Some(Token::Dot) => {
-                        self.eat();
-
-                        match self.peek() {
-                            Some(Token::Identifier(LexerIdent { value })) => {
-                                let identifier = Some(String::from(self.resolve_slice(value)));
-                                self.eat();
-                                identifier
-                            }
-                            _ => {
-                                self.push_error(ParseErrorKind::ExpectedIdentifier);
-                                None
-                            }
-                        }
-                    }
-                    _ => None,
-                };
-
-                // todo: break this out into a method to select aliased values
-                self.next_significant_token();
-                let alias = match self.peek() {
-                    Some(Token::Keyword(Keyword::As)) => {
-                        self.eat();
-                        self.next_significant_token();
-
-                        match self.peek() {
-                            Some(Token::Identifier(ident)) => {
-                                let value = Identifier {
-                                    value: String::from(self.resolve_slice(&ident.value)),
-                                };
-                                self.eat();
-                                Some(value)
-                            }
-                            _ => None,
-                        }
-                    }
-                    _ => None,
-                };
-
-                match qualified_identifier {
-                    Some(qualified) => {
-                        let qualified_select_item = match alias {
-                            Some(alias) => SelectItem::aliased_qualified_identifier(
-                                vec![&identifier_str, &qualified],
-                                alias,
-                            ),
-                            None => {
-                                SelectItem::qualified_identifier(vec![&identifier_str, &qualified])
-                            }
-                        };
-
-                        Some(qualified_select_item)
-                    }
-                    None => {
-                        let select_item = match alias {
-                            Some(alias) => SelectItem::aliased_identifier(&identifier_str, alias),
-                            None => SelectItem::simple_identifier(&identifier_str),
-                        };
-
-                        Some(select_item)
-                    }
-                }
-            }
+            Some(Token::Identifier(_)) => self.parse_object_name(),
             _ => {
                 let expr = self.parse_expr();
 
@@ -251,6 +182,92 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Parse a potentially qualified and aliased object name,
+    /// such as:
+    ///     name
+    ///     id AS UserId
+    ///     users.name
+    ///     users.email AS UserEmail
+    fn parse_object_name(&mut self) -> Option<SelectItem> {
+        let slice = match self.peek() {
+            Some(Token::Identifier(LexerIdent { value })) => Some(value),
+            _ => None,
+        }
+        .unwrap();
+
+        let identifier_str = String::from(self.resolve_slice(slice));
+        self.eat();
+
+        let qualified_identifier = self.parse_qualified_identifier();
+        let alias = self.pase_identifier_alias();
+
+        match qualified_identifier {
+            Some(qualified) => {
+                let qualified_select_item = match alias {
+                    Some(alias) => SelectItem::aliased_qualified_identifier(
+                        vec![&identifier_str, &qualified],
+                        alias,
+                    ),
+                    None => SelectItem::qualified_identifier(vec![&identifier_str, &qualified]),
+                };
+
+                Some(qualified_select_item)
+            }
+            None => {
+                let select_item = match alias {
+                    Some(alias) => SelectItem::aliased_identifier(&identifier_str, alias),
+                    None => SelectItem::simple_identifier(&identifier_str),
+                };
+
+                Some(select_item)
+            }
+        }
+    }
+
+    fn parse_qualified_identifier(&mut self) -> Option<String> {
+        self.next_significant_token();
+        match self.peek() {
+            Some(Token::Dot) => {
+                self.eat();
+
+                match self.peek() {
+                    Some(Token::Identifier(LexerIdent { value })) => {
+                        let identifier = Some(String::from(self.resolve_slice(value)));
+                        self.eat();
+                        identifier
+                    }
+                    _ => {
+                        self.push_error(ParseErrorKind::ExpectedIdentifier);
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn pase_identifier_alias(&mut self) -> Option<Identifier> {
+        self.next_significant_token();
+        match self.peek() {
+            Some(Token::Keyword(Keyword::As)) => {
+                self.eat();
+                self.next_significant_token();
+
+                match self.peek() {
+                    Some(Token::Identifier(ident)) => {
+                        let value = Identifier {
+                            value: String::from(self.resolve_slice(&ident.value)),
+                        };
+                        self.eat();
+                        Some(value)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 
