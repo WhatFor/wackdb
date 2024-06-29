@@ -6,21 +6,29 @@ use lexer::token::{
     Arithmetic, Bitwise, Comparison, Ident as LexerIdent, Keyword, LocatableToken, Logical, Slice,
     Token, Value as LexerValue,
 };
+use recursion::*;
 
 mod ast;
+mod recursion;
 
 pub struct Parser<'a> {
     tokens: Vec<LocatableToken>,
     buf: &'a str,
+    recursion_guard: RecursionGuard,
     errors: Vec<ParseError>,
     pub curr_pos: usize,
 }
+
+/// By default, don't let expression depth go past 50.
+/// If it does, that's one crazy query.
+const MAX_DEPTH: usize = 50;
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Vec<LocatableToken>, buf: &'a str) -> Parser {
         Parser {
             tokens,
             buf,
+            recursion_guard: RecursionGuard::new(MAX_DEPTH),
             errors: vec![],
             curr_pos: 0,
         }
@@ -38,6 +46,7 @@ impl<'a> Parser<'a> {
                 })
                 .collect(),
             buf,
+            recursion_guard: RecursionGuard::new(MAX_DEPTH),
             errors: vec![],
             curr_pos: 0,
         }
@@ -428,13 +437,22 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // todo: implement recursion depth tracking to prevent stack overflows
     /// Parse a new expression
     pub fn parse_expr(&mut self) -> Option<Expr> {
         self.parse_subexpr(0)
     }
 
     fn parse_subexpr(&mut self, precedence: u8) -> Option<Expr> {
+        let depth_guard = self.recursion_guard.dec();
+
+        match depth_guard {
+            Err(err) => {
+                self.push_error(err);
+                return None;
+            }
+            _ => {}
+        }
+
         let mut expr = self.parse_prefix()?;
 
         loop {

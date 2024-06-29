@@ -14,6 +14,7 @@ pub enum ParseErrorKind {
     ExpectedIdentifier,
     ExpressionNotClosed,
     ExpectedKeyword(String),
+    MaximumRecursionDepthReached,
 }
 
 impl fmt::Display for ParseErrorKind {
@@ -24,6 +25,9 @@ impl fmt::Display for ParseErrorKind {
             }
             ParseErrorKind::ExpectedKeyword(keyword) => {
                 write!(f, "Expected keyword. Expected {keyword}.")?
+            }
+            ParseErrorKind::MaximumRecursionDepthReached => {
+                write!(f, "Maximum recursion depth reached.")?
             }
             ParseErrorKind::ExpectedValue => write!(f, "Value expected.")?,
             ParseErrorKind::ExpectedStatemnt => write!(f, "Statement expected.")?,
