@@ -164,6 +164,13 @@ impl<'a> Parser<'a> {
         Some(SelectItemList::from(item_list))
     }
 
+    /// Parse a select item, such as:
+    ///     Name
+    ///     1 + 2
+    ///     *
+    ///     'Hello'
+    ///     users.Name
+    ///     users.Email AS UserEmail
     fn parse_select_item(&mut self) -> Option<SelectItem> {
         match self.peek() {
             Some(Token::Arithmetic(Arithmetic::Multiply)) => {
@@ -227,6 +234,11 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse an optional identifier qualifier, i.e. the identifier
+    /// following the dot in:
+    ///     users.name
+    /// or
+    ///     u.email
     fn parse_qualified_identifier(&mut self) -> Option<String> {
         self.next_significant_token();
         match self.peek() {
@@ -249,6 +261,8 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Parse an optional alias, such as:
+    ///     name AS UserName
     fn pase_identifier_alias(&mut self) -> Option<Identifier> {
         self.next_significant_token();
         match self.peek() {
@@ -281,12 +295,13 @@ impl<'a> Parser<'a> {
                     let identifier_str = String::from(self.resolve_slice(value));
                     self.eat();
 
+                    let alias = self.parse_table_alias();
+
                     Some(FromClause {
                         identifier: Identifier {
                             value: identifier_str,
                         },
-                        // todo: alias parsing
-                        alias: None,
+                        alias,
                     })
                 }
                 _ => {
@@ -296,6 +311,22 @@ impl<'a> Parser<'a> {
             }
         } else {
             None
+        }
+    }
+
+    /// Parse an optional identifier, assumed to be following a table name, for example:
+    ///     Users u
+    /// Where the u will be parsed.
+    fn parse_table_alias(&mut self) -> Option<Identifier> {
+        self.next_significant_token();
+
+        match self.peek() {
+            Some(Token::Identifier(LexerIdent { value })) => {
+                let identifier_str = String::from(self.resolve_slice(value));
+                self.eat();
+                Some(Identifier::from(identifier_str))
+            }
+            _ => None,
         }
     }
 
@@ -882,6 +913,44 @@ mod parser_tests {
                     value: String::from("a"),
                 },
                 alias: None,
+            }),
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_qualified_table_select_statement() {
+        let query = String::from("select u.Name from Users u");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Dot,
+            Token::Identifier(LexerIdent::new(Slice::new(9, 13))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(19, 24))),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(25, 26))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(vec![
+                "u", "Name",
+            ])]),
+            from_clause: Some(FromClause {
+                identifier: Identifier {
+                    value: String::from("Users"),
+                },
+                alias: Some(Identifier::from("u".to_string())),
             }),
             where_clause: None,
             order_by_clause: None,
