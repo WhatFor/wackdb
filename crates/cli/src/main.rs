@@ -70,7 +70,7 @@ fn repl() {
                         }
                         CommandResult::Error(err) => {
                             for e in err {
-                                let message = e.message;
+                                let message = e.kind;
                                 let pos = e.position;
                                 println!("Syntax Error: {message} (Position {pos})");
                             }

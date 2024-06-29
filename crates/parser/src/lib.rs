@@ -1,4 +1,4 @@
-use cli_common::ParseError;
+use cli_common::{ParseError, ParseErrorKind};
 use core::panic;
 
 use ast::*;
@@ -8,7 +8,6 @@ use lexer::token::{
 };
 
 mod ast;
-mod consts;
 
 pub struct Parser<'a> {
     tokens: Vec<LocatableToken>,
@@ -92,7 +91,7 @@ impl<'a> Parser<'a> {
         }
 
         if !parsed_full {
-            self.push_error("End of file not found");
+            self.push_error(ParseErrorKind::ExpectedEOF);
         }
 
         Some(Program::Stmts(statements))
@@ -106,7 +105,7 @@ impl<'a> Parser<'a> {
             Some(Token::Keyword(Keyword::Update)) => self.parse_update_statement(),
             Some(Token::Keyword(Keyword::Delete)) => self.parse_delete_statement(),
             _ => {
-                self.push_error(consts::EXPECT_STMT);
+                self.push_error(ParseErrorKind::ExpectedStatemnt);
                 None
             }
         };
@@ -126,7 +125,7 @@ impl<'a> Parser<'a> {
 
             Some(Query::Select(exp_body))
         } else {
-            self.push_error("Unexpected token. Expected Select keyword.");
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("Select")));
             None
         }
     }
@@ -185,7 +184,7 @@ impl<'a> Parser<'a> {
                 match expr {
                     Some(e) => Some(SelectItem::new(e)),
                     None => {
-                        self.push_error(consts::EXPECT_IDENT);
+                        self.push_error(ParseErrorKind::ExpectedIdentifier);
                         None
                     }
                 }
@@ -210,7 +209,7 @@ impl<'a> Parser<'a> {
                     })
                 }
                 _ => {
-                    self.push_error(consts::EXPECT_IDENT);
+                    self.push_error(ParseErrorKind::ExpectedIdentifier);
                     None
                 }
             }
@@ -255,12 +254,12 @@ impl<'a> Parser<'a> {
                         })
                     }
                     _ => {
-                        self.push_error(consts::EXPECT_IDENT);
+                        self.push_error(ParseErrorKind::ExpectedIdentifier);
                         None
                     }
                 }
             } else {
-                self.push_error(&consts::ORDER_BY_NOT_CLOSED);
+                self.push_error(ParseErrorKind::ExpectedKeyword(String::from("BY")));
                 None
             }
         } else {
@@ -304,12 +303,12 @@ impl<'a> Parser<'a> {
                         })
                     }
                     _ => {
-                        self.push_error(consts::EXPECT_IDENT);
+                        self.push_error(ParseErrorKind::ExpectedIdentifier);
                         None
                     }
                 }
             } else {
-                self.push_error(&consts::GROUP_BY_NOT_CLOSED);
+                self.push_error(ParseErrorKind::ExpectedKeyword(String::from("BY")));
                 None
             }
         } else {
@@ -365,7 +364,7 @@ impl<'a> Parser<'a> {
                     if self.match_(Token::ParenClose) {
                         sub_expr
                     } else {
-                        self.push_error(&consts::EXPR_NOT_CLOSED);
+                        self.push_error(ParseErrorKind::ExpressionNotClosed);
                         None
                     }
                 }
@@ -446,23 +445,31 @@ impl<'a> Parser<'a> {
                                     Some(Expr::IsNotFalse(Box::new(expr)))
                                 }
                                 _ => {
-                                    self.push_error("Invalid token after IS NOT"); // todo
+                                    self.push_error(ParseErrorKind::ExpectedKeyword(String::from(
+                                        "NULL, TRUE or FALSE",
+                                    )));
                                     None
                                 }
                             },
                             None => {
-                                self.push_error("IS NOT statement not finished"); // todo
+                                self.push_error(ParseErrorKind::ExpectedKeyword(String::from(
+                                    "NOT, NULL, TRUE or FALSE",
+                                )));
                                 None
                             }
                         }
                     }
                     _ => {
-                        self.push_error("Invalid token after IS"); // todo
+                        self.push_error(ParseErrorKind::ExpectedKeyword(String::from(
+                            "Complete logical expression",
+                        )));
                         None
                     }
                 },
                 None => {
-                    self.push_error("IS statement not finished"); // todo
+                    self.push_error(ParseErrorKind::ExpectedKeyword(String::from(
+                        "Complete logical expression",
+                    )));
                     None
                 }
             };
@@ -518,12 +525,12 @@ impl<'a> Parser<'a> {
                     Some(Value::Number(self.buf[s.start..s.end].to_string()))
                 }
                 _ => {
-                    self.push_error(consts::EXPECT_VALUE);
+                    self.push_error(ParseErrorKind::ExpectedValue);
                     None
                 }
             },
             _ => {
-                self.push_error(consts::EXPECT_VALUE);
+                self.push_error(ParseErrorKind::ExpectedValue);
                 None
             }
         };
@@ -539,7 +546,7 @@ impl<'a> Parser<'a> {
         if self.match_(Token::Keyword(Keyword::Insert)) {
             Some(Query::Insert)
         } else {
-            self.push_error("Unexpected token. Expected Insert keyword.");
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("INSERT")));
             None
         }
     }
@@ -548,7 +555,7 @@ impl<'a> Parser<'a> {
         if self.match_(Token::Keyword(Keyword::Update)) {
             Some(Query::Update)
         } else {
-            self.push_error("Unexpected token. Expected Update keyword.");
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("UPDATE")));
             None
         }
     }
@@ -557,7 +564,7 @@ impl<'a> Parser<'a> {
         if self.match_(Token::Keyword(Keyword::Delete)) {
             Some(Query::Delete)
         } else {
-            self.push_error("Unexpected token. Expected Delete keyword.");
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("DELETE")));
             None
         }
     }
@@ -639,17 +646,14 @@ impl<'a> Parser<'a> {
     }
 
     /// Add a new error to the errors list.
-    fn push_error(&mut self, message: &str) {
+    fn push_error(&mut self, kind: ParseErrorKind) {
         let current_token = self.peek_with_location();
         let position = match current_token {
             Some(t) => t.position,
             _ => 0,
         };
 
-        self.errors.push(ParseError {
-            message: String::from(message),
-            position,
-        })
+        self.errors.push(ParseError { kind, position })
     }
 }
 
@@ -1070,7 +1074,7 @@ mod parser_tests {
             errors[0],
             ParseError {
                 position: 0,
-                message: String::from(consts::EXPR_NOT_CLOSED),
+                kind: ParseErrorKind::ExpressionNotClosed,
             }
         );
     }
@@ -1512,7 +1516,7 @@ mod parser_tests {
             errors[0],
             ParseError {
                 position: 0,
-                message: String::from(consts::EXPECT_IDENT),
+                kind: ParseErrorKind::ExpectedIdentifier,
             }
         );
     }
@@ -1538,7 +1542,7 @@ mod parser_tests {
             errors[0],
             ParseError {
                 position: 0,
-                message: String::from(consts::EXPECT_IDENT),
+                kind: ParseErrorKind::ExpectedIdentifier,
             }
         );
     }
@@ -1558,7 +1562,7 @@ mod parser_tests {
             errors[0],
             ParseError {
                 position: 0,
-                message: String::from(consts::EXPECT_STMT),
+                kind: ParseErrorKind::ExpectedStatemnt,
             }
         );
     }
