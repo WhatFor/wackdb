@@ -190,6 +190,7 @@ impl<'a> Lexer<'a> {
                         s if s.eq_ignore_ascii_case("insert") => Token::Keyword(Keyword::Insert),
                         s if s.eq_ignore_ascii_case("where") => Token::Keyword(Keyword::Where),
 
+                        s if s.eq_ignore_ascii_case("as") => Token::Keyword(Keyword::As),
                         s if s.eq_ignore_ascii_case("from") => Token::Keyword(Keyword::From),
                         s if s.eq_ignore_ascii_case("and") => Token::Keyword(Keyword::And),
                         s if s.eq_ignore_ascii_case("or") => Token::Keyword(Keyword::Or),
@@ -399,7 +400,7 @@ mod lexer_tests {
 
     #[test]
     fn test_keywords() {
-        let str = String::from("select from inSERt WHERE Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE");
+        let str = String::from("select from inSERt WHERE AS Update and or xor set into values inner left right join on limit offset between array order group by asc desc True FALSE");
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
@@ -411,6 +412,8 @@ mod lexer_tests {
             Token::Keyword(Keyword::Insert),
             Token::Space,
             Token::Keyword(Keyword::Where),
+            Token::Space,
+            Token::Keyword(Keyword::As),
             Token::Space,
             Token::Keyword(Keyword::Update),
             Token::Space,

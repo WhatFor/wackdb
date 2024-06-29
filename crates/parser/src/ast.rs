@@ -93,7 +93,7 @@ impl fmt::Display for SelectItem {
         write!(f, "{}", self.expr)?;
 
         match &self.alias {
-            Some(alias) => write!(f, "AS {}", alias),
+            Some(alias) => write!(f, " AS {}", alias),
             None => Ok(()),
         }
     }
@@ -124,16 +124,27 @@ impl SelectItem {
             alias: Some(alias),
         }
     }
+
+    pub fn aliased_identifier(identifier: &str, alias: Identifier) -> Self {
+        SelectItem {
+            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            alias: Some(alias),
+        }
+    }
 }
 
 #[derive(PartialEq)]
 pub struct FromClause {
     pub identifier: Identifier,
+    pub alias: Option<Identifier>,
 }
 
 impl fmt::Display for FromClause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.identifier)
+        match &self.alias {
+            Some(a) => write!(f, "{} AS {}", self.identifier, a),
+            None => write!(f, "{}", self.identifier),
+        }
     }
 }
 

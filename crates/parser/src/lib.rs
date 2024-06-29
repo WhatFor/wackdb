@@ -175,8 +175,35 @@ impl<'a> Parser<'a> {
                 let identifier_str = String::from(self.resolve_slice(value));
                 self.eat();
 
-                // todo: support AS aliases
-                Some(SelectItem::simple_identifier(&identifier_str))
+                self.next_significant_token();
+                let alias = match self.peek() {
+                    Some(Token::Keyword(Keyword::As)) => {
+                        self.eat();
+                        self.next_significant_token();
+
+                        match self.peek() {
+                            Some(Token::Identifier(ident)) => {
+                                let value = Identifier {
+                                    value: String::from(self.resolve_slice(&ident.value)),
+                                };
+                                Some(value)
+                            }
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+
+                let select_item = match alias {
+                    Some(alias) => {
+                        // Eat the identifier
+                        self.eat();
+                        SelectItem::aliased_identifier(&identifier_str, alias)
+                    }
+                    None => SelectItem::simple_identifier(&identifier_str),
+                };
+
+                Some(select_item)
             }
             _ => {
                 let expr = self.parse_expr();
@@ -206,6 +233,8 @@ impl<'a> Parser<'a> {
                         identifier: Identifier {
                             value: identifier_str,
                         },
+                        // todo: alias parsing
+                        alias: None,
                     })
                 }
                 _ => {
@@ -515,15 +544,12 @@ impl<'a> Parser<'a> {
                 Token::Null => Some(Value::Null),
                 Token::Keyword(Keyword::True) => Some(Value::Boolean(true)),
                 Token::Keyword(Keyword::False) => Some(Value::Boolean(false)),
-                // todo: string interning? we indexing into buf here and maybe not great
+                Token::Numeric(s) => Some(Value::Number(self.buf[s.start..s.end].to_string())),
                 Token::Value(LexerValue::SingleQuoted(s)) => Some(Value::String(
+                    // todo: string interning? we indexing into buf here and maybe not great
                     self.buf[s.start..s.end].to_string(),
                     QuoteType::Single,
                 )),
-                Token::Numeric(s) => {
-                    // todo: don't like this. should probably parse the number, too.
-                    Some(Value::Number(self.buf[s.start..s.end].to_string()))
-                }
                 _ => {
                     self.push_error(ParseErrorKind::ExpectedValue);
                     None
@@ -689,6 +715,38 @@ mod parser_tests {
     }
 
     #[test]
+    fn test_simple_aliased_select_statement() {
+        let query = String::from("select a AS b");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 8))),
+            Token::Space,
+            Token::Keyword(Keyword::As),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(12, 13))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Stmts(vec![Query::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::aliased_identifier(
+                "a",
+                Identifier {
+                    value: String::from("b"),
+                },
+            )]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
     fn test_simple_select_wildcard_statement() {
         let query = String::from("select * from a");
         let tokens = vec![
@@ -710,6 +768,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("a"),
                 },
+                alias: None,
             }),
             where_clause: None,
             order_by_clause: None,
@@ -1137,6 +1196,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("b"),
                 },
+                alias: None,
             }),
             where_clause: Some(WhereClause {
                 expr: Expr::BinaryOperator {
@@ -1186,6 +1246,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("b"),
                 },
+                alias: None,
             }),
             where_clause: Some(WhereClause {
                 expr: Expr::IsNull(Box::new(Expr::Identifier(Identifier {
@@ -1229,6 +1290,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("b"),
                 },
+                alias: None,
             }),
             where_clause: Some(WhereClause {
                 expr: Expr::IsTrue(Box::new(Expr::Identifier(Identifier {
@@ -1274,6 +1336,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("b"),
                 },
+                alias: None,
             }),
             where_clause: Some(WhereClause {
                 expr: Expr::IsNotNull(Box::new(Expr::Identifier(Identifier {
@@ -1425,6 +1488,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("Users"),
                     },
+                    alias: None,
                 }),
                 where_clause: Some(WhereClause {
                     expr: Expr::BinaryOperator {
@@ -1479,6 +1543,7 @@ mod parser_tests {
                 identifier: Identifier {
                     value: String::from("b"),
                 },
+                alias: None,
             }),
             where_clause: None,
             order_by_clause: None,

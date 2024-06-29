@@ -1,6 +1,7 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Keyword {
     Select,
+    As,
     From,
     Insert,
     Update,
