@@ -178,8 +178,9 @@ impl<'a> Lexer<'a> {
                 }
                 // Alphabetical (can start with _, # or @)
                 c if c.is_alphabetic() || c == '_' || c == '#' || c == '@' => {
-                    let end_pos =
-                        self.scan_until(curr_offset, |c| c == ' ' || c == ',' || c == ';');
+                    let end_pos = self.scan_until(curr_offset, |c| {
+                        c == ' ' || c == ',' || c == ';' || c == ')'
+                    });
 
                     let slice = &self.buf[curr_offset..end_pos];
                     self.pos += slice.len();
@@ -895,5 +896,28 @@ mod lexer_tests {
 
         assert_ne!(identifier_str, None);
         assert_eq!(identifier_str.unwrap(), "users");
+    }
+
+    #[test]
+    fn test_lex_column_list() {
+        let str = String::from("(Id INT, Age INT)");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::ParenOpen,
+            Token::Identifier(Ident::new(Slice::new(1, 3))),
+            Token::Space,
+            Token::Keyword(Keyword::Int),
+            Token::Comma,
+            Token::Space,
+            Token::Identifier(Ident::new(Slice::new(9, 12))),
+            Token::Space,
+            Token::Keyword(Keyword::Int),
+            Token::ParenClose,
+            Token::EOF,
+        ];
+
+        assert_eq!(actual_without_locations, expected);
     }
 }

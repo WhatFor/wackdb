@@ -778,6 +778,9 @@ impl<'a> Parser<'a> {
         let mut columns = vec![];
 
         while self.lookahead(Token::ParenClose) == false {
+            self.match_(Token::Comma);
+            self.next_significant_token();
+
             let column_definition = self.parse_column_definition()?;
             columns.push(column_definition);
         }
@@ -816,7 +819,8 @@ impl<'a> Parser<'a> {
                     nullable: false, // TODO
                 })
             }
-            _ => {
+            x => {
+                println!("found: {x:?}");
                 self.push_error(ParseErrorKind::ExpectedIdentifier);
                 None
             }
@@ -2037,7 +2041,7 @@ mod parser_tests {
 
     #[test]
     fn test_simple_create_table_statement() {
-        let query = String::from("CREATE TABLE Users (Id INT)");
+        let query = String::from("CREATE TABLE Users (Id INT, Age INT)");
         let tokens = vec![
             Token::Keyword(Keyword::Create),
             Token::Space,
@@ -2049,6 +2053,11 @@ mod parser_tests {
             Token::Identifier(LexerIdent::new(Slice::new(20, 22))),
             Token::Space,
             Token::Keyword(Keyword::Int),
+            Token::Comma,
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(28, 31))),
+            Token::Space,
+            Token::Keyword(Keyword::Int),
             Token::ParenClose,
             Token::EOF,
         ];
@@ -2057,11 +2066,18 @@ mod parser_tests {
         let expected = Ok(Program::Stmts(vec![Statement::Create(
             CreateExpression::Table(CreateTableBody {
                 table_name: Identifier::from("Users".to_string()),
-                column_list: vec![ColumnDefinition {
-                    column_name: Identifier::from("Id".to_string()),
-                    datatype: DataType::Int,
-                    nullable: false,
-                }],
+                column_list: vec![
+                    ColumnDefinition {
+                        column_name: Identifier::from("Id".to_string()),
+                        datatype: DataType::Int,
+                        nullable: false,
+                    },
+                    ColumnDefinition {
+                        column_name: Identifier::from("Age".to_string()),
+                        datatype: DataType::Int,
+                        nullable: false,
+                    },
+                ],
             }),
         )]));
 
