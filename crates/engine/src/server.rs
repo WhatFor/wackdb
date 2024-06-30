@@ -110,3 +110,24 @@ fn initialise_log_file(path: &String) -> Result<StatementResult, StatementError>
 
     Ok(StatementResult {})
 }
+
+#[cfg(test)]
+mod server_engine_tests {
+    use crate::*;
+
+    /// TODO NOTES
+    ///
+    /// Testing FS operations is tricky. I can mock out the FS, but that seems like a lot of work
+    /// and doesn't simulate a real world scenario.
+    /// Alternatively, I can use a temp dir to do all of the work (maybe even in a ram-backed virtual FS),
+    /// but that means switching logic based on test/not-test (specifically the filepath).
+    /// If I do want to do the virtual FS with the tempdir crate or something, I'll have to pass in the filepath
+    /// into the engine, which will have to come from the cli at the moment which feels wrong.
+    /// Additionally, I'll have to start tracking state on the engine (which, granted I'll probably have to do eventually anyway).
+    /// Maybe I need to think about this server-level configuration and sort that out first. It makes sense to be able
+    /// to configure things on the server like data paths, which would mean I'd have a sensible place to be overriding that path
+    /// for testing reasons.
+
+    #[test]
+    fn empty() {}
+}
