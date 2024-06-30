@@ -2,17 +2,28 @@ use std::fmt;
 
 #[derive(PartialEq, Debug)]
 pub enum Program {
-    Stmts(Vec<Statement>),
+    Statements(Vec<Statement>),
     Empty,
 }
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
+    User(UserStatement),
+    Server(ServerStatement),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum UserStatement {
     Select(SelectExpressionBody),
     Update,
     Insert,
     Delete,
-    Create(CreateExpression),
+    CreateTable(CreateTableBody),
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ServerStatement {
+    CreateDatabase(CreateDatabaseBody),
 }
 
 #[derive(PartialEq)]
@@ -22,12 +33,6 @@ pub struct SelectExpressionBody {
     pub where_clause: Option<WhereClause>,
     pub order_by_clause: Option<OrderByClause>,
     pub group_by_clause: Option<GroupByClause>,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum CreateExpression {
-    Table(CreateTableBody),
-    Database(CreateDatabaseBody),
 }
 
 #[derive(PartialEq, Debug)]

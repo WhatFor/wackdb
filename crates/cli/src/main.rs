@@ -38,11 +38,18 @@ fn eval_command(input: &str) -> CommandResult {
 
     match parse_result {
         Ok(ast) => {
-            let execute_result = engine::execute(ast);
+            let execute_result = engine::execute(&ast);
 
             match execute_result {
-                Ok(_) => CommandResult::Ok,
-                Err(e) => CommandResult::ExecuteError(e),
+                Ok(ok_result) => {
+                    for err in ok_result.errors {
+                        println!("{err:?}")
+                    }
+
+                    // todo: bit of a mess of error types
+                    CommandResult::Ok
+                }
+                Err(err) => CommandResult::ExecuteError(err),
             }
         }
         Err(e) => CommandResult::ParseError(e),
@@ -85,7 +92,9 @@ fn repl() {
                             let pos = err.position;
                             println!("Execution Error: {message} (Position {pos})");
                         }
-                        CommandResult::Ok => {}
+                        CommandResult::Ok => {
+                            println!("OK!");
+                        }
                     },
                     ReplResult::Help => {
                         println!("Sorry, you're on your own.");
