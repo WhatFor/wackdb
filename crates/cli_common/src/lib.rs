@@ -46,3 +46,24 @@ impl fmt::Display for ParseErrorKind {
         Ok(())
     }
 }
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ExecuteError {
+    pub kind: ExecuteErrorKind,
+    pub position: usize,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ExecuteErrorKind {
+    Err,
+}
+
+impl fmt::Display for ExecuteErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExecuteErrorKind::Err => write!(f, "Error")?,
+        }
+
+        Ok(())
+    }
+}

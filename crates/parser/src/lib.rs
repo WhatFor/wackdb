@@ -8,7 +8,7 @@ use lexer::token::{
 };
 use recursion::*;
 
-mod ast;
+pub mod ast;
 mod recursion;
 
 pub struct Parser<'a> {

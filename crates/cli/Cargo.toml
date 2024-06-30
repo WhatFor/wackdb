@@ -7,3 +7,4 @@ edition = "2021"
 lexer = { path = "../lexer" }
 cli_common = { path = "../cli_common" }
 parser = { path = "../parser" }
+engine = { path = "../engine" }

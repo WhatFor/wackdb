@@ -4,7 +4,7 @@ use std::{
     process::exit,
 };
 
-use cli_common::ParseError;
+use cli_common::{ExecuteError, ParseError};
 use lexer::Lexer;
 use parser::Parser;
 
@@ -36,11 +36,16 @@ fn eval_command(input: &str) -> CommandResult {
     let mut parser = Parser::new(lex_result.tokens, &input_str);
     let parse_result = parser.parse();
 
-    dbg!(&parse_result);
-
     match parse_result {
-        Ok(_) => CommandResult::Ok,
-        Err(e) => CommandResult::Error(e),
+        Ok(ast) => {
+            let execute_result = engine::execute(ast);
+
+            match execute_result {
+                Ok(_) => CommandResult::Ok,
+                Err(e) => CommandResult::ExecuteError(e),
+            }
+        }
+        Err(e) => CommandResult::ParseError(e),
     }
 }
 
@@ -68,12 +73,17 @@ fn repl() {
                         CommandResult::Failed(err) => {
                             println!("Program Error: {err}");
                         }
-                        CommandResult::Error(err) => {
+                        CommandResult::ParseError(err) => {
                             for e in err {
                                 let message = e.kind;
                                 let pos = e.position;
                                 println!("Syntax Error: {message} (Position {pos})");
                             }
+                        }
+                        CommandResult::ExecuteError(err) => {
+                            let message = err.kind;
+                            let pos = err.position;
+                            println!("Execution Error: {message} (Position {pos})");
                         }
                         CommandResult::Ok => {}
                     },
@@ -147,7 +157,8 @@ enum ReplResult {
 #[derive(Debug)]
 enum CommandResult {
     _UnrecognisedCommand,
-    Error(Vec<ParseError>),
+    ParseError(Vec<ParseError>),
+    ExecuteError(ExecuteError),
     Failed(String),
     Ok,
 }
