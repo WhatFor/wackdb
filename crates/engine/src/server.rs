@@ -2,6 +2,7 @@ use parser::ast::CreateDatabaseBody;
 use std::{
     fs::{OpenOptions, Permissions},
     io::{Error, Read, Seek, Write},
+    os::windows::fs::OpenOptionsExt,
     path::PathBuf,
 };
 
@@ -210,12 +211,11 @@ fn ensure_path_exists(path: &PathBuf) {
 /// Create a file, given a path.
 /// Returns the file, or a StatementError.
 fn create_file(path: &String) -> Result<std::fs::File, StatementError> {
-    // TODO: Set flags to disable disk caching for reliability reasons.
-
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
+        .custom_flags(0x80000000) // FILE_FLAG_WRITE_THROUGH
         .open(path);
 
     match file {
