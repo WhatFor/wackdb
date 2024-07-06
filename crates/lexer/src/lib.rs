@@ -17,6 +17,7 @@ impl<'a> Lexer<'a> {
     pub fn new(buf: &'a String) -> Lexer<'a> {
         let len = buf.len();
         let chars = buf.char_indices().collect();
+
         Lexer {
             buf,
             chars,
