@@ -1,20 +1,20 @@
+use bincode::config::{self, Configuration, Fixint, LittleEndian};
 use parser::ast::CreateDatabaseBody;
-use std::{
-    fs::{OpenOptions, Permissions},
-    io::{Error, Read, Seek, Write},
-    os::windows::fs::OpenOptionsExt,
-    path::PathBuf,
-};
+use std::{fs::OpenOptions, io::Error, os::windows::fs::OpenOptionsExt, path::PathBuf};
 
 use crate::{
-    paging::{read_page, write_page},
+    master::FileInfo,
+    page::{PageHeader, PageType},
+    paging::write_page,
     StatementError, StatementResult,
 };
 
 const DATA_FILE_EXT: &str = ".wak";
 const LOG_FILE_EXT: &str = ".wal";
 const MASTER_NAME: &str = "master";
+
 pub const PAGE_SIZE_BYTES: usize = 8192; // 2^13
+pub const PAGE_HEADER_SIZE_BYTES: usize = 32;
 
 // TODO: Hardcoded for now. See /docs/assumptions.
 const WACK_DIRECTORY: &str = "data\\";
@@ -41,7 +41,7 @@ pub fn create_master_database() -> Result<StatementResult, StatementError> {
         panic!("Master database file exists");
     }
 
-    let _file = create_file(&master_path)?;
+    let file = create_file(&master_path)?;
 
     // Now the file exists and we have a handle, we can write some header info.
     // The master.wak file is ultimately no different to any other database, it's just system managed and stores system info.
@@ -69,6 +69,7 @@ pub fn create_master_database() -> Result<StatementResult, StatementError> {
     //         - info about allocated and free space in the file
     //  a FILE_INFO page type, as that's what we're going to write as page 0 on every file.
     //     - this will contain info about the file:
+    //         - a magic string to represent wak
     //         - file id (maybe not needed?)
     //         - file type (data file or log file)
     //         - file flags (not sure what kinda flags we want, but)
@@ -106,11 +107,8 @@ pub fn create_master_database() -> Result<StatementResult, StatementError> {
     //   - allocated space (2 bytes, u16) (same constraint as free space)
     // total: 21 bytes. Will allocate 32 bytes to be safe.
 
-    let file_info_page_bytes = vec![0; PAGE_SIZE_BYTES];
-    let file_info_page_write = write_page(&_file, &file_info_page_bytes, 0);
-
-    // TODO: Remove me! this is test code
-    let info_page_bytes_read = read_page(&_file, 0);
+    // Write FILE_INFO Page
+    let file_info_page_write = write_file_info_page(&file);
 
     match file_info_page_write {
         Ok(_) => println!("Wrote FILE_INFO page."),
@@ -139,6 +137,40 @@ fn get_master_path() -> String {
     let data_path = std::path::Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));
 
     String::from(data_path.to_str().unwrap()) + MASTER_NAME + DATA_FILE_EXT
+}
+
+const FILE_INFO_PAGE_INDEX: u32 = 0;
+
+/// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
+fn write_file_info_page(file: &std::fs::File) -> std::io::Result<()> {
+    let config = get_bincode_config();
+    let mut page = get_page_vec();
+
+    let header = PageHeader::new(PageType::FileInfo, 1, 2, 3); // TODO: Values!
+    let header_result = bincode::encode_into_slice(&header, &mut page, config);
+
+    // TODO: this is indicative of a lot of error handling. While it's good, it's maybe pervasive and I want to think about what I actually want to handle.
+    if header_result.is_err() {
+        panic!("Failed to write header for file.");
+    }
+
+    let body = FileInfo::new(crate::master::FileType::Primary);
+    let mut page_slice_for_body = &mut page[PAGE_HEADER_SIZE_BYTES..];
+    let body_result = bincode::encode_into_slice(&body, &mut page_slice_for_body, config);
+
+    match body_result {
+        Ok(_) => write_page(&file, &page, FILE_INFO_PAGE_INDEX),
+        Err(err) => Err(Error::new(std::io::ErrorKind::Other, err)),
+    }
+}
+
+/// Get the standard bincode config for all binary read/write.
+fn get_bincode_config() -> Configuration<LittleEndian, Fixint> {
+    config::standard().with_fixed_int_encoding()
+}
+
+fn get_page_vec() -> Vec<u8> {
+    vec![0; PAGE_SIZE_BYTES]
 }
 
 /// Create a new user database.

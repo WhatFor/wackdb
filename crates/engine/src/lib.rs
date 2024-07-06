@@ -1,6 +1,8 @@
 use cli_common::ExecuteError;
 use parser::ast::{Program, ServerStatement, UserStatement};
 
+mod master;
+mod page;
 mod paging;
 mod server;
 use server::CreateDatabaseError;

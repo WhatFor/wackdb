@@ -68,6 +68,7 @@ impl Repl {
                                 println!("Execution Error: {message} (Position {pos})");
                             }
                             CommandResult::Ok => {
+                                // TODO: https://github.com/zhiburt/tabled
                                 println!("OK!");
                             }
                         },
