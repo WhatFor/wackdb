@@ -101,6 +101,7 @@ mod util_tests {
     }
 
     #[test]
+    #[cfg(target_os = "windows")]
     fn test_ensure_path_exists() {
         let mut temp_dir = temp_dir();
         temp_dir.push("/test");
