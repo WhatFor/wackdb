@@ -1,5 +1,3 @@
-use std::os::windows::fs::OpenOptionsExt;
-
 pub fn file_exists(path: &String) -> bool {
     let path_obj = std::path::Path::new(&path);
 
@@ -21,7 +19,8 @@ pub fn create_file(path: &String) -> Result<std::fs::File, crate::CreateDatabase
         .read(true)
         .write(true)
         .create(true)
-        .custom_flags(0x80000000) // FILE_FLAG_WRITE_THROUGH
+        // TODO: Only works on windows - Need multiplatform support.
+        //.custom_flags(0x80000000) // FILE_FLAG_WRITE_THROUGH
         .open(path);
 
     match file {
