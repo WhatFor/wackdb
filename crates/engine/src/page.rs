@@ -180,8 +180,8 @@ pub struct PageDecoder<'a> {
 #[derive(Debug)]
 pub struct ChecksumResult {
     pub pass: bool,
-    pub expected: u16,
-    pub actual: u16,
+    pub expected: [u8; 2],
+    pub actual: [u8; 2],
 }
 
 impl<'a> PageDecoder<'a> {
@@ -203,10 +203,11 @@ impl<'a> PageDecoder<'a> {
     }
 
     pub fn check(&self) -> ChecksumResult {
-        let crc = crc::Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
+        let body_bytes = &self.bytes[PAGE_HEADER_SIZE_BYTES.into()..];
 
-        let expected = self.header.checksum;
-        let actual = crc.checksum(&self.bytes);
+        let expected = self.header.checksum.to_be_bytes();
+        let actual = check(body_bytes);
+
         let pass = expected == actual;
 
         ChecksumResult {
