@@ -5,7 +5,15 @@ mod master;
 mod page;
 mod paging;
 mod server;
+mod util;
 use server::CreateDatabaseError;
+
+/// System wide Consts
+pub const DATA_FILE_EXT: &str = ".wak";
+pub const LOG_FILE_EXT: &str = ".wal";
+pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
+pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
+pub const WACK_DIRECTORY: &str = "data\\"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 pub struct Engine {}
 
@@ -28,56 +36,8 @@ impl Engine {
         Engine {}
     }
 
-    /// Initialise the entire DB server
     pub fn init(&self) {
-        // We want to:
-        //  - ensure system level stuff exists and is valid, like the master table.
-        self.ensure_system_databases_initialised();
-        //  - spin up any components we might want, like buffers, etc.
-        self.ensure_system_components_initialised();
-    }
-
-    // TODO: Maybe move me
-    /// Ensures the system infra is initialised
-    ///  - Create system tables
-    ///  - Whatever else that might be needed :)
-    pub fn ensure_system_databases_initialised(&self) {
-        let master_exists = server::master_database_exists();
-
-        match master_exists {
-            true => println!("Master database exists."),
-            false => {
-                println!("Creating master database...");
-                let master_db_create_result = server::create_master_database();
-
-                match master_db_create_result {
-                    Ok(_) => {
-                        println!("Master database created successfully.");
-                    }
-                    Err(_) => {
-                        panic!("Failed to create master database.");
-                    }
-                }
-            }
-        }
-
-        let master_validate = server::validate_master_database();
-
-        match master_validate {
-            Ok(_) => {
-                println!("Master database validated successfully.");
-            }
-            Err(_) => {
-                panic!("Failed to validate master database.");
-            }
-        }
-    }
-
-    // TODO: Maybe move me
-    /// Ensures the system components are initialised
-    pub fn ensure_system_components_initialised(&self) {
-        // We:
-        //  Do whatever we need to do :)
+        server::ensure_system_databases_initialised();
     }
 
     pub fn execute(&self, prog: &Program) -> Result<ExecuteResult, ExecuteError> {
@@ -126,7 +86,9 @@ impl Engine {
         statement: &ServerStatement,
     ) -> Result<StatementResult, StatementError> {
         match statement {
-            ServerStatement::CreateDatabase(s) => server::create_user_database(s),
+            ServerStatement::CreateDatabase(s) => server::create_user_database(s)
+                .map_err(|e| StatementError::CreateDatabase(e))
+                .map(|_| StatementResult {}),
         }
     }
 }

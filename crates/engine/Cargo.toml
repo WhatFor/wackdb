@@ -7,3 +7,5 @@ edition = "2021"
 parser = { path = "../parser" }
 cli_common = { path = "../cli_common" }
 bincode = "2.0.0-rc.3"
+crc = "3.2.1"
+uuid = { version = "1.9.1", features = [ "v4" ]}
