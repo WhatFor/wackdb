@@ -57,14 +57,19 @@ impl FileInfo {
 
 /// Information describing a database.
 /// There will only ever be one of these pages in a single file.
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
 pub struct DatabaseInfo {
-    /// Offset: 0. Length: 128.
-    database_name: String,
-    /// Offset: 128. Length: 1.
+    #[deku(bytes = 128)] // Offset: 0
+    database_name: Vec<u8>, // TODO: how to split this?
+
+    #[deku(bytes = 1)] // Offset: 128
     database_version: u8,
-    /// Offset: 129. Length: 2.
+
+    #[deku(bytes = 2)] // Offset: 129
     database_id: u16,
-    /// Offset: 131. Length: 1.
+
+    #[deku(bytes = 1)] // Offset: 131
     created_date: u8, // TODO: Type
 }
 
