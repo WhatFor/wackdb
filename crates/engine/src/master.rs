@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use hexlit::hex;
+use deku::ctx::Endian;
 
 use crate::{
     page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageType},
@@ -15,9 +15,7 @@ const MASTER_NAME: &str = "master";
 const FILE_INFO_PAGE_INDEX: u32 = 0;
 
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
-#[deku(id_type = "u8")]
-#[non_exhaustive]
-#[repr(u8)]
+#[deku(id_type = "u8", endian = "endian", ctx = "endian: deku::ctx::Endian", ctx_default = "Endian::Big")]
 pub enum FileType {
     #[deku(id = 0)]
     Primary,
@@ -32,8 +30,9 @@ pub struct FileInfo {
     #[deku(bytes = 4)] // Offset: 0
     magic_string: [u8; 4],
 
-    // #[deku(bytes = 1)] // Offset: 4
-    // file_type: FileType,
+    #[deku] // Offset: 4
+    file_type: FileType,
+
     #[deku(bytes = 2)] // Offset: 5
     sector_size_bytes: u16,
 
@@ -45,12 +44,13 @@ impl FileInfo {
     pub fn new(file_type: FileType) -> Self {
         FileInfo {
             magic_string: [0, 1, 6, 1],
-            // file_type,
+            file_type,
             sector_size_bytes: 0, // TODO: Find this value
-            created_date_unix: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u16,
+            created_date_unix: 0, // TODO: commented out for now
+            // created_date_unix: std::time::SystemTime::now()
+            //     .duration_since(std::time::UNIX_EPOCH)
+            //     .unwrap()
+            //     .as_secs() as u16,
         }
     }
 }
@@ -277,11 +277,32 @@ mod master_engine_tests {
     }
 
     #[test]
-    fn test_read_write_binary_fileinfo_of_type_log() {
+    fn test_read_write_binary_fileinfo_of_type_primary() {
         // continue writing this test - trying to get deku to serialise FileInfo.
         let file_info = FileInfo::new(FileType::Primary);
         let bytes = file_info.to_bytes().unwrap();
+        let expected = vec![
+            0, 1, 6, 1, // Magic string
+            0, // File Type
+            0, 0, // Sector Size
+            0, 0, // Created date
+        ];
 
-        assert_eq!(bytes, [1]);
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_log() {
+        // continue writing this test - trying to get deku to serialise FileInfo.
+        let file_info = FileInfo::new(FileType::Log);
+        let bytes = file_info.to_bytes().unwrap();
+        let expected = vec![
+            0, 1, 6, 1, // Magic string
+            1, // File Type
+            0, 0, // Sector Size
+            0, 0, // Created date
+        ];
+
+        assert_eq!(bytes, expected);
     }
 }
