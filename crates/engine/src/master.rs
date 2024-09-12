@@ -1,11 +1,12 @@
+use deku::prelude::*;
+use hexlit::hex;
+
 use crate::{
-    page::{PageDecoder, PageEncoder, PageHeader, PageType},
+    page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageType},
     paging,
     server::CreateDatabaseError,
     util,
 };
-
-use bincode::{Decode, Encode};
 
 /// Master specific Consts
 const MASTER_NAME: &str = "master";
@@ -13,39 +14,38 @@ const MASTER_NAME: &str = "master";
 /// The constant page index of the FILE_INFO page.
 const FILE_INFO_PAGE_INDEX: u32 = 0;
 
-#[derive(Encode, Decode, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(id_type = "u8")]
+#[non_exhaustive]
+#[repr(u8)]
 pub enum FileType {
+    #[deku(id = 0)]
     Primary,
+    #[deku(id = 1)]
     Log,
 }
 
 /// Information describing a database file.
-#[derive(Encode, Decode, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
 pub struct FileInfo {
-    /// Offset: 0. Length: 1.
-    magic_string_0: u8,
-    /// Offset: 1. Length: 1.
-    magic_string_1: u8,
-    /// Offset: 2. Length: 1.
-    magic_string_2: u8,
-    /// Offset: 3. Length: 1.
-    magic_string_3: u8,
-    /// Offset: 4. Length: 1.
-    file_type: FileType,
-    /// Offset: 5. Length: 2.
+    #[deku(bytes = 4)] // Offset: 0
+    magic_string: [u8; 4],
+
+    // #[deku(bytes = 1)] // Offset: 4
+    // file_type: FileType,
+    #[deku(bytes = 2)] // Offset: 5
     sector_size_bytes: u16,
-    /// Offset: 7. Length: 2.
+
+    #[deku(bytes = 2)] // Offset: 7
     created_date_unix: u16,
 }
 
 impl FileInfo {
     pub fn new(file_type: FileType) -> Self {
         FileInfo {
-            magic_string_0: b'0',
-            magic_string_1: b'1',
-            magic_string_2: b'6',
-            magic_string_3: b'1',
-            file_type,
+            magic_string: [0, 1, 6, 1],
+            // file_type,
             sector_size_bytes: 0, // TODO: Find this value
             created_date_unix: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -96,15 +96,23 @@ pub fn get_master_path() -> String {
 
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
 pub fn write_master_file_info_page(file: &std::fs::File) -> std::io::Result<()> {
+    let page = write_master_file_info_page_internal();
+    match page {
+        Ok(page_ok) => paging::write_page(&file, &page_ok, FILE_INFO_PAGE_INDEX),
+        Err(_) => {
+            todo!("handle error")
+        }
+    }
+}
+
+fn write_master_file_info_page_internal() -> Result<Vec<u8>, PageEncoderError> {
     let header = PageHeader::new(PageType::FileInfo);
     let mut page = PageEncoder::new(header);
 
-    // TODO: Write body - should use slots
-    //let body = FileInfo::new(crate::master::FileType::Primary);
-    //page.body(&body);
+    let body = FileInfo::new(crate::master::FileType::Primary);
+    page.add_slot(body)?;
 
-    let checked_page = page.collect();
-    paging::write_page(&file, &checked_page, FILE_INFO_PAGE_INDEX)
+    Ok(page.collect())
 }
 
 #[derive(Debug)]
@@ -130,20 +138,22 @@ pub fn validate_master_database() -> Result<(), ValidationError> {
             let file_info_page = paging::read_page(&file, FILE_INFO_PAGE_INDEX);
 
             match file_info_page {
-                Ok(page_bytes) => {
-                    let page = PageDecoder::from_bytes(&page_bytes);
-
-                    let checksum_pass = page.check();
-
-                    match checksum_pass.pass {
-                        true => Ok(()),
-                        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
-                    }
-                }
+                Ok(page_bytes) => validate_master_file_info(page_bytes),
                 Err(_) => Err(ValidationError::FailedToOpenFileInfo),
             }
         }
         Err(err) => Err(ValidationError::FailedToOpenFile(err)),
+    }
+}
+
+fn validate_master_file_info(bytes: Vec<u8>) -> Result<(), ValidationError> {
+    let page = PageDecoder::from_bytes(&bytes);
+
+    let checksum_pass = page.check();
+
+    match checksum_pass.pass {
+        true => Ok(()),
+        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
     }
 }
 
@@ -214,4 +224,64 @@ pub fn create_master_database() -> Result<(), CreateDatabaseError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod master_engine_tests {
+    use deku::DekuContainerWrite;
+    use hexlit::hex;
+    use master::{FileInfo, FileType};
+
+    use crate::*;
+
+    #[test]
+    fn test_write_master_page_file_info() {
+        let start: usize = PAGE_HEADER_SIZE_BYTES.into();
+        let end: usize = start + 9;
+        let range = start..end;
+
+        let actual = &master::write_master_file_info_page_internal().expect("Failed")[range];
+
+        let expected = vec![
+            0, 1, 6, 1, // Magic String
+            0, // File Type - Primary
+            0, 0, // Sector Size
+            0, 0, // Created at Date
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_validate_master_database() {
+        let page = master::write_master_file_info_page_internal().expect("Failed");
+        let validate = master::validate_master_file_info(page);
+
+        assert_eq!(validate.is_ok(), true);
+    }
+
+    #[test]
+    fn test_read_write_binary_filetype_primary() {
+        let file_type = FileType::Primary;
+        let bytes = file_type.to_bytes().unwrap();
+
+        assert_eq!(bytes, [0]);
+    }
+
+    #[test]
+    fn test_read_write_binary_filetype_log() {
+        let file_type = FileType::Log;
+        let bytes = file_type.to_bytes().unwrap();
+
+        assert_eq!(bytes, [1]);
+    }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_log() {
+        // continue writing this test - trying to get deku to serialise FileInfo.
+        let file_info = FileInfo::new(FileType::Primary);
+        let bytes = file_info.to_bytes().unwrap();
+
+        assert_eq!(bytes, [1]);
+    }
 }

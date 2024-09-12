@@ -1,8 +1,3 @@
-use bincode::{
-    config::{BigEndian, Configuration, Fixint},
-    Decode, Encode,
-};
-
 use crate::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
 
 /// The max, current version number for the Page Header record
@@ -21,7 +16,7 @@ pub enum PageType {
 /// A general purpose Page header.
 /// True length: 22 bytes.
 /// Allocated length: 32 bytes.
-#[derive(Encode, Decode, Debug)]
+#[derive(Debug)]
 pub struct PageHeader {
     /// Offset: 0. Length: 4.
     page_id: u32,
@@ -87,6 +82,7 @@ pub struct PageEncoder {
 #[derive(Debug, PartialEq)]
 pub enum PageEncoderError {
     NotEnoughSpace,
+    FailedToSerialise,
 }
 
 #[derive(Debug)]
@@ -107,7 +103,26 @@ impl PageEncoder {
         self.header.free_space >= (len + SLOT_POINTER_SIZE)
     }
 
-    pub fn add_slot(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
+    pub fn add_slot_bytes(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
+        self.add_slot_internal(slot)
+    }
+
+    pub fn add_slot<T>(&mut self, slot: T) -> Result<AddSlot, PageEncoderError>
+// where
+    //     T: Encode,
+    {
+        // let config = header_bincode_config();
+        // let bytes = bincode::encode_to_vec(slot, config);
+
+        // match bytes {
+        //     Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
+        //     Err(_) => Err(PageEncoderError::FailedToSerialise),
+        // }
+        // TODO TEMP
+        Err(PageEncoderError::FailedToSerialise)
+    }
+
+    fn add_slot_internal(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
         let length = slot.len() as u16;
         let has_space = self.has_space_for(length);
 
@@ -153,17 +168,57 @@ impl PageEncoder {
         let mut bytes = vec![0; crate::PAGE_SIZE_BYTES.into()];
 
         // Write Header
-        let config = header_bincode_config();
-        let header_result = bincode::encode_into_slice(&self.header, &mut bytes, config);
+        // let config = header_bincode_config();
+        // let header_result = bincode::encode_into_slice(&self.header, &mut bytes, config);
 
-        for slot in &self.slots {
-            // TODO: Write slot and slot pointer
-        }
+        // TODO TEST
+        None
 
-        match header_result {
-            Ok(_) => Some(bytes),
-            Err(_) => None,
-        }
+        // match header_result {
+        //     Ok(_) => {
+        //         for slot in &self.slots {
+        //             let slot_bytes_result = bincode::encode_to_vec(&slot, config);
+
+        //             match slot_bytes_result {
+        //                 Ok(slot_bytes) => {
+        //                     // Calculate the new start position of the free space,
+        //                     // including the bytes we're writing
+        //                     let slot_end_pointer =
+        //                         self.header.free_space_start_offset + slot_bytes.len() as u16;
+
+        //                     println!("New Free Space End: {slot_end_pointer}");
+
+        //                     // Write the bytes
+        //                     let _ = &bytes[self.header.free_space_start_offset.into()
+        //                         ..slot_end_pointer.into()]
+        //                         .copy_from_slice(&slot_bytes);
+
+        //                     // Set the new start of free space
+        //                     self.header.free_space_start_offset = slot_end_pointer;
+
+        //                     // Write the pointer
+        //                     let pointer = slot_end_pointer.to_be_bytes();
+        //                     let pointer_length = pointer.len() as u16;
+        //                     let pointer_start =
+        //                         (self.header.free_space_end_offset - pointer_length).into();
+
+        //                     let _ = &bytes[pointer_start..self.header.free_space_end_offset.into()]
+        //                         .copy_from_slice(&pointer);
+
+        //                     // Set the new end of the free space
+        //                     let free_space_end = self.header.free_space_end_offset - pointer_length;
+        //                     self.header.free_space_end_offset = free_space_end;
+
+        //                     println!("New Free Space End: {free_space_end}");
+        //                 }
+        //                 Err(_) => todo!(),
+        //             }
+        //         }
+
+        //         Some(bytes)
+        //     }
+        //     Err(_) => None,
+        // }
     }
 }
 
@@ -186,20 +241,21 @@ pub struct ChecksumResult {
 
 impl<'a> PageDecoder<'a> {
     pub fn from_bytes(bytes: &'a Vec<u8>) -> Self {
-        let config = header_bincode_config();
+        // let config = header_bincode_config();
 
         let header_slice = &bytes[0..PAGE_HEADER_SIZE_BYTES.into()];
-        let header_decode = bincode::decode_from_slice::<PageHeader, _>(header_slice, config);
+        // let header_decode = bincode::decode_from_slice::<PageHeader, _>(header_slice, config);
 
-        println!("{header_decode:?}");
+        // println!("{header_decode:?}");
 
-        match header_decode {
-            Ok((header, _)) => PageDecoder { header, bytes },
-            Err(err) => {
-                // TODO
-                panic!("{err}")
-            }
-        }
+        // match header_decode {
+        //     Ok((header, _)) => PageDecoder { header, bytes },
+        //     Err(err) => {
+        //         // TODO
+        //         panic!("{err}")
+        //     }
+        // }
+        panic!("not done")
     }
 
     pub fn check(&self) -> ChecksumResult {
@@ -218,11 +274,11 @@ impl<'a> PageDecoder<'a> {
     }
 }
 
-fn header_bincode_config() -> Configuration<BigEndian, Fixint> {
-    bincode::config::standard()
-        .with_fixed_int_encoding()
-        .with_big_endian()
-}
+// fn header_bincode_config() -> Configuration<BigEndian, Fixint> {
+//     bincode::config::standard()
+//         .with_fixed_int_encoding()
+//         .with_big_endian()
+// }
 
 #[cfg(test)]
 mod page_encoder_tests {
@@ -307,8 +363,8 @@ mod page_encoder_tests {
         // Expect allocated a header (32 bytes) and 2 pages each of length 2.
         let expected_len = PAGE_HEADER_SIZE_BYTES + 2 + 2;
 
-        let slot_result_1 = encoder.add_slot(slot1.clone());
-        let slot_result_2 = encoder.add_slot(slot2.clone());
+        let slot_result_1 = encoder.add_slot_bytes(slot1.clone());
+        let slot_result_2 = encoder.add_slot_bytes(slot2.clone());
 
         // Verify Result
         assert_eq!(slot_result_1.is_ok(), true);
