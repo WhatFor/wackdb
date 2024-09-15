@@ -1,3 +1,6 @@
+use deku::ctx::Endian;
+use deku::prelude::*;
+
 use crate::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
 
 /// The max, current version number for the Page Header record
@@ -6,37 +9,53 @@ pub const CURRENT_HEADER_VERSION: u8 = 1;
 /// The amount of bytes needed to store a slot pointer in the page.
 pub const SLOT_POINTER_SIZE: u16 = 2;
 
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(
+    id_type = "u8",
+    endian = "endian",
+    ctx = "endian: deku::ctx::Endian",
+    ctx_default = "Endian::Big"
+)]
 pub enum PageType {
-    // 0
+    #[deku(id = 0)]
     FileInfo,
-    // 1
+    #[deku(id = 1)]
     DatabaseInfo,
 }
 
 /// A general purpose Page header.
-/// True length: 22 bytes.
 /// Allocated length: 32 bytes.
-#[derive(Debug)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
 pub struct PageHeader {
-    /// Offset: 0. Length: 4.
+    #[deku(bytes = 4)]
     page_id: u32,
-    /// Offset: 4. Length: 1.
+
+    #[deku(bytes = 1)]
     header_version: u8,
-    /// Offset: 5. Length: 1.
-    page_type: u8,
-    /// Offset: 6. Length: 2.
+
+    #[deku]
+    page_type: PageType,
+
+    #[deku(bytes = 2)]
     checksum: u16,
-    /// Offset: 8. Length: 2.
+
+    #[deku(bytes = 2)]
     flags: u16,
-    /// Offset: 10. Length: 2.
+
+    #[deku(bytes = 2)]
     allocated_slot_count: u16,
-    /// Offset: 12. Length: 2.
+
+    #[deku(bytes = 2)]
     free_space: u16,
-    /// Offset: 14. Length: 2.
+
+    #[deku(bytes = 2)]
     free_space_start_offset: u16,
-    /// Offset: 16. Length: 2.
+
+    #[deku(bytes = 2)]
     free_space_end_offset: u16,
-    /// Offset: 20. Length: 2.
+
+    #[deku(bytes = 2)]
     total_allocated_bytes: u16,
 }
 
@@ -47,7 +66,7 @@ impl PageHeader {
         PageHeader {
             page_id: 0, // TODO
             header_version: CURRENT_HEADER_VERSION,
-            page_type: PageHeader::u8_from_page_type(page_type),
+            page_type: page_type,
             checksum: 0, // Not calc'd until collected
             flags: 0,    // Not set
             allocated_slot_count: 0,
@@ -55,21 +74,6 @@ impl PageHeader {
             free_space_start_offset: PAGE_HEADER_SIZE_BYTES,
             free_space_end_offset: PAGE_SIZE_BYTES,
             total_allocated_bytes: PAGE_HEADER_SIZE_BYTES,
-        }
-    }
-
-    pub fn u8_from_page_type(page_type: PageType) -> u8 {
-        match page_type {
-            PageType::FileInfo => 0,
-            PageType::DatabaseInfo => 1,
-        }
-    }
-
-    pub fn _page_type_from_u8(page_type: u8) -> PageType {
-        match page_type {
-            0 => PageType::FileInfo,
-            1 => PageType::DatabaseInfo,
-            _ => panic!("Unmatched PageType."),
         }
     }
 }
@@ -108,18 +112,15 @@ impl PageEncoder {
     }
 
     pub fn add_slot<T>(&mut self, slot: T) -> Result<AddSlot, PageEncoderError>
-// where
-    //     T: Encode,
+    where
+        T: DekuContainerWrite,
     {
-        // let config = header_bincode_config();
-        // let bytes = bincode::encode_to_vec(slot, config);
+        let bytes = slot.to_bytes();
 
-        // match bytes {
-        //     Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
-        //     Err(_) => Err(PageEncoderError::FailedToSerialise),
-        // }
-        // TODO TEMP
-        Err(PageEncoderError::FailedToSerialise)
+        match bytes {
+            Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
+            Err(_) => Err(PageEncoderError::FailedToSerialise),
+        }
     }
 
     fn add_slot_internal(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
@@ -167,58 +168,46 @@ impl PageEncoder {
     fn collect_internal(&mut self) -> Option<Vec<u8>> {
         let mut bytes = vec![0; crate::PAGE_SIZE_BYTES.into()];
 
-        // Write Header
-        // let config = header_bincode_config();
-        // let header_result = bincode::encode_into_slice(&self.header, &mut bytes, config);
+        let header_bytes = self.header.to_bytes();
 
-        // TODO TEST
-        None
+        match header_bytes {
+            Ok(header) => {
+                bytes.splice(0..PAGE_HEADER_SIZE_BYTES as usize, header);
 
-        // match header_result {
-        //     Ok(_) => {
-        //         for slot in &self.slots {
-        //             let slot_bytes_result = bincode::encode_to_vec(&slot, config);
+                for slot in &self.slots {
+                    // Calculate the new start position of the free space,
+                    // including the bytes we're writing
+                    let slot_end_pointer = self.header.free_space_start_offset + slot.len() as u16;
 
-        //             match slot_bytes_result {
-        //                 Ok(slot_bytes) => {
-        //                     // Calculate the new start position of the free space,
-        //                     // including the bytes we're writing
-        //                     let slot_end_pointer =
-        //                         self.header.free_space_start_offset + slot_bytes.len() as u16;
+                    println!("New Free Space End: {slot_end_pointer}");
 
-        //                     println!("New Free Space End: {slot_end_pointer}");
+                    // Write the bytes
+                    let _ = &bytes
+                        [self.header.free_space_start_offset.into()..slot_end_pointer.into()]
+                        .copy_from_slice(&slot);
 
-        //                     // Write the bytes
-        //                     let _ = &bytes[self.header.free_space_start_offset.into()
-        //                         ..slot_end_pointer.into()]
-        //                         .copy_from_slice(&slot_bytes);
+                    // Set the new start of free space
+                    self.header.free_space_start_offset = slot_end_pointer;
 
-        //                     // Set the new start of free space
-        //                     self.header.free_space_start_offset = slot_end_pointer;
+                    // Write the pointer
+                    let pointer = slot_end_pointer.to_be_bytes();
+                    let pointer_length = pointer.len() as u16;
+                    let pointer_start = (self.header.free_space_end_offset - pointer_length).into();
 
-        //                     // Write the pointer
-        //                     let pointer = slot_end_pointer.to_be_bytes();
-        //                     let pointer_length = pointer.len() as u16;
-        //                     let pointer_start =
-        //                         (self.header.free_space_end_offset - pointer_length).into();
+                    let _ = &bytes[pointer_start..self.header.free_space_end_offset.into()]
+                        .copy_from_slice(&pointer);
 
-        //                     let _ = &bytes[pointer_start..self.header.free_space_end_offset.into()]
-        //                         .copy_from_slice(&pointer);
+                    // Set the new end of the free space
+                    let free_space_end = self.header.free_space_end_offset - pointer_length;
+                    self.header.free_space_end_offset = free_space_end;
 
-        //                     // Set the new end of the free space
-        //                     let free_space_end = self.header.free_space_end_offset - pointer_length;
-        //                     self.header.free_space_end_offset = free_space_end;
+                    println!("New Free Space End: {free_space_end}");
+                }
 
-        //                     println!("New Free Space End: {free_space_end}");
-        //                 }
-        //                 Err(_) => todo!(),
-        //             }
-        //         }
-
-        //         Some(bytes)
-        //     }
-        //     Err(_) => None,
-        // }
+                Some(bytes)
+            }
+            Err(_) => None,
+        }
     }
 }
 
@@ -274,15 +263,12 @@ impl<'a> PageDecoder<'a> {
     }
 }
 
-// fn header_bincode_config() -> Configuration<BigEndian, Fixint> {
-//     bincode::config::standard()
-//         .with_fixed_int_encoding()
-//         .with_big_endian()
-// }
-
 #[cfg(test)]
 mod page_encoder_tests {
     use crate::*;
+    use deku::ctx::Endian;
+    use deku::prelude::*;
+    use master::FileInfo;
     use page::{PageEncoder, PageEncoderError, PageHeader};
 
     #[test]
@@ -380,28 +366,40 @@ mod page_encoder_tests {
         assert_eq!(encoder.header.total_allocated_bytes, expected_len);
     }
 
+    #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+    #[deku(endian = "big")]
+    struct TooBigForAPage {
+        #[deku(bytes = 2)]
+        len: u16,
+        // Page size (8192) - Header size (32) - slot index (2) - len field (2) + 1 to overflow = 8157
+        #[deku(bytes = 8157, count = "len")]
+        id: Vec<u8>,
+    }
+
     #[test]
     fn test_page_add_slot_fail() {
         let header = PageHeader::new(page::PageType::DatabaseInfo);
         let mut encoder = PageEncoder::new(header);
-        let slot = vec![0; (PAGE_SIZE_BYTES + 1) as usize];
 
-        let slot_result = encoder.add_slot(slot.clone());
+        let data = vec![0; 8157];
+        let len = data.len() as u16;
+        let slot = TooBigForAPage { id: data, len: len };
+
+        let slot_result = encoder.add_slot(slot);
 
         // Verify Result
         assert_eq!(slot_result.is_err(), true);
         assert_eq!(slot_result.err().unwrap(), PageEncoderError::NotEnoughSpace);
     }
 
-    #[test]
-    fn test_page_encoder_body() {
-        // let header = PageHeader::new(page::PageType::DatabaseInfo);
-        // let encoder_r = PageEncoder::new(header);
-        // let mut encoder = encoder_r.expect("Failed to build page encoder.");
+    // #[test]
+    // fn test_page_encoder_body() {
+    //     let header = PageHeader::new(page::PageType::DatabaseInfo);
+    //     let encoder = PageEncoder::new(header);
 
-        // let body = FileInfo::new(master::FileType::Primary);
-        // let _actual = encoder.body(&body);
+    //     let body = FileInfo::new(master::FileType::Primary);
+    //     let _actual = encoder.body(&body);
 
-        // // TODO: need to be able to read slots!
-    }
+    //     // TODO: need to be able to read slots!
+    // }
 }
