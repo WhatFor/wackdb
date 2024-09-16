@@ -77,9 +77,6 @@ pub struct DatabaseInfo {
 
     #[deku(bytes = 2)]
     database_id: u16,
-
-    #[deku(bytes = 2)]
-    created_date: u16,
 }
 
 impl DatabaseInfo {
@@ -92,8 +89,7 @@ impl DatabaseInfo {
             database_name_len: database_name.len() as u8,
             database_name: database_name.into_bytes(),
             database_version: version,
-            database_id: 0,  // TODO
-            created_date: 0, // TODO
+            database_id: 0, // TODO
         }
     }
 }
@@ -115,20 +111,22 @@ pub fn get_master_path() -> String {
 
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
 pub fn write_master_file_info_page(file: &std::fs::File) -> std::io::Result<()> {
-    let page = write_master_file_info_page_internal();
-    match page {
-        Ok(page_ok) => paging::write_page(&file, &page_ok, FILE_INFO_PAGE_INDEX),
+    let try_page = write_master_file_info_page_internal(SystemTime::now());
+    match try_page {
+        Ok(page) => paging::write_page(&file, &page, FILE_INFO_PAGE_INDEX),
         Err(_) => {
             todo!("handle error")
         }
     }
 }
 
-fn write_master_file_info_page_internal() -> Result<Vec<u8>, PageEncoderError> {
+fn write_master_file_info_page_internal(
+    created_date: SystemTime,
+) -> Result<Vec<u8>, PageEncoderError> {
     let header = PageHeader::new(PageType::FileInfo);
     let mut page = PageEncoder::new(header);
 
-    let body = FileInfo::new(crate::master::FileType::Primary, SystemTime::now());
+    let body = FileInfo::new(crate::master::FileType::Primary, created_date);
     page.add_slot(body)?;
 
     Ok(page.collect())
@@ -176,30 +174,6 @@ fn validate_master_file_info(bytes: Vec<u8>) -> Result<(), ValidationError> {
     }
 }
 
-// Once the file exists and we have a handle, we can write some header info.
-// The master.wak file is ultimately no different to any other database, it's just system managed and stores system info.
-// The master DB will contain things like a list of DBs, their schema info, (and in a 'real' db, which this is not,
-// stuff like auth, config, etc).
-// All data is stored in pages - regardless of if it's data rows or system info. So, we'd expect to write at least 1 page here.
-// Each page will also have a header, of a preset size (TBD).
-// I think all data pages will be slotted (seems sensible) but I don't know if system pages should be. Might as well for uniformity.
-// Though I'm not 100% sure how slotted pages work - if there's only 1 slot, how do we know when the slot ends (as cant assume it ends
-// at the next slot offset! UNLESS the offset is pointing to the END of the record. That'd be a super cute way to calc length too).
-// Slotted pages are cool cos they let us reclaim freed space in the page without breaking external references (like indexes) that
-// point to data on the page, as the slot indexes can be preserved (i.e. slot 1 remains slot 1, even if compacted and moved to a new offset).
-// The header can contain info about what's in the page, like a TYPE enum, an ID, a page checksum, etc.
-// Because ALL data is stored in pages, we'd probably just write a page of a certain type, that contains db info - a FILE_INFO page.
-
-// need to decide on the format of:
-//  a page header, as we're still writing a page here.
-//     - this will contain info about the page:
-//         - page id
-//         - header version
-//         - type
-//         - bit flags (CAN_COMPACT)
-//         - checksum
-//         - allocated slot count
-//         - info about allocated and free space in the file
 //  a FILE_INFO page type, as that's what we're going to write as page 0 on every file.
 //     - this will contain info about the file:
 //         - a magic string to represent wak
@@ -259,13 +233,27 @@ mod master_engine_tests {
         let end: usize = start + 9;
         let range = start..end;
 
-        let actual = &master::write_master_file_info_page_internal().expect("Failed")[range];
+        let now = SystemTime::now();
+        let file_info_page = master::write_master_file_info_page_internal(now).expect("Failed");
+        println!("file info page bytes: {:?}", file_info_page);
+        let actual = &file_info_page[range];
+
+        let time_bytes = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u16;
 
         let expected = vec![
-            0, 1, 6, 1, // Magic String
-            0, // File Type - Primary
-            0, 0, // Sector Size
-            0, 0, // Created at Date
+            // Magic String
+            0,
+            1,
+            6,
+            1,
+            // File Type - Primary
+            0,
+            0,
+            // Sector Size
+            0,
+            // Created Time
+            (time_bytes >> 8) as u8,
+            (time_bytes & 0xFF) as u8,
         ];
 
         assert_eq!(actual, expected);
@@ -273,7 +261,8 @@ mod master_engine_tests {
 
     #[test]
     fn test_validate_master_database() {
-        let page = master::write_master_file_info_page_internal().expect("Failed");
+        let now = SystemTime::now();
+        let page = master::write_master_file_info_page_internal(now).expect("Failed");
         let validate = master::validate_master_file_info(page);
 
         assert_eq!(validate.is_ok(), true);

@@ -41,7 +41,7 @@ pub struct PageHeader {
     checksum: u16,
 
     #[deku(bytes = 2)]
-    flags: u16,
+    flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
 
     #[deku(bytes = 2)]
     allocated_slot_count: u16,
@@ -134,8 +134,10 @@ impl PageEncoder {
                 self.header.allocated_slot_count += 1;
                 self.header.free_space -= length;
                 self.header.total_allocated_bytes += length;
-                self.header.free_space_start_offset += length;
-                self.header.free_space_end_offset -= SLOT_POINTER_SIZE;
+
+                // TODO: These are maintained during collect. Can't really maintain them here else we can't write
+                // self.header.free_space_start_offset += length;
+                // self.header.free_space_end_offset -= SLOT_POINTER_SIZE;
 
                 let pointer_index = self.header.allocated_slot_count - 1;
                 Ok(AddSlot { pointer_index })
@@ -166,23 +168,24 @@ impl PageEncoder {
     }
 
     fn collect_internal(&mut self) -> Option<Vec<u8>> {
-        let mut bytes = vec![0; crate::PAGE_SIZE_BYTES.into()];
+        let mut full_page_vec = vec![0; crate::PAGE_SIZE_BYTES.into()];
 
         let header_bytes = self.header.to_bytes();
 
         match header_bytes {
             Ok(header) => {
-                bytes.splice(0..PAGE_HEADER_SIZE_BYTES as usize, header);
+                // Write the header bytes into the page vec;
+                // We could specifically write 32 bytes (our header length), but that would mean
+                // we'd have to pad out the `header_bytes` from it's current size for no real win.
+                full_page_vec[0..header.len() as usize].copy_from_slice(&header);
 
                 for slot in &self.slots {
                     // Calculate the new start position of the free space,
                     // including the bytes we're writing
                     let slot_end_pointer = self.header.free_space_start_offset + slot.len() as u16;
 
-                    println!("New Free Space End: {slot_end_pointer}");
-
                     // Write the bytes
-                    let _ = &bytes
+                    let _ = &full_page_vec
                         [self.header.free_space_start_offset.into()..slot_end_pointer.into()]
                         .copy_from_slice(&slot);
 
@@ -194,17 +197,15 @@ impl PageEncoder {
                     let pointer_length = pointer.len() as u16;
                     let pointer_start = (self.header.free_space_end_offset - pointer_length).into();
 
-                    let _ = &bytes[pointer_start..self.header.free_space_end_offset.into()]
+                    let _ = &full_page_vec[pointer_start..self.header.free_space_end_offset.into()]
                         .copy_from_slice(&pointer);
 
                     // Set the new end of the free space
                     let free_space_end = self.header.free_space_end_offset - pointer_length;
                     self.header.free_space_end_offset = free_space_end;
-
-                    println!("New Free Space End: {free_space_end}");
                 }
 
-                Some(bytes)
+                Some(full_page_vec)
             }
             Err(_) => None,
         }
@@ -230,21 +231,11 @@ pub struct ChecksumResult {
 
 impl<'a> PageDecoder<'a> {
     pub fn from_bytes(bytes: &'a Vec<u8>) -> Self {
-        // let config = header_bincode_config();
+        let mut cursor = std::io::Cursor::new(bytes);
+        let mut reader = deku::reader::Reader::new(&mut cursor);
+        let header = PageHeader::from_reader_with_ctx(&mut reader, ()).unwrap();
 
-        let header_slice = &bytes[0..PAGE_HEADER_SIZE_BYTES.into()];
-        // let header_decode = bincode::decode_from_slice::<PageHeader, _>(header_slice, config);
-
-        // println!("{header_decode:?}");
-
-        // match header_decode {
-        //     Ok((header, _)) => PageDecoder { header, bytes },
-        //     Err(err) => {
-        //         // TODO
-        //         panic!("{err}")
-        //     }
-        // }
-        panic!("not done")
+        PageDecoder { header, bytes }
     }
 
     pub fn check(&self) -> ChecksumResult {
