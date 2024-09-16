@@ -1,11 +1,14 @@
+use std::time::SystemTime;
+
+use deku::ctx::Endian;
+use deku::prelude::*;
+
 use crate::{
-    page::{PageDecoder, PageEncoder, PageHeader, PageType},
+    page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageType},
     paging,
     server::CreateDatabaseError,
     util,
 };
-
-use bincode::{Decode, Encode};
 
 /// Master specific Consts
 const MASTER_NAME: &str = "master";
@@ -13,41 +16,44 @@ const MASTER_NAME: &str = "master";
 /// The constant page index of the FILE_INFO page.
 const FILE_INFO_PAGE_INDEX: u32 = 0;
 
-#[derive(Encode, Decode, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(
+    id_type = "u8",
+    endian = "endian",
+    ctx = "endian: deku::ctx::Endian",
+    ctx_default = "Endian::Big"
+)]
 pub enum FileType {
+    #[deku(id = 0)]
     Primary,
+    #[deku(id = 1)]
     Log,
 }
 
 /// Information describing a database file.
-#[derive(Encode, Decode, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
 pub struct FileInfo {
-    /// Offset: 0. Length: 1.
-    magic_string_0: u8,
-    /// Offset: 1. Length: 1.
-    magic_string_1: u8,
-    /// Offset: 2. Length: 1.
-    magic_string_2: u8,
-    /// Offset: 3. Length: 1.
-    magic_string_3: u8,
-    /// Offset: 4. Length: 1.
+    #[deku(bytes = 4)]
+    magic_string: [u8; 4],
+
+    #[deku]
     file_type: FileType,
-    /// Offset: 5. Length: 2.
+
+    #[deku(bytes = 2)]
     sector_size_bytes: u16,
-    /// Offset: 7. Length: 2.
+
+    #[deku(bytes = 2)]
     created_date_unix: u16,
 }
 
 impl FileInfo {
-    pub fn new(file_type: FileType) -> Self {
+    pub fn new(file_type: FileType, time: SystemTime) -> Self {
         FileInfo {
-            magic_string_0: b'0',
-            magic_string_1: b'1',
-            magic_string_2: b'6',
-            magic_string_3: b'1',
+            magic_string: [0, 1, 6, 1],
             file_type,
             sector_size_bytes: 0, // TODO: Find this value
-            created_date_unix: std::time::SystemTime::now()
+            created_date_unix: time
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as u16,
@@ -57,24 +63,33 @@ impl FileInfo {
 
 /// Information describing a database.
 /// There will only ever be one of these pages in a single file.
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
 pub struct DatabaseInfo {
-    /// Offset: 0. Length: 128.
-    database_name: String,
-    /// Offset: 128. Length: 1.
+    #[deku(bytes = 1)]
+    database_name_len: u8,
+
+    #[deku(bytes = 128, count = "database_name_len")]
+    database_name: Vec<u8>,
+
+    #[deku(bytes = 1)]
     database_version: u8,
-    /// Offset: 129. Length: 2.
+
+    #[deku(bytes = 2)]
     database_id: u16,
-    /// Offset: 131. Length: 1.
-    created_date: u8, // TODO: Type
 }
 
 impl DatabaseInfo {
     pub fn new(database_name: String, version: u8) -> Self {
+        if database_name.len() >= 256 {
+            panic!("db name too long");
+        }
+
         DatabaseInfo {
-            database_name,
+            database_name_len: database_name.len() as u8,
+            database_name: database_name.into_bytes(),
             database_version: version,
-            database_id: 0,  // TODO
-            created_date: 0, // TODO
+            database_id: 0, // TODO
         }
     }
 }
@@ -96,15 +111,25 @@ pub fn get_master_path() -> String {
 
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
 pub fn write_master_file_info_page(file: &std::fs::File) -> std::io::Result<()> {
+    let try_page = write_master_file_info_page_internal(SystemTime::now());
+    match try_page {
+        Ok(page) => paging::write_page(&file, &page, FILE_INFO_PAGE_INDEX),
+        Err(_) => {
+            todo!("handle error")
+        }
+    }
+}
+
+fn write_master_file_info_page_internal(
+    created_date: SystemTime,
+) -> Result<Vec<u8>, PageEncoderError> {
     let header = PageHeader::new(PageType::FileInfo);
     let mut page = PageEncoder::new(header);
 
-    // TODO: Write body - should use slots
-    //let body = FileInfo::new(crate::master::FileType::Primary);
-    //page.body(&body);
+    let body = FileInfo::new(crate::master::FileType::Primary, created_date);
+    page.add_slot(body)?;
 
-    let checked_page = page.collect();
-    paging::write_page(&file, &checked_page, FILE_INFO_PAGE_INDEX)
+    Ok(page.collect())
 }
 
 #[derive(Debug)]
@@ -130,16 +155,7 @@ pub fn validate_master_database() -> Result<(), ValidationError> {
             let file_info_page = paging::read_page(&file, FILE_INFO_PAGE_INDEX);
 
             match file_info_page {
-                Ok(page_bytes) => {
-                    let page = PageDecoder::from_bytes(&page_bytes);
-
-                    let checksum_pass = page.check();
-
-                    match checksum_pass.pass {
-                        true => Ok(()),
-                        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
-                    }
-                }
+                Ok(page_bytes) => validate_master_file_info(page_bytes),
                 Err(_) => Err(ValidationError::FailedToOpenFileInfo),
             }
         }
@@ -147,30 +163,17 @@ pub fn validate_master_database() -> Result<(), ValidationError> {
     }
 }
 
-// Once the file exists and we have a handle, we can write some header info.
-// The master.wak file is ultimately no different to any other database, it's just system managed and stores system info.
-// The master DB will contain things like a list of DBs, their schema info, (and in a 'real' db, which this is not,
-// stuff like auth, config, etc).
-// All data is stored in pages - regardless of if it's data rows or system info. So, we'd expect to write at least 1 page here.
-// Each page will also have a header, of a preset size (TBD).
-// I think all data pages will be slotted (seems sensible) but I don't know if system pages should be. Might as well for uniformity.
-// Though I'm not 100% sure how slotted pages work - if there's only 1 slot, how do we know when the slot ends (as cant assume it ends
-// at the next slot offset! UNLESS the offset is pointing to the END of the record. That'd be a super cute way to calc length too).
-// Slotted pages are cool cos they let us reclaim freed space in the page without breaking external references (like indexes) that
-// point to data on the page, as the slot indexes can be preserved (i.e. slot 1 remains slot 1, even if compacted and moved to a new offset).
-// The header can contain info about what's in the page, like a TYPE enum, an ID, a page checksum, etc.
-// Because ALL data is stored in pages, we'd probably just write a page of a certain type, that contains db info - a FILE_INFO page.
+fn validate_master_file_info(bytes: Vec<u8>) -> Result<(), ValidationError> {
+    let page = PageDecoder::from_bytes(&bytes);
 
-// need to decide on the format of:
-//  a page header, as we're still writing a page here.
-//     - this will contain info about the page:
-//         - page id
-//         - header version
-//         - type
-//         - bit flags (CAN_COMPACT)
-//         - checksum
-//         - allocated slot count
-//         - info about allocated and free space in the file
+    let checksum_pass = page.check();
+
+    match checksum_pass.pass {
+        true => Ok(()),
+        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
+    }
+}
+
 //  a FILE_INFO page type, as that's what we're going to write as page 0 on every file.
 //     - this will contain info about the file:
 //         - a magic string to represent wak
@@ -214,4 +217,125 @@ pub fn create_master_database() -> Result<(), CreateDatabaseError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod master_engine_tests {
+    use deku::DekuContainerWrite;
+    use master::{FileInfo, FileType};
+    use std::time::SystemTime;
+
+    use crate::*;
+
+    #[test]
+    fn test_write_master_page_file_info() {
+        let start: usize = PAGE_HEADER_SIZE_BYTES.into();
+        let end: usize = start + 9;
+        let range = start..end;
+
+        let now = SystemTime::now();
+        let file_info_page = master::write_master_file_info_page_internal(now).expect("Failed");
+        println!("file info page bytes: {:?}", file_info_page);
+        let actual = &file_info_page[range];
+
+        let time_bytes = now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u16;
+
+        let expected = vec![
+            // Magic String
+            0,
+            1,
+            6,
+            1,
+            // File Type - Primary
+            0,
+            0,
+            // Sector Size
+            0,
+            // Created Time
+            (time_bytes >> 8) as u8,
+            (time_bytes & 0xFF) as u8,
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_validate_master_database() {
+        let now = SystemTime::now();
+        let page = master::write_master_file_info_page_internal(now).expect("Failed");
+        let validate = master::validate_master_file_info(page);
+
+        assert_eq!(validate.is_ok(), true);
+    }
+
+    #[test]
+    fn test_read_write_binary_filetype_primary() {
+        let file_type = FileType::Primary;
+        let bytes = file_type.to_bytes().unwrap();
+
+        assert_eq!(bytes, [0]);
+    }
+
+    #[test]
+    fn test_read_write_binary_filetype_log() {
+        let file_type = FileType::Log;
+        let bytes = file_type.to_bytes().unwrap();
+
+        assert_eq!(bytes, [1]);
+    }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_primary() {
+        // continue writing this test - trying to get deku to serialise FileInfo.
+        let time = SystemTime::now();
+        let file_info = FileInfo::new(FileType::Primary, time);
+        let bytes = file_info.to_bytes().unwrap();
+
+        let time_bytes = time
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u16;
+
+        let expected = vec![
+            // Magic string
+            0,
+            1,
+            6,
+            1,
+            // File Type
+            0,
+            0,
+            // Sector Size
+            0,
+            // Date Created
+            (time_bytes >> 8) as u8,
+            (time_bytes & 0xFF) as u8,
+        ];
+
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_log() {
+        let time = SystemTime::now();
+        let file_info = FileInfo::new(FileType::Log, time);
+        let bytes = file_info.to_bytes().unwrap();
+
+        let time_bytes = time
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u16;
+
+        let time_l = (time_bytes >> 8) as u8;
+        let time_h = (time_bytes & 0xFF) as u8;
+
+        let expected = vec![
+            0, 1, 6, 1, // Magic string
+            1, // File Type
+            0, 0, // Sector Size
+            time_l, time_h, // Created
+        ];
+
+        assert_eq!(bytes, expected);
+    }
 }

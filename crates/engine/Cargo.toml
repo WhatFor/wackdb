@@ -2,10 +2,13 @@
 name = "engine"
 version = "0.1.0"
 edition = "2021"
+resolver = "2"
 
 [dependencies]
 parser = { path = "../parser" }
 cli_common = { path = "../cli_common" }
-bincode = "2.0.0-rc.3"
+macros = { path = "../macros" }
+deku = "0.18"
+hexlit = "0.5.5"
 crc = "3.2.1"
 uuid = { version = "1.9.1", features = [ "v4" ]}
