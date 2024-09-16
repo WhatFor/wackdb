@@ -35,9 +35,23 @@ pub fn ensure_system_databases_initialised() {
         Ok(_) => {
             println!("Master database validated successfully.");
         }
-        Err(err) => {
-            panic!("Failed to validate master database. Err: {err:?}");
-        }
+        Err(err) => match err {
+            master::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
+                println!(
+                    "ERR: Checksum failed. Expected: {:?}. Actual: {:?}.",
+                    checksum_result.expected, checksum_result.actual
+                )
+            }
+            master::ValidationError::FileNotExists => {
+                println!("File does not exist.")
+            }
+            master::ValidationError::FailedToOpenFile(err) => {
+                println!("Failed to open file: {:?}", err)
+            }
+            master::ValidationError::FailedToOpenFileInfo => {
+                println!("Failed to open file_info")
+            }
+        },
     }
 }
 

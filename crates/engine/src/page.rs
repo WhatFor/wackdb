@@ -107,6 +107,7 @@ impl PageEncoder {
         self.header.free_space >= (len + SLOT_POINTER_SIZE)
     }
 
+    #[allow(dead_code)] // Used for testing
     pub fn add_slot_bytes(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
         self.add_slot_internal(slot)
     }
@@ -118,7 +119,16 @@ impl PageEncoder {
         let bytes = slot.to_bytes();
 
         match bytes {
-            Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
+            Ok(bytes_ok) => {
+                let add_slot = self.add_slot_internal(bytes_ok);
+
+                match &add_slot {
+                    Ok(ok) => println!("Added slot. Index: {:?}", ok.pointer_index),
+                    Err(_) => {}
+                }
+
+                add_slot
+            }
             Err(_) => Err(PageEncoderError::FailedToSerialise),
         }
     }
@@ -235,6 +245,15 @@ impl<'a> PageDecoder<'a> {
         let mut reader = deku::reader::Reader::new(&mut cursor);
         let header = PageHeader::from_reader_with_ctx(&mut reader, ()).unwrap();
 
+        println!("DBG: Loaded page from bytes.");
+        println!("   |      Page Type: {:?}", header.page_type);
+        println!("   |        Page ID: {:?}", header.page_id);
+        println!("   | Header version: {:?}", header.header_version);
+        println!("   |     Free space: {:?} bytes", header.free_space);
+        println!("   |          Flags: {:?}", header.flags);
+        println!("   |       Checksum: {:?}", header.checksum);
+        println!("   |   Alloc. slots: {:?}", header.allocated_slot_count);
+
         PageDecoder { header, bytes }
     }
 
@@ -257,9 +276,7 @@ impl<'a> PageDecoder<'a> {
 #[cfg(test)]
 mod page_encoder_tests {
     use crate::*;
-    use deku::ctx::Endian;
     use deku::prelude::*;
-    use master::FileInfo;
     use page::{PageEncoder, PageEncoderError, PageHeader};
 
     #[test]

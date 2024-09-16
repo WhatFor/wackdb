@@ -174,28 +174,6 @@ fn validate_master_file_info(bytes: Vec<u8>) -> Result<(), ValidationError> {
     }
 }
 
-//  a FILE_INFO page type, as that's what we're going to write as page 0 on every file.
-//     - this will contain info about the file:
-//         - a magic string to represent wak
-//         - file id (maybe not needed?)
-//         - file type (data file or log file)
-//         - file flags (not sure what kinda flags we want, but)
-//         - sector size (might be handy for optimising I/O)
-//         - created date
-//         - whatever else might relate to a FILE
-//  a DB_INFO page type that exists at the start of every DB file at page 1.
-//     - this will contain info about the database:
-//         - database name (128 bytes, string)
-//         - version (2 bytes, u16)
-//         - database id (2 bytes, u16)
-//         - created date (no idea)
-// All of this will be a certain offsets, e.g. a page header will always be the same size and contain
-// the same data in the same memory locations of the page. A FILE_INFO page will always exist in the
-// same page location (page 0) of a file, and after the header contain a structure similar to a page
-// header - the same values in the same locations every time. The same for the DB_INFO page type.
-// Because we can assume that a master db file will always exist, and always have the same content,
-// this is where we're going to store loooots of info about the system.
-
 /// Create a new master database
 pub fn create_master_database() -> Result<(), CreateDatabaseError> {
     let master_path = get_master_path();
