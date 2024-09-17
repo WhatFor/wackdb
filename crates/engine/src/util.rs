@@ -1,3 +1,5 @@
+use std::fs::canonicalize;
+
 pub fn file_exists(path: &String) -> bool {
     let path_obj = std::path::Path::new(&path);
 
@@ -101,11 +103,11 @@ mod util_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
     fn test_ensure_path_exists() {
         let mut temp_dir = temp_dir();
-        temp_dir.push("/test");
+        temp_dir.push("test.file");
 
+        println!("{:?}", temp_dir);
         ensure_path_exists(&temp_dir);
 
         // Clean down
