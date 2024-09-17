@@ -13,8 +13,13 @@ use crate::{
 /// Master specific Consts
 const MASTER_NAME: &str = "master";
 
+pub const CURRENT_DATABASE_VERSION: u8 = 1;
+
 /// The constant page index of the FILE_INFO page.
 const FILE_INFO_PAGE_INDEX: u32 = 0;
+
+/// The constant page index of the DATABASE_INFO page.
+const DATABASE_INFO_PAGE_INDEX: u32 = 1;
 
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
 #[deku(
@@ -136,6 +141,27 @@ fn write_master_file_info_page_internal(
     Ok(page.collect())
 }
 
+/// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
+pub fn write_master_database_info_page(file: &std::fs::File) -> std::io::Result<()> {
+    let try_page = write_master_database_info_page_internal();
+    match try_page {
+        Ok(page) => paging::write_page(&file, &page, DATABASE_INFO_PAGE_INDEX),
+        Err(_) => {
+            todo!("handle error")
+        }
+    }
+}
+
+fn write_master_database_info_page_internal() -> Result<Vec<u8>, PageEncoderError> {
+    let header = PageHeader::new(PageType::DatabaseInfo);
+    let mut page = PageEncoder::new(header);
+
+    let body = DatabaseInfo::new(String::from(MASTER_NAME), CURRENT_DATABASE_VERSION);
+    page.add_slot(body)?;
+
+    Ok(page.collect())
+}
+
 #[derive(Debug)]
 pub enum ValidationError {
     FileNotExists,
@@ -194,6 +220,16 @@ pub fn create_master_database() -> Result<(), CreateDatabaseError> {
 
     match file_info_page_write {
         Ok(_) => println!("Wrote FILE_INFO page."),
+        Err(err) => {
+            return Err(CreateDatabaseError::UnableToWrite(err));
+        }
+    }
+
+    // Write DATABASE_INFO Page
+    let database_info_page_write = write_master_database_info_page(&file);
+
+    match database_info_page_write {
+        Ok(_) => println!("Wrote DATABASE_INFO page."),
         Err(err) => {
             return Err(CreateDatabaseError::UnableToWrite(err));
         }
