@@ -109,7 +109,6 @@ pub fn get_master_path() -> PathBuf {
     let file_name = MASTER_NAME.to_owned() + crate::DATA_FILE_EXT;
     
     std::path::PathBuf::push(&mut data_path, file_name);
-    println!("{:?}", data_path);
 
     data_path
 }
