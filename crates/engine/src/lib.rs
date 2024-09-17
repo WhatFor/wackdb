@@ -13,7 +13,7 @@ pub const DATA_FILE_EXT: &str = ".wak";
 pub const LOG_FILE_EXT: &str = ".wal";
 pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
 pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
-pub const WACK_DIRECTORY: &str = "data\\"; // TODO: Hardcoded for now. See /docs/assumptions.
+pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 pub struct Engine {}
 

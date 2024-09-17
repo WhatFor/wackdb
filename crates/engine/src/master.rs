@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{path::PathBuf, time::SystemTime};
 
 use deku::ctx::Endian;
 use deku::prelude::*;
@@ -102,11 +102,16 @@ pub fn master_database_exists() -> bool {
 
 /// Get the path to the master database.
 /// Equal to: base + data directory + 'master.wak'
-pub fn get_master_path() -> String {
+pub fn get_master_path() -> PathBuf {
     let base_path = util::get_base_path();
-    let data_path = std::path::Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+    let mut data_path = std::path::Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
 
-    String::from(data_path.to_str().unwrap()) + MASTER_NAME + crate::DATA_FILE_EXT
+    let file_name = MASTER_NAME.to_owned() + crate::DATA_FILE_EXT;
+    
+    std::path::PathBuf::push(&mut data_path, file_name);
+    println!("{:?}", data_path);
+
+    data_path
 }
 
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
@@ -182,6 +187,7 @@ pub fn create_master_database() -> Result<(), CreateDatabaseError> {
         panic!("Master database file exists");
     }
 
+    util::ensure_path_exists(&master_path);
     let file = util::create_file(&master_path)?;
 
     // Write FILE_INFO Page

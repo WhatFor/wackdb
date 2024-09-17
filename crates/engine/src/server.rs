@@ -1,6 +1,6 @@
 use crate::{master, util};
 use parser::ast::CreateDatabaseBody;
-use std::{io::Error, path::Path};
+use std::{io::Error, path::{Path, PathBuf}};
 
 #[derive(Debug)]
 pub enum CreateDatabaseError {
@@ -65,20 +65,22 @@ pub fn create_user_database(
 
     util::ensure_path_exists(&data_path);
 
-    let data_file = String::from(data_path.to_str().unwrap())
-        + &create_database_statement.database_name.value
+    let data_file_name = create_database_statement.database_name.value.to_owned()
         + crate::DATA_FILE_EXT;
 
+    let data_file = Path::join(&data_path, &data_file_name);
+
     if util::file_exists(&data_file) {
-        return Err(CreateDatabaseError::DatabaseExists(data_file.to_string()));
+        return Err(CreateDatabaseError::DatabaseExists(data_file.to_str().unwrap_or_default().to_string()));
     }
 
-    let log_file = String::from(data_path.to_str().unwrap())
-        + &create_database_statement.database_name.value
+    let log_file_name = create_database_statement.database_name.value.to_owned()
         + crate::LOG_FILE_EXT;
 
+    let log_file = Path::join(&data_path, &log_file_name);
+
     if util::file_exists(&log_file) {
-        return Err(CreateDatabaseError::DatabaseExists(log_file.to_string()));
+        return Err(CreateDatabaseError::DatabaseExists(log_file.to_str().unwrap_or_default().to_string()));
     }
 
     let _data_file_result = initialise_data_file(&data_file)?;
@@ -88,13 +90,13 @@ pub fn create_user_database(
 }
 
 /// Initialise a data file, e.g. `my_database.wak`.
-fn initialise_data_file(path: &String) -> Result<(), CreateDatabaseError> {
+fn initialise_data_file(path: &PathBuf) -> Result<(), CreateDatabaseError> {
     let _file = util::create_file(&path)?;
     Ok(())
 }
 
 /// Initialise a WAL file, e.g. `my_database.wal`.
-fn initialise_log_file(path: &String) -> Result<(), CreateDatabaseError> {
+fn initialise_log_file(path: &PathBuf) -> Result<(), CreateDatabaseError> {
     let _file = util::create_file(&path)?;
     Ok(())
 }

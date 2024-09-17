@@ -1,22 +1,26 @@
-use std::fs::canonicalize;
+use std::path::{Path, PathBuf};
 
-pub fn file_exists(path: &String) -> bool {
-    let path_obj = std::path::Path::new(&path);
+pub fn file_exists(path: &PathBuf) -> bool {
 
-    match std::path::Path::try_exists(path_obj) {
+    match Path::try_exists(path) {
         Ok(exists) => exists,
         Err(err) => panic!("Error: Unable to read filesystem. See: {}", err),
     }
 }
 
 pub fn ensure_path_exists(path: &std::path::PathBuf) {
-    match std::fs::create_dir_all(path) {
+    let dir = match path.is_dir() {
+        true => path,
+        false => path.parent().unwrap(),
+    };
+
+    match std::fs::create_dir_all(dir) {
         Err(err) => panic!("Error: Unable to write filesystem. See: {}", err),
         _ => {}
     }
 }
 
-pub fn create_file(path: &String) -> Result<std::fs::File, crate::CreateDatabaseError> {
+pub fn create_file(path: &PathBuf) -> Result<std::fs::File, crate::CreateDatabaseError> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -31,7 +35,7 @@ pub fn create_file(path: &String) -> Result<std::fs::File, crate::CreateDatabase
     }
 }
 
-pub fn open_file(path: &String) -> Result<std::fs::File, std::io::Error> {
+pub fn open_file(path: &PathBuf) -> Result<std::fs::File, std::io::Error> {
     std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -84,8 +88,7 @@ mod util_tests {
     #[test]
     fn test_file_exists_when_true() {
         let (_, temp_path) = get_temp_file();
-
-        let actual = file_exists(&temp_path.to_str().unwrap().to_string());
+        let actual = file_exists(&temp_path);
 
         assert_eq!(actual, true);
 
@@ -96,8 +99,7 @@ mod util_tests {
     #[test]
     fn test_file_exists_when_false() {
         let temp_path = temp_dir_path();
-
-        let actual = file_exists(&temp_path.to_str().unwrap().to_string());
+        let actual = file_exists(&temp_path);
 
         assert_eq!(actual, false);
     }
@@ -109,27 +111,19 @@ mod util_tests {
 
         println!("{:?}", temp_dir);
         ensure_path_exists(&temp_dir);
-
-        // Clean down
-        std::fs::remove_dir(temp_dir).expect("Unable to clear down test.");
     }
 
     #[test]
     fn test_create_file() {
         let temp_path = temp_dir_path();
-
-        let actual = create_file(&temp_path.to_str().unwrap().to_string());
+        let actual = create_file(&temp_path);
 
         assert_eq!(actual.is_ok(), true);
 
-        // Should be writable
-        assert_eq!(
-            actual.unwrap().metadata().unwrap().permissions().readonly(),
-            false
-        );
+        let is_readonly = actual.unwrap().metadata().unwrap().permissions().readonly();
 
-        // Clean down
-        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
+        // Should be writable
+        assert_eq!(is_readonly, false);
     }
 
     #[test]
@@ -137,21 +131,16 @@ mod util_tests {
         let temp_path = temp_dir_path();
 
         {
-            create_file(&temp_path.to_str().unwrap().to_string())
+            create_file(&temp_path)
                 .expect("Unable to create test file.");
         }
 
-        let actual = open_file(&temp_path.to_str().unwrap().to_string());
+        let actual = open_file(&temp_path);
 
         assert_eq!(actual.is_ok(), true);
+        let is_readonly = actual.unwrap().metadata().unwrap().permissions().readonly();
 
         // Should be writable
-        assert_eq!(
-            actual.unwrap().metadata().unwrap().permissions().readonly(),
-            false
-        );
-
-        // Clean down
-        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
+        assert_eq!(is_readonly, false);
     }
 }
