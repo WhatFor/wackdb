@@ -3,8 +3,8 @@ use parser::ast::{Program, ServerStatement, UserStatement};
 
 use page_cache::PageCache;
 
+mod db;
 mod lru;
-mod master;
 mod page;
 mod page_cache;
 mod persistence;
@@ -15,6 +15,7 @@ use server::CreateDatabaseError;
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = ".wak";
 pub const LOG_FILE_EXT: &str = ".wal";
+pub const CURRENT_DATABASE_VERSION: u8 = 1;
 
 //pub const PAGE_CACHE_CAPACITY: usize = 131_072; // 1GB
 pub const PAGE_CACHE_CAPACITY: usize = 10; // Test

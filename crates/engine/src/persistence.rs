@@ -1,6 +1,50 @@
-use std::io::{Read, Seek, Write};
+use std::{
+    fs::File,
+    io::{Read, Seek, Write},
+    path::{Path, PathBuf},
+};
 
-use crate::page_cache::PageBytes;
+use crate::{db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util};
+
+// Returns true if the given file exists
+pub fn check_db_exists(db_name: &str, file_type: FileType) -> bool {
+    let path = get_db_path(db_name, file_type);
+    util::file_exists(&path)
+}
+
+/// Create a database file, empty.
+pub fn create_db_file_empty(
+    db_name: &str,
+    file_type: FileType,
+) -> Result<File, CreateDatabaseError> {
+    let master_path = get_db_path(db_name, file_type);
+
+    if util::file_exists(&master_path) {
+        return core::result::Result::Err(CreateDatabaseError::DatabaseExists(String::from(
+            "Database exists",
+        )));
+    }
+
+    util::ensure_path_exists(&master_path);
+
+    util::create_file(&master_path)
+}
+
+// Get a PathBuf to a file with the given name and extension
+pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
+    let ext = match file_type {
+        FileType::Primary => crate::DATA_FILE_EXT,
+        FileType::Log => crate::LOG_FILE_EXT,
+    };
+
+    let base_path = util::get_base_path();
+    let mut data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+
+    let file_name = db_name.to_owned() + ext;
+    PathBuf::push(&mut data_path, file_name);
+
+    data_path
+}
 
 /// Seek to a specific page index in the file and write the given data
 pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std::io::Result<()> {

@@ -1,102 +1,70 @@
-use crate::{master, util};
+use crate::{
+    db::{self, FileType},
+    page::PageEncoderError,
+    persistence,
+};
 use parser::ast::CreateDatabaseBody;
-use std::{io::Error, path::{Path, PathBuf}};
+
+const MASTER_NAME: &str = "master";
 
 #[derive(Debug)]
 pub enum CreateDatabaseError {
     DatabaseExists(String),
-    UnableToCreateFile(Error),
-    UnableToWrite(Error),
+    UnableToCreateFile(std::io::Error),
+    UnableToWrite(PageEncoderError),
 }
 
 pub fn ensure_system_databases_initialised() {
-    let master_exists = master::master_database_exists();
+    let _master_create = create_database(MASTER_NAME);
+}
 
-    match master_exists {
-        true => println!("Master database exists."),
-        false => {
-            println!("Creating master database...");
-            let master_db_create_result = master::create_master_database();
+pub fn create_user_database(
+    create_database_statement: &CreateDatabaseBody,
+) -> Result<(), CreateDatabaseError> {
+    let db_name = create_database_statement.database_name.value.as_str();
 
-            match master_db_create_result {
-                Ok(_) => {
-                    println!("Master database created successfully.");
-                }
-                Err(err) => {
-                    panic!("Failed to create master database. Error: {err:?}");
-                }
-            }
-        }
+    create_database(db_name)
+}
+
+pub fn create_database(db_name: &str) -> Result<(), CreateDatabaseError> {
+    let data_exists = persistence::check_db_exists(db_name, FileType::Primary);
+    let log_exists = persistence::check_db_exists(db_name, FileType::Log);
+
+    if data_exists || log_exists {
+        return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)));
     }
 
-    let master_validate = master::validate_master_database();
+    let _datafile = db::create_db_data_file(db_name)?;
+    let _logfile = db::create_db_log_file(db_name)?;
 
-    match master_validate {
+    print_database_validation(db_name);
+
+    return Ok(());
+}
+
+fn print_database_validation(db_name: &str) {
+    let validation_result = db::validate_db_data_file(db_name);
+
+    match validation_result {
         Ok(_) => {
-            println!("Master database validated successfully.");
+            println!("Database validated successfully.");
         }
         Err(err) => match err {
-            master::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
+            db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
                 println!(
                     "ERR: Checksum failed. Expected: {:?}. Actual: {:?}.",
                     checksum_result.expected, checksum_result.actual
                 )
             }
-            master::ValidationError::FileNotExists => {
+            db::ValidationError::FileNotExists => {
                 println!("File does not exist.")
             }
-            master::ValidationError::FailedToOpenFile(err) => {
+            db::ValidationError::FailedToOpenFile(err) => {
                 println!("Failed to open file: {:?}", err)
             }
-            master::ValidationError::FailedToOpenFileInfo => {
+            db::ValidationError::FailedToOpenFileInfo => {
                 println!("Failed to open file_info")
             }
         },
     }
-}
-
-/// Create a new user database.
-/// This process will create both a data file (.wak) and a log file (.wal), if needed.
-pub fn create_user_database(
-    create_database_statement: &CreateDatabaseBody,
-) -> Result<(), CreateDatabaseError> {
-    let base_path = util::get_base_path();
-    let data_path = Path::join(&base_path, Path::new(crate::WACK_DIRECTORY));
-
-    util::ensure_path_exists(&data_path);
-
-    let data_file_name = create_database_statement.database_name.value.to_owned()
-        + crate::DATA_FILE_EXT;
-
-    let data_file = Path::join(&data_path, &data_file_name);
-
-    if util::file_exists(&data_file) {
-        return Err(CreateDatabaseError::DatabaseExists(data_file.to_str().unwrap_or_default().to_string()));
-    }
-
-    let log_file_name = create_database_statement.database_name.value.to_owned()
-        + crate::LOG_FILE_EXT;
-
-    let log_file = Path::join(&data_path, &log_file_name);
-
-    if util::file_exists(&log_file) {
-        return Err(CreateDatabaseError::DatabaseExists(log_file.to_str().unwrap_or_default().to_string()));
-    }
-
-    let _data_file_result = initialise_data_file(&data_file)?;
-    let _log_file_result = initialise_log_file(&log_file)?;
-
-    Ok(())
-}
-
-/// Initialise a data file, e.g. `my_database.wak`.
-fn initialise_data_file(path: &PathBuf) -> Result<(), CreateDatabaseError> {
-    let _file = util::create_file(&path)?;
-    Ok(())
-}
-
-/// Initialise a WAL file, e.g. `my_database.wal`.
-fn initialise_log_file(path: &PathBuf) -> Result<(), CreateDatabaseError> {
-    let _file = util::create_file(&path)?;
-    Ok(())
 }

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use deku::ctx::Endian;
 use deku::prelude::*;
 
@@ -86,7 +88,25 @@ pub struct PageEncoder {
 #[derive(Debug, PartialEq)]
 pub enum PageEncoderError {
     NotEnoughSpace,
-    FailedToSerialise,
+    FailedToSerialise(DekuError),
+}
+
+impl fmt::Display for PageEncoderError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PageEncoderError::FailedToSerialise(e) => write!(f, "Failed to serialise: {}", e),
+            PageEncoderError::NotEnoughSpace => write!(f, "Not enough space"),
+        }
+    }
+}
+
+impl std::error::Error for PageEncoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            PageEncoderError::FailedToSerialise(e) => Some(e),
+            PageEncoderError::NotEnoughSpace => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -129,7 +149,7 @@ impl PageEncoder {
 
                 add_slot
             }
-            Err(_) => Err(PageEncoderError::FailedToSerialise),
+            Err(e) => Err(PageEncoderError::FailedToSerialise(e)),
         }
     }
 

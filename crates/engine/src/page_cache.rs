@@ -1,4 +1,4 @@
-use crate::{lru::LRUCache, persistence};
+use crate::lru::LRUCache;
 
 pub type PageBytes = [u8; 8192];
 
@@ -19,15 +19,17 @@ impl<'a> PageCache {
         match page {
             Some(_) => page,
             None => {
-                let disk_page = persistence::read_page(file, page_index);
+                // TODO: need to figure out how to get page handle
+                None
+                // let disk_page = persistence::read_page(file, page_index);
 
-                match disk_page {
-                    Ok(disk_page_ok) => {
-                        self.put_page(page_index, disk_page_ok);
-                        Some(&disk_page_ok)
-                    }
-                    Err(_err) => None,
-                }
+                // match disk_page {
+                //     Ok(disk_page_ok) => {
+                //         self.put_page(page_index, disk_page_ok);
+                //         Some(&disk_page_ok)
+                //     }
+                //     Err(_err) => None,
+                // }
             }
         }
     }
