@@ -1,5 +1,7 @@
 use std::io::{Read, Seek, Write};
 
+use crate::page_cache::PageBytes;
+
 /// Seek to a specific page index in the file and write the given data
 pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std::io::Result<()> {
     seek_page_index(file, page_index)?;
@@ -7,10 +9,10 @@ pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std
 }
 
 /// Seek to a specific page index in the file and read the entire page
-pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<Vec<u8>> {
+pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<PageBytes> {
     seek_page_index(file, page_index)?;
 
-    let mut buf = vec![0; crate::PAGE_SIZE_BYTES_USIZE];
+    let mut buf = [0; crate::PAGE_SIZE_BYTES_USIZE];
     file.read_exact(&mut buf)?;
 
     Ok(buf)
@@ -32,10 +34,10 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> std::io::Re
 }
 
 #[cfg(test)]
-mod paging_tests {
+mod persistence_tests {
     use crate::*;
 
-    use paging::{read_page, write_page};
+    use persistence::{read_page, write_page};
     use std::{
         env::temp_dir,
         fs::{File, OpenOptions},

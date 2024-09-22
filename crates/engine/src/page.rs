@@ -1,7 +1,7 @@
 use deku::ctx::Endian;
 use deku::prelude::*;
 
-use crate::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
+use crate::{page_cache::PageBytes, PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
 
 /// The max, current version number for the Page Header record
 pub const CURRENT_HEADER_VERSION: u8 = 1;
@@ -159,7 +159,7 @@ impl PageEncoder {
     /// Complete operations on the page and fetch the bytes.
     /// Computes the page hash.
     /// No other operations should be performed on the page after this function is called!
-    pub fn collect(&mut self) -> Vec<u8> {
+    pub fn collect(&mut self) -> PageBytes {
         let try_collect = self.collect_internal();
 
         match try_collect {
@@ -177,8 +177,8 @@ impl PageEncoder {
         }
     }
 
-    fn collect_internal(&mut self) -> Option<Vec<u8>> {
-        let mut full_page_vec = vec![0; crate::PAGE_SIZE_BYTES.into()];
+    fn collect_internal(&mut self) -> Option<PageBytes> {
+        let mut full_page_vec = [0; crate::PAGE_SIZE_BYTES_USIZE];
 
         let header_bytes = self.header.to_bytes();
 
@@ -228,7 +228,7 @@ fn check(bytes: &[u8]) -> [u8; 2] {
 }
 
 pub struct PageDecoder<'a> {
-    bytes: &'a Vec<u8>,
+    bytes: &'a PageBytes,
     header: PageHeader,
 }
 
@@ -240,7 +240,7 @@ pub struct ChecksumResult {
 }
 
 impl<'a> PageDecoder<'a> {
-    pub fn from_bytes(bytes: &'a Vec<u8>) -> Self {
+    pub fn from_bytes(bytes: &'a PageBytes) -> Self {
         let mut cursor = std::io::Cursor::new(bytes);
         let mut reader = deku::reader::Reader::new(&mut cursor);
         let header = PageHeader::from_reader_with_ctx(&mut reader, ()).unwrap();

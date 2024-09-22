@@ -7,7 +7,7 @@ mod lru;
 mod master;
 mod page;
 mod page_cache;
-mod paging;
+mod persistence;
 mod server;
 mod util;
 use server::CreateDatabaseError;

@@ -5,7 +5,8 @@ use deku::prelude::*;
 
 use crate::{
     page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageType},
-    paging,
+    page_cache::PageBytes,
+    persistence,
     server::CreateDatabaseError,
     util,
 };
@@ -109,10 +110,11 @@ pub fn master_database_exists() -> bool {
 /// Equal to: base + data directory + 'master.wak'
 pub fn get_master_path() -> PathBuf {
     let base_path = util::get_base_path();
-    let mut data_path = std::path::Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+    let mut data_path =
+        std::path::Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
 
     let file_name = MASTER_NAME.to_owned() + crate::DATA_FILE_EXT;
-    
+
     std::path::PathBuf::push(&mut data_path, file_name);
 
     data_path
@@ -122,7 +124,7 @@ pub fn get_master_path() -> PathBuf {
 pub fn write_master_file_info_page(file: &std::fs::File) -> std::io::Result<()> {
     let try_page = write_master_file_info_page_internal(SystemTime::now());
     match try_page {
-        Ok(page) => paging::write_page(&file, &page, FILE_INFO_PAGE_INDEX),
+        Ok(page) => persistence::write_page(&file, &page, FILE_INFO_PAGE_INDEX),
         Err(_) => {
             todo!("handle error")
         }
@@ -131,7 +133,7 @@ pub fn write_master_file_info_page(file: &std::fs::File) -> std::io::Result<()> 
 
 fn write_master_file_info_page_internal(
     created_date: SystemTime,
-) -> Result<Vec<u8>, PageEncoderError> {
+) -> Result<PageBytes, PageEncoderError> {
     let header = PageHeader::new(PageType::FileInfo);
     let mut page = PageEncoder::new(header);
 
@@ -145,14 +147,14 @@ fn write_master_file_info_page_internal(
 pub fn write_master_database_info_page(file: &std::fs::File) -> std::io::Result<()> {
     let try_page = write_master_database_info_page_internal();
     match try_page {
-        Ok(page) => paging::write_page(&file, &page, DATABASE_INFO_PAGE_INDEX),
+        Ok(page) => persistence::write_page(&file, &page, DATABASE_INFO_PAGE_INDEX),
         Err(_) => {
             todo!("handle error")
         }
     }
 }
 
-fn write_master_database_info_page_internal() -> Result<Vec<u8>, PageEncoderError> {
+fn write_master_database_info_page_internal() -> Result<PageBytes, PageEncoderError> {
     let header = PageHeader::new(PageType::DatabaseInfo);
     let mut page = PageEncoder::new(header);
 
@@ -182,10 +184,10 @@ pub fn validate_master_database() -> Result<(), ValidationError> {
 
     match open_file {
         Ok(file) => {
-            let file_info_page = paging::read_page(&file, FILE_INFO_PAGE_INDEX);
+            let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX);
 
             match file_info_page {
-                Ok(page_bytes) => validate_master_file_info(page_bytes),
+                Ok(page_bytes) => validate_master_file_info(&page_bytes),
                 Err(_) => Err(ValidationError::FailedToOpenFileInfo),
             }
         }
@@ -193,8 +195,8 @@ pub fn validate_master_database() -> Result<(), ValidationError> {
     }
 }
 
-fn validate_master_file_info(bytes: Vec<u8>) -> Result<(), ValidationError> {
-    let page = PageDecoder::from_bytes(&bytes);
+fn validate_master_file_info(bytes: &PageBytes) -> Result<(), ValidationError> {
+    let page = PageDecoder::from_bytes(bytes);
 
     let checksum_pass = page.check();
 
@@ -282,7 +284,7 @@ mod master_engine_tests {
     fn test_validate_master_database() {
         let now = SystemTime::now();
         let page = master::write_master_file_info_page_internal(now).expect("Failed");
-        let validate = master::validate_master_file_info(page);
+        let validate = master::validate_master_file_info(&page);
 
         assert_eq!(validate.is_ok(), true);
     }
