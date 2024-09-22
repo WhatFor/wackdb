@@ -10,7 +10,7 @@ pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std
 pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<Vec<u8>> {
     seek_page_index(file, page_index)?;
 
-    let mut buf: Vec<u8> = vec![0; crate::PAGE_SIZE_BYTES.into()];
+    let mut buf = vec![0; crate::PAGE_SIZE_BYTES_USIZE];
     file.read_exact(&mut buf)?;
 
     Ok(buf)

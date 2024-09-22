@@ -1,8 +1,12 @@
 use cli_common::ExecuteError;
 use parser::ast::{Program, ServerStatement, UserStatement};
 
+use page_cache::PageCache;
+
+mod lru;
 mod master;
 mod page;
+mod page_cache;
 mod paging;
 mod server;
 mod util;
@@ -11,11 +15,21 @@ use server::CreateDatabaseError;
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = ".wak";
 pub const LOG_FILE_EXT: &str = ".wal";
+
+//pub const PAGE_CACHE_CAPACITY: usize = 131_072; // 1GB
+pub const PAGE_CACHE_CAPACITY: usize = 10; // Test
+
 pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
+pub const PAGE_SIZE_BYTES_USIZE: usize = 8192; // 2^13
+
 pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
+pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
+
 pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
-pub struct Engine {}
+pub struct Engine {
+    pub page_cache: PageCache,
+}
 
 #[derive(Debug)]
 pub struct ExecuteResult {
@@ -33,7 +47,9 @@ pub enum StatementError {
 
 impl Engine {
     pub fn new() -> Self {
-        Engine {}
+        Engine {
+            page_cache: PageCache::new(PAGE_CACHE_CAPACITY),
+        }
     }
 
     pub fn init(&self) {
