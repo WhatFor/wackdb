@@ -76,23 +76,36 @@ impl Engine {
                     .borrow_mut()
                     .add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
             }
-            Err(error) => {
-                panic!("Unable to open database. See: {:?}", error)
-            }
+            Err(error) => match error {
+                CreateDatabaseError::DatabaseExists(_) => {
+                    println!("Master database already exists. Continuing.")
+                }
+                CreateDatabaseError::UnableToCreateFile(error) => {
+                    println!("Unable to create database file. See: {:?}", error)
+                }
+                CreateDatabaseError::UnableToWrite(page_encoder_error) => {
+                    println!(
+                        "Unable to write to database file. See: {:?}",
+                        page_encoder_error
+                    )
+                }
+            },
         }
 
         let user_dbs_r = server::open_user_dbs();
 
         match user_dbs_r {
             Ok(user_dbs) => {
-                for user in user_dbs {
-                    self.file_manager
-                        .borrow_mut()
-                        .add(FileId::new(user.id, db::FileType::Primary), user.dat);
+                for user_db in user_dbs {
+                    println!("Database loaded. ID: {}", user_db.id);
 
                     self.file_manager
                         .borrow_mut()
-                        .add(FileId::new(user.id, db::FileType::Log), user.log);
+                        .add(FileId::new(user_db.id, db::FileType::Primary), user_db.dat);
+
+                    self.file_manager
+                        .borrow_mut()
+                        .add(FileId::new(user_db.id, db::FileType::Log), user_db.log);
                 }
             }
             Err(err) => {
