@@ -17,7 +17,7 @@ pub const FILE_INFO_PAGE_INDEX: u32 = 0;
 /// The constant page index of the DATABASE_INFO page.
 pub const DATABASE_INFO_PAGE_INDEX: u32 = 1;
 
-#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq, Eq, Hash)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -62,6 +62,8 @@ impl FileInfo {
     }
 }
 
+pub type DatabaseId = u16;
+
 /// Information describing a database.
 /// There will only ever be one of these pages in a single file.
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
@@ -77,11 +79,11 @@ pub struct DatabaseInfo {
     database_version: u8,
 
     #[deku(bytes = 2)]
-    database_id: u16,
+    database_id: DatabaseId,
 }
 
 impl DatabaseInfo {
-    pub fn new(database_name: &str, version: u8) -> Self {
+    pub fn new(database_name: &str, database_id: DatabaseId, version: u8) -> Self {
         if database_name.len() >= 256 {
             panic!("db name too long");
         }
@@ -90,12 +92,12 @@ impl DatabaseInfo {
             database_name_len: database_name.len() as u8,
             database_name: database_name.to_owned().into_bytes(),
             database_version: version,
-            database_id: 0, // TODO
+            database_id: database_id,
         }
     }
 }
 
-pub fn create_db_data_file(db_name: &str) -> Result<File, CreateDatabaseError> {
+pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> Result<File, CreateDatabaseError> {
     let file = persistence::create_db_file_empty(&db_name, FileType::Primary)?;
 
     let file_info_page = write_file_info(&file);
@@ -105,7 +107,7 @@ pub fn create_db_data_file(db_name: &str) -> Result<File, CreateDatabaseError> {
         Err(err) => return Err(err),
     }
 
-    let db_info_page = write_db_info(&file, db_name);
+    let db_info_page = write_db_info(&file, db_name, db_id);
 
     match db_info_page {
         Ok(_) => println!("Wrote DATABASE_INFO page."),
@@ -129,6 +131,23 @@ pub enum ValidationError {
     FailedToOpenFile(std::io::Error),
     FailedToOpenFileInfo,
     FileInfoChecksumIncorrect(crate::page::ChecksumResult),
+}
+
+pub fn validate_data_file(file: &File) -> Result<(), ValidationError> {
+    let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX);
+
+    match file_info_page {
+        Ok(page_bytes) => {
+            let page = PageDecoder::from_bytes(&page_bytes);
+            let checksum_pass = page.check();
+
+            match checksum_pass.pass {
+                true => Ok(()),
+                false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
+            }
+        }
+        Err(_) => Err(ValidationError::FailedToOpenFileInfo),
+    }
 }
 
 pub fn validate_db_data_file(db_name: &str) -> Result<(), ValidationError> {
@@ -161,6 +180,38 @@ pub fn validate_db_data_file(db_name: &str) -> Result<(), ValidationError> {
     }
 }
 
+// todo: error type
+pub fn get_db_id(file: &File) -> Result<DatabaseId, ()> {
+    // todo: page_cache???
+    let db_info_page = persistence::read_page(&file, DATABASE_INFO_PAGE_INDEX);
+
+    match db_info_page {
+        Ok(page_bytes) => {
+            let mut page = PageDecoder::from_bytes(&page_bytes);
+
+            // todo: bit rubbish to have to call this, should just happen in the page decoder
+            page.slots();
+
+            // todo: is this how I wanna read a slot? :(
+            let db_info = page.try_read::<DatabaseInfo>(0);
+
+            match db_info {
+                Ok(info) => Ok(info.database_id),
+                Err(_) => Err(()),
+            }
+        }
+        Err(_) => Err(()),
+    }
+}
+
+// TODO: The following 2 functions write pages to files
+//       Next up to do is figure out how this should go through the page cache
+//       Maybe just a .put on the cache, and the cache should have a .flush function
+//       to force the write to disk.
+//       Then, subsequent queries for the data can hit the cache instead of disk.
+//       That does mean the page cache needs to know about files and have access
+//       to the file handles, so now's the time to figure that out.
+
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
 fn write_file_info(file: &std::fs::File) -> Result<(), CreateDatabaseError> {
     let header = PageHeader::new(PageType::FileInfo);
@@ -182,11 +233,15 @@ fn write_file_info(file: &std::fs::File) -> Result<(), CreateDatabaseError> {
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
-fn write_db_info(file: &std::fs::File, db_name: &str) -> Result<(), CreateDatabaseError> {
+fn write_db_info(
+    file: &std::fs::File,
+    db_name: &str,
+    db_id: DatabaseId,
+) -> Result<(), CreateDatabaseError> {
     let header = PageHeader::new(PageType::DatabaseInfo);
     let mut page = PageEncoder::new(header);
 
-    let body = DatabaseInfo::new(db_name, CURRENT_DATABASE_VERSION);
+    let body = DatabaseInfo::new(db_name, db_id, CURRENT_DATABASE_VERSION);
 
     match page.add_slot(body) {
         Ok(_) => {

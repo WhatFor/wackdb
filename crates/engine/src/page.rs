@@ -250,6 +250,7 @@ fn check(bytes: &[u8]) -> [u8; 2] {
 pub struct PageDecoder<'a> {
     bytes: &'a PageBytes,
     header: PageHeader,
+    slots: Vec<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -274,7 +275,19 @@ impl<'a> PageDecoder<'a> {
         println!("   |       Checksum: {:?}", header.checksum);
         println!("   |   Alloc. slots: {:?}", header.allocated_slot_count);
 
-        PageDecoder { header, bytes }
+        PageDecoder {
+            header,
+            bytes,
+            slots: vec![],
+        }
+    }
+
+    pub fn slots(&mut self) -> &Vec<Vec<u8>> {
+        if self.slots.len() == 0 {
+            self.slots = self.read_slots();
+        }
+
+        &self.slots
     }
 
     pub fn check(&self) -> ChecksumResult {
@@ -290,6 +303,77 @@ impl<'a> PageDecoder<'a> {
             expected,
             actual,
         }
+    }
+
+    pub fn try_read<T>(&self, slot_index: u16) -> Result<T, ()>
+    where
+        T: DekuContainerRead<'a> + std::fmt::Debug,
+    {
+        if slot_index as usize >= self.slots.len() {
+            return Err(());
+        }
+
+        let slot = &self.slots[slot_index as usize];
+        let mut cursor = std::io::Cursor::new(slot);
+        let mut reader = deku::reader::Reader::new(&mut cursor);
+
+        match T::from_reader_with_ctx(&mut reader, ()) {
+            Ok(slot_t) => Ok(slot_t),
+            Err(e) => {
+                panic!("Failed to read slot. {:?}", e);
+            }
+        }
+    }
+
+    fn read_slots(&self) -> Vec<Vec<u8>> {
+        // a slot pointer is 2 bytes, and are stored at the end of the page.
+        // slots are at the start of the page, after the header.
+        // a pointer points to the end of the slot.
+        // a slot can be found by reading from the end of the previous slot to the pointer.
+        let slot_pointer_size: u16 = 2;
+
+        let mut slots = vec![];
+        let mut slot_pointers = vec![];
+
+        for i in 0..self.header.allocated_slot_count {
+            let pointer_end = PAGE_SIZE_BYTES - (i * slot_pointer_size);
+            let pointer_start = pointer_end - slot_pointer_size;
+            let pointer_bytes = &self.bytes[pointer_start.into()..pointer_end.into()];
+
+            if pointer_bytes.len() != 2 {
+                panic!("Invalid pointer bytes");
+            }
+
+            let pointer = u16::from_be_bytes([pointer_bytes[0], pointer_bytes[1]]);
+
+            println!("DBG: Loaded slot pointer from page.");
+            println!("   |      Index: {:?}", i);
+            println!("   |      Pointer: {:?}", pointer);
+
+            slot_pointers.push(pointer);
+        }
+
+        for (index, pointer) in slot_pointers.iter().enumerate() {
+            let slot_end = pointer.to_owned() as usize;
+
+            let slot_start = if index == 0 {
+                PAGE_HEADER_SIZE_BYTES as usize
+            } else {
+                slot_pointers[index + 1] as usize
+            };
+
+            let range = slot_start..slot_end;
+
+            println!("DBG: Reading slot from page.");
+            println!("   |      Index: {:?}", index);
+            println!("   |      Range: {:?}", range);
+            println!("   |      Size: {:?}", range.len());
+
+            let slot_bytes = &self.bytes[range];
+            slots.push(slot_bytes.to_vec());
+        }
+
+        slots
     }
 }
 

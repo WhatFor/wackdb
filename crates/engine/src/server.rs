@@ -1,11 +1,14 @@
+use std::fs::File;
+
 use crate::{
-    db::{self, FileType},
+    db::{self, DatabaseId, FileType},
     page::PageEncoderError,
     persistence,
 };
 use parser::ast::CreateDatabaseBody;
 
 const MASTER_NAME: &str = "master";
+pub const MASTER_DB_ID: u16 = 0;
 
 #[derive(Debug)]
 pub enum CreateDatabaseError {
@@ -14,19 +17,61 @@ pub enum CreateDatabaseError {
     UnableToWrite(PageEncoderError),
 }
 
-pub fn ensure_system_databases_initialised() {
-    let _master_create = create_database(MASTER_NAME);
+pub struct OpenDatabaseResult {
+    pub id: DatabaseId,
+    pub dat: File,
+    pub log: File,
+}
+
+#[derive(Debug)]
+pub enum OpenDatabaseError {
+    Err(),
+}
+
+pub fn open_master_db() -> Result<OpenDatabaseResult, CreateDatabaseError> {
+    create_database(MASTER_NAME, MASTER_DB_ID)
+}
+
+pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>, OpenDatabaseError> {
+    let dbs_r = persistence::find_user_databases();
+
+    match dbs_r {
+        Ok(dbs) => dbs
+            .into_iter()
+            .map(|db| {
+                let user_db = persistence::open_user_db(&db);
+                let id = db::get_db_id(&user_db.dat);
+
+                if id.is_err() {
+                    panic!("I have no idea");
+                }
+
+                Ok(OpenDatabaseResult {
+                    id: id.unwrap(),
+                    dat: user_db.dat,
+                    log: user_db.log,
+                })
+            })
+            .collect(),
+        Err(_) => {
+            return Err(OpenDatabaseError::Err());
+        }
+    }
 }
 
 pub fn create_user_database(
     create_database_statement: &CreateDatabaseBody,
-) -> Result<(), CreateDatabaseError> {
+    db_id: DatabaseId,
+) -> Result<OpenDatabaseResult, CreateDatabaseError> {
     let db_name = create_database_statement.database_name.value.as_str();
 
-    create_database(db_name)
+    create_database(db_name, db_id)
 }
 
-pub fn create_database(db_name: &str) -> Result<(), CreateDatabaseError> {
+pub fn create_database(
+    db_name: &str,
+    db_id: DatabaseId,
+) -> Result<OpenDatabaseResult, CreateDatabaseError> {
     let data_exists = persistence::check_db_exists(db_name, FileType::Primary);
     let log_exists = persistence::check_db_exists(db_name, FileType::Log);
 
@@ -34,37 +79,12 @@ pub fn create_database(db_name: &str) -> Result<(), CreateDatabaseError> {
         return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)));
     }
 
-    let _datafile = db::create_db_data_file(db_name)?;
-    let _logfile = db::create_db_log_file(db_name)?;
+    let data_file = db::create_db_data_file(db_name, db_id)?;
+    let log_file = db::create_db_log_file(db_name)?;
 
-    print_database_validation(db_name);
-
-    return Ok(());
-}
-
-fn print_database_validation(db_name: &str) {
-    let validation_result = db::validate_db_data_file(db_name);
-
-    match validation_result {
-        Ok(_) => {
-            println!("Database validated successfully.");
-        }
-        Err(err) => match err {
-            db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
-                println!(
-                    "ERR: Checksum failed. Expected: {:?}. Actual: {:?}.",
-                    checksum_result.expected, checksum_result.actual
-                )
-            }
-            db::ValidationError::FileNotExists => {
-                println!("File does not exist.")
-            }
-            db::ValidationError::FailedToOpenFile(err) => {
-                println!("Failed to open file: {:?}", err)
-            }
-            db::ValidationError::FailedToOpenFileInfo => {
-                println!("Failed to open file_info")
-            }
-        },
-    }
+    return Ok(OpenDatabaseResult {
+        id: db_id,
+        dat: data_file,
+        log: log_file,
+    });
 }

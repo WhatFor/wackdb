@@ -1,16 +1,21 @@
+use std::{cell::RefCell, rc::Rc};
+
 use cli_common::ExecuteError;
+use db::{DatabaseId, FileType};
+use fm::{FileId, FileManager, IdentifiedFile};
 use parser::ast::{Program, ServerStatement, UserStatement};
 
 use page_cache::PageCache;
 
 mod db;
+mod fm;
 mod lru;
 mod page;
 mod page_cache;
 mod persistence;
 mod server;
 mod util;
-use server::CreateDatabaseError;
+use server::{CreateDatabaseError, MASTER_DB_ID};
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = ".wak";
@@ -30,6 +35,7 @@ pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/a
 
 pub struct Engine {
     pub page_cache: PageCache,
+    pub file_manager: Rc<RefCell<FileManager>>,
 }
 
 #[derive(Debug)]
@@ -48,13 +54,53 @@ pub enum StatementError {
 
 impl Engine {
     pub fn new() -> Self {
+        let file_manager = Rc::new(RefCell::new(FileManager::new()));
+        let page_cache = PageCache::new(PAGE_CACHE_CAPACITY, Rc::clone(&file_manager));
+
         Engine {
-            page_cache: PageCache::new(PAGE_CACHE_CAPACITY),
+            page_cache,
+            file_manager,
         }
     }
 
     pub fn init(&self) {
-        server::ensure_system_databases_initialised();
+        let master_db_result = server::open_master_db();
+
+        match master_db_result {
+            Ok(x) => {
+                self.file_manager
+                    .borrow_mut()
+                    .add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
+
+                self.file_manager
+                    .borrow_mut()
+                    .add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
+            }
+            Err(error) => {
+                panic!("Unable to open database. See: {:?}", error)
+            }
+        }
+
+        let user_dbs_r = server::open_user_dbs();
+
+        match user_dbs_r {
+            Ok(user_dbs) => {
+                for user in user_dbs {
+                    self.file_manager
+                        .borrow_mut()
+                        .add(FileId::new(user.id, db::FileType::Primary), user.dat);
+
+                    self.file_manager
+                        .borrow_mut()
+                        .add(FileId::new(user.id, db::FileType::Log), user.log);
+                }
+            }
+            Err(err) => {
+                panic!("Unable to open user databases. See: {:?}", err)
+            }
+        }
+
+        self.validate_files();
     }
 
     pub fn execute(&self, prog: &Program) -> Result<ExecuteResult, ExecuteError> {
@@ -103,9 +149,76 @@ impl Engine {
         statement: &ServerStatement,
     ) -> Result<StatementResult, StatementError> {
         match statement {
-            ServerStatement::CreateDatabase(s) => server::create_user_database(s)
-                .map_err(|e| StatementError::CreateDatabase(e))
-                .map(|_| StatementResult {}),
+            ServerStatement::CreateDatabase(s) => {
+                let next_id = self.next_id();
+
+                server::create_user_database(s, next_id)
+                    .map_err(|e| StatementError::CreateDatabase(e))
+                    .map(|result| {
+                        self.file_manager
+                            .borrow_mut()
+                            .add(FileId::new(result.id, db::FileType::Primary), result.dat);
+
+                        self.file_manager
+                            .borrow_mut()
+                            .add(FileId::new(result.id, db::FileType::Log), result.log);
+
+                        // Revalidate all files
+                        self.validate_files();
+
+                        StatementResult {}
+                    })
+            }
         }
+    }
+
+    /// For all files in self.file_manager, validate them
+    fn validate_files(&self) {
+        let fm = self.file_manager.borrow();
+        let identifiable_files = fm.get_all();
+
+        for identifiable_file in identifiable_files {
+            if identifiable_file.id.ty == FileType::Log {
+                // Don't validate log files
+                continue;
+            }
+
+            self.validate_file(identifiable_file);
+        }
+    }
+
+    fn validate_file(&self, identifiable_file: IdentifiedFile) {
+        match db::validate_data_file(identifiable_file.file) {
+            Ok(_) => {
+                println!(
+                    "Database {}:{:?} validated successfully.",
+                    identifiable_file.id.id, identifiable_file.id.ty
+                );
+            }
+            Err(err) => match err {
+                db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
+                    println!(
+                        "ERR: Checksum failed for DB {}:{:?}. Expected: {:?}. Actual: {:?}.",
+                        identifiable_file.id.id,
+                        identifiable_file.id.ty,
+                        checksum_result.expected,
+                        checksum_result.actual,
+                    )
+                }
+                db::ValidationError::FileNotExists => {
+                    println!("File does not exist.")
+                }
+                db::ValidationError::FailedToOpenFile(err) => {
+                    println!("Failed to open file: {:?}", err)
+                }
+                db::ValidationError::FailedToOpenFileInfo => {
+                    println!("Failed to open file_info")
+                }
+            },
+        };
+    }
+
+    fn next_id(&self) -> DatabaseId {
+        self.file_manager.borrow().next_id()
     }
 }

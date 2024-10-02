@@ -49,7 +49,10 @@ pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
 /// Seek to a specific page index in the file and write the given data
 pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std::io::Result<()> {
     seek_page_index(file, page_index)?;
-    file.write_all(data)
+    file.write_all(data)?;
+
+    // This ensures the write ACTUALLY writes
+    file.sync_data()
 }
 
 /// Seek to a specific page index in the file and read the entire page
@@ -75,6 +78,51 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> std::io::Re
     }
 
     Ok(())
+}
+
+pub fn find_user_databases() -> std::io::Result<Vec<String>> {
+    let base_path = util::get_base_path();
+    let data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+
+    let files = std::fs::read_dir(data_path);
+    let mut unique_file_names = Vec::new();
+
+    for entry in files? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            continue;
+        }
+
+        // todo: spicy unwraps
+        let file_name = path.file_stem().unwrap().to_str().unwrap().to_owned();
+
+        if unique_file_names.contains(&file_name) {
+            continue;
+        }
+
+        unique_file_names.push(file_name);
+    }
+
+    Ok(unique_file_names)
+}
+
+pub struct OpenDatabaseResult {
+    pub dat: File,
+    pub log: File,
+}
+
+pub fn open_user_db(database_name: &String) -> OpenDatabaseResult {
+    let dat = open_user_db_of_type(database_name, FileType::Primary);
+    let log = open_user_db_of_type(database_name, FileType::Log);
+
+    OpenDatabaseResult { dat, log }
+}
+
+fn open_user_db_of_type(database_name: &String, file_type: FileType) -> File {
+    let path = get_db_path(database_name, file_type);
+    util::open_file(&path).expect("Failed to open user database.")
 }
 
 #[cfg(test)]
