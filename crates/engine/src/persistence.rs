@@ -1,16 +1,65 @@
-use std::io::{Read, Seek, Write};
+use std::{
+    fs::File,
+    io::{Read, Seek, Write},
+    path::{Path, PathBuf},
+};
+
+use crate::{db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util};
+
+// Returns true if the given file exists
+pub fn check_db_exists(db_name: &str, file_type: FileType) -> bool {
+    let path = get_db_path(db_name, file_type);
+    util::file_exists(&path)
+}
+
+/// Create a database file, empty.
+pub fn create_db_file_empty(
+    db_name: &str,
+    file_type: FileType,
+) -> Result<File, CreateDatabaseError> {
+    let master_path = get_db_path(db_name, file_type);
+
+    if util::file_exists(&master_path) {
+        return core::result::Result::Err(CreateDatabaseError::DatabaseExists(String::from(
+            "Database exists",
+        )));
+    }
+
+    util::ensure_path_exists(&master_path);
+
+    util::create_file(&master_path)
+}
+
+// Get a PathBuf to a file with the given name and extension
+pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
+    let ext = match file_type {
+        FileType::Primary => crate::DATA_FILE_EXT,
+        FileType::Log => crate::LOG_FILE_EXT,
+    };
+
+    let base_path = util::get_base_path();
+    let mut data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+
+    let file_name = db_name.to_owned() + ext;
+    PathBuf::push(&mut data_path, file_name);
+
+    data_path
+}
 
 /// Seek to a specific page index in the file and write the given data
 pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std::io::Result<()> {
     seek_page_index(file, page_index)?;
-    file.write_all(data)
+    file.write_all(data)?;
+
+    // This ensures the write ACTUALLY writes
+    file.sync_data()
 }
 
 /// Seek to a specific page index in the file and read the entire page
-pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<Vec<u8>> {
+pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<PageBytes> {
     seek_page_index(file, page_index)?;
 
-    let mut buf = vec![0; crate::PAGE_SIZE_BYTES_USIZE];
+    let mut buf = [0; crate::PAGE_SIZE_BYTES_USIZE];
     file.read_exact(&mut buf)?;
 
     Ok(buf)
@@ -31,11 +80,56 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> std::io::Re
     Ok(())
 }
 
+pub fn find_user_databases() -> std::io::Result<Vec<String>> {
+    let base_path = util::get_base_path();
+    let data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+
+    let files = std::fs::read_dir(data_path);
+    let mut unique_file_names = Vec::new();
+
+    for entry in files? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            continue;
+        }
+
+        // todo: spicy unwraps
+        let file_name = path.file_stem().unwrap().to_str().unwrap().to_owned();
+
+        if unique_file_names.contains(&file_name) {
+            continue;
+        }
+
+        unique_file_names.push(file_name);
+    }
+
+    Ok(unique_file_names)
+}
+
+pub struct OpenDatabaseResult {
+    pub dat: File,
+    pub log: File,
+}
+
+pub fn open_user_db(database_name: &String) -> OpenDatabaseResult {
+    let dat = open_user_db_of_type(database_name, FileType::Primary);
+    let log = open_user_db_of_type(database_name, FileType::Log);
+
+    OpenDatabaseResult { dat, log }
+}
+
+fn open_user_db_of_type(database_name: &String, file_type: FileType) -> File {
+    let path = get_db_path(database_name, file_type);
+    util::open_file(&path).expect("Failed to open user database.")
+}
+
 #[cfg(test)]
-mod paging_tests {
+mod persistence_tests {
     use crate::*;
 
-    use paging::{read_page, write_page};
+    use persistence::{read_page, write_page};
     use std::{
         env::temp_dir,
         fs::{File, OpenOptions},
