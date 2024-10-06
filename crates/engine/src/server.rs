@@ -35,6 +35,8 @@ pub fn open_master_db() -> Result<OpenDatabaseResult, CreateDatabaseError> {
 pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>, OpenDatabaseError> {
     let dbs_r = persistence::find_user_databases();
 
+    println!("Opening user DBs: {:?}", dbs_r);
+
     match dbs_r {
         Ok(dbs) => dbs
             .into_iter()

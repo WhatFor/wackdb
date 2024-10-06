@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util};
+use crate::{db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util, DATA_FILE_EXT, LOG_FILE_EXT};
 
 // Returns true if the given file exists
 pub fn check_db_exists(db_name: &str, file_type: FileType) -> bool {
@@ -93,6 +93,12 @@ pub fn find_user_databases() -> std::io::Result<Vec<String>> {
 
         if path.is_dir() {
             continue;
+        }
+
+        if let Some(ext) = path.extension(){
+            if ext != DATA_FILE_EXT || ext != LOG_FILE_EXT {
+                continue;
+            }
         }
 
         // todo: spicy unwraps
