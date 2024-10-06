@@ -155,10 +155,7 @@ pub fn get_db_id(file: &File) -> Result<DatabaseId, ()> {
 
     match db_info_page {
         Ok(page_bytes) => {
-            let mut page = PageDecoder::from_bytes(&page_bytes);
-
-            // todo: bit rubbish to have to call this, should just happen in the page decoder
-            page.slots();
+            let page = PageDecoder::from_bytes(&page_bytes);
 
             // todo: is this how I wanna read a slot? :(
             let db_info = page.try_read::<DatabaseInfo>(0);
