@@ -143,7 +143,28 @@ impl Engine {
         statement: &UserStatement,
     ) -> Result<StatementResult, StatementError> {
         dbg!(&statement);
-        Ok(StatementResult {})
+        match statement {
+            UserStatement::Select(select_expression_body) => {
+                println!("Selecting: {:?}", select_expression_body);
+                Ok(StatementResult {})
+            }
+            UserStatement::Update => {
+                println!("Updating");
+                Ok(StatementResult {})
+            }
+            UserStatement::Insert => {
+                println!("Inserting");
+                Ok(StatementResult {})
+            }
+            UserStatement::Delete => {
+                println!("Deleting");
+                Ok(StatementResult {})
+            }
+            UserStatement::CreateTable(_create_table_body) => {
+                println!("Creating Table");
+                Ok(StatementResult {})
+            }
+        }
     }
 
     /// Serverland statements. For example, CREATE DATABASE.

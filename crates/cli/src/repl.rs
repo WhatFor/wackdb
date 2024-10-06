@@ -16,7 +16,7 @@ pub struct Repl {
 pub enum ReplResult {
     Exit,
     Help,
-    Initialise,
+    RunDebug,
     NoInput,
     UnrecognisedInput,
     Ok(CommandResult),
@@ -33,9 +33,10 @@ pub enum CommandResult {
 
 impl Repl {
     pub fn new() -> Self {
-        Repl {
-            engine: Engine::new(),
-        }
+        let engine = Engine::new();
+        engine.init();
+
+        Repl { engine }
     }
 
     pub fn run(&self) {
@@ -75,9 +76,10 @@ impl Repl {
                         ReplResult::Help => {
                             println!("Sorry, you're on your own.");
                         }
-                        ReplResult::Initialise => {
-                            println!("TODO: This is a debug function. Eventually it should happen automatically.");
-                            self.engine.init();
+                        ReplResult::RunDebug => {
+                            self.eval_command("CREATE TABLE TestTable (Id INT, Age INT);");
+                            self.eval_command("INSERT INTO TestTable (Id, Age) VALUES (1, 20);");
+                            self.eval_command("SELECT * FROM TestTable;");
                         }
                         ReplResult::UnrecognisedInput => {
                             println!("Error! Command not recognised.");
@@ -159,7 +161,7 @@ impl Repl {
         match buf.to_lowercase().as_ref() {
             ".exit" => ReplResult::Exit,
             ".help" => ReplResult::Help,
-            ".init" => ReplResult::Initialise,
+            ".dbg" => ReplResult::RunDebug,
             "" => ReplResult::NoInput,
             _ => ReplResult::UnrecognisedInput,
         }
