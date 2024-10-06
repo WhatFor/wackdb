@@ -66,16 +66,12 @@ impl Engine {
 
     pub fn init(&self) {
         let master_db_result = server::open_or_create_master_db();
+        let mut fm = self.file_manager.borrow_mut();
 
         match master_db_result {
             Ok(x) => {
-                self.file_manager
-                    .borrow_mut()
-                    .add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
-
-                self.file_manager
-                    .borrow_mut()
-                    .add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
+                fm.add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
+                fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
             }
             Err(error) => match error {
                 CreateDatabaseError::DatabaseExists(_) => {
@@ -97,14 +93,8 @@ impl Engine {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     println!("Database loaded. ID: {}", user_db.id);
-
-                    self.file_manager
-                        .borrow_mut()
-                        .add(FileId::new(user_db.id, db::FileType::Primary), user_db.dat);
-
-                    self.file_manager
-                        .borrow_mut()
-                        .add(FileId::new(user_db.id, db::FileType::Log), user_db.log);
+                    fm.add(FileId::new(user_db.id, db::FileType::Primary), user_db.dat);
+                    fm.add(FileId::new(user_db.id, db::FileType::Log), user_db.log);
                 }
             }
             Err(err) => {
