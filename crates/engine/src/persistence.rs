@@ -124,16 +124,16 @@ pub struct OpenDatabaseResult {
     pub log: File,
 }
 
-pub fn open_user_db(database_name: &String) -> OpenDatabaseResult {
-    let dat = open_user_db_of_type(database_name, FileType::Primary);
-    let log = open_user_db_of_type(database_name, FileType::Log);
+pub fn open_db(database_name: &String) -> OpenDatabaseResult {
+    let dat = open_db_of_type(database_name, FileType::Primary);
+    let log = open_db_of_type(database_name, FileType::Log);
 
     OpenDatabaseResult { dat, log }
 }
 
-fn open_user_db_of_type(database_name: &String, file_type: FileType) -> File {
+fn open_db_of_type(database_name: &String, file_type: FileType) -> File {
     let path = get_db_path(database_name, file_type);
-    util::open_file(&path).expect("Failed to open user database.")
+    util::open_file(&path).expect("Failed to open database.")
 }
 
 #[cfg(test)]

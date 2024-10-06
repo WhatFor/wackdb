@@ -64,7 +64,7 @@ impl Engine {
     }
 
     pub fn init(&self) {
-        let master_db_result = server::open_master_db();
+        let master_db_result = server::open_or_create_master_db();
 
         match master_db_result {
             Ok(x) => {

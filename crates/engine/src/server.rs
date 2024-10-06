@@ -28,7 +28,21 @@ pub enum OpenDatabaseError {
     Err(),
 }
 
-pub fn open_master_db() -> Result<OpenDatabaseResult, CreateDatabaseError> {
+pub fn open_or_create_master_db() -> Result<OpenDatabaseResult, CreateDatabaseError> {
+    let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary);
+
+    if exists {
+        let db = persistence::open_db(&MASTER_NAME.to_owned());
+
+        println!("Opened existing master DB.");
+
+        return Ok(OpenDatabaseResult {
+            id: MASTER_DB_ID,
+            dat: db.dat,
+            log: db.log,
+        });
+    }
+
     create_database(MASTER_NAME, MASTER_DB_ID)
 }
 
@@ -41,7 +55,7 @@ pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>, OpenDatabaseError> {
         Ok(dbs) => dbs
             .into_iter()
             .map(|db| {
-                let user_db = persistence::open_user_db(&db);
+                let user_db = persistence::open_db(&db);
                 let id = db::get_db_id(&user_db.dat);
 
                 if id.is_err() {
