@@ -1,8 +1,9 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, fs::File, io::Error, rc::Rc};
 
 use cli_common::ExecuteError;
-use db::{DatabaseId, FileType};
+use db::{DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
 use fm::{FileId, FileManager, IdentifiedFile};
+use page::PageDecoder;
 use parser::ast::{Program, ServerStatement, UserStatement};
 
 use page_cache::PageCache;
@@ -15,7 +16,7 @@ mod page_cache;
 mod persistence;
 mod server;
 mod util;
-use server::{CreateDatabaseError, MASTER_DB_ID};
+use server::{CreateDatabaseError, OpenDatabaseError, OpenDatabaseResult, MASTER_DB_ID};
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = ".wak";
@@ -92,7 +93,7 @@ impl Engine {
             },
         }
 
-        match server::open_user_dbs() {
+        match self.open_user_dbs() {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     println!("Database loaded. ID: {}", user_db.id);
@@ -217,7 +218,56 @@ impl Engine {
         };
     }
 
+    pub fn open_user_dbs(
+        &self,
+    ) -> Result<Box<impl Iterator<Item = OpenDatabaseResult> + '_>, OpenDatabaseError> {
+        match persistence::find_user_databases() {
+            Ok(dbs) => {
+                let results = dbs.map(|db| {
+                    let user_db = persistence::open_db(&db);
+                    let id = self.get_db_id(&user_db.dat);
+
+                    if id.is_err() {
+                        panic!("I have no idea");
+                    }
+
+                    println!("Opening user DB: {:?}", db);
+
+                    OpenDatabaseResult {
+                        id: id.unwrap(),
+                        dat: user_db.dat,
+                        log: user_db.log,
+                    }
+                });
+
+                Ok(Box::new(results))
+            }
+            Err(_) => {
+                return Err(OpenDatabaseError::Err());
+            }
+        }
+    }
+
     fn next_id(&self) -> DatabaseId {
         self.file_manager.borrow().next_id()
+    }
+
+    pub fn get_db_id(&self, file: &File) -> Result<DatabaseId, Error> {
+        //Circumvent the page cache - can't use it until we have the db_id
+        let page_bytes = persistence::read_page(&file, DATABASE_INFO_PAGE_INDEX)?;
+
+        let page = PageDecoder::from_bytes(&page_bytes);
+
+        let db_info = page.try_read::<DatabaseInfo>(0);
+
+        match db_info {
+            Ok(info) => Ok(info.database_id),
+            Err(err) => {
+                println!("Failed to read database info page. See: {:?}", err);
+                Err(Error::from(std::io::Error::from(
+                    std::io::ErrorKind::InvalidData,
+                )))
+            }
+        }
     }
 }

@@ -46,34 +46,6 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult, CreateDatabaseEr
     create_database(MASTER_NAME, MASTER_DB_ID)
 }
 
-pub fn open_user_dbs() -> Result<Box<impl Iterator<Item = OpenDatabaseResult>>, OpenDatabaseError> {
-    match persistence::find_user_databases() {
-        Ok(dbs) => {
-            let results = dbs.map(|db| {
-                let user_db = persistence::open_db(&db);
-                let id = db::get_db_id(&user_db.dat);
-
-                if id.is_err() {
-                    panic!("I have no idea");
-                }
-
-                println!("Opening user DB: {:?}", db);
-
-                OpenDatabaseResult {
-                    id: id.unwrap(),
-                    dat: user_db.dat,
-                    log: user_db.log,
-                }
-            });
-
-            Ok(Box::new(results))
-        }
-        Err(_) => {
-            return Err(OpenDatabaseError::Err());
-        }
-    }
-}
-
 pub fn create_user_database(
     create_database_statement: &CreateDatabaseBody,
     db_id: DatabaseId,

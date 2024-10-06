@@ -70,16 +70,16 @@ pub type DatabaseId = u16;
 #[deku(endian = "big")]
 pub struct DatabaseInfo {
     #[deku(bytes = 1)]
-    database_name_len: u8,
+    pub database_name_len: u8,
 
     #[deku(bytes = 128, count = "database_name_len")]
-    database_name: Vec<u8>,
+    pub database_name: Vec<u8>,
 
     #[deku(bytes = 1)]
-    database_version: u8,
+    pub database_version: u8,
 
     #[deku(bytes = 2)]
-    database_id: DatabaseId,
+    pub database_id: DatabaseId,
 }
 
 impl DatabaseInfo {
@@ -145,27 +145,6 @@ pub fn validate_data_file(file: &File) -> Result<(), ValidationError> {
             }
         }
         Err(_) => Err(ValidationError::FailedToOpenFileInfo),
-    }
-}
-
-// todo: error type
-pub fn get_db_id(file: &File) -> Result<DatabaseId, ()> {
-    // todo: page_cache???
-    let db_info_page = persistence::read_page(&file, DATABASE_INFO_PAGE_INDEX);
-
-    match db_info_page {
-        Ok(page_bytes) => {
-            let page = PageDecoder::from_bytes(&page_bytes);
-
-            // todo: is this how I wanna read a slot? :(
-            let db_info = page.try_read::<DatabaseInfo>(0);
-
-            match db_info {
-                Ok(info) => Ok(info.database_id),
-                Err(_) => Err(()),
-            }
-        }
-        Err(_) => Err(()),
     }
 }
 

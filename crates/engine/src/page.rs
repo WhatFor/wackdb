@@ -255,6 +255,30 @@ pub struct PageDecoder<'a> {
     slots: Vec<&'a [u8]>,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum PageDecoderError {
+    SlotOutOfRange,
+    FailedToDeserialise(DekuError),
+}
+
+impl fmt::Display for PageDecoderError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PageDecoderError::SlotOutOfRange => write!(f, "Slot out of range"),
+            PageDecoderError::FailedToDeserialise(e) => write!(f, "Failed to deserialise: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for PageDecoderError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            PageDecoderError::SlotOutOfRange => None,
+            PageDecoderError::FailedToDeserialise(e) => Some(e),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ChecksumResult {
     pub pass: bool,
@@ -301,12 +325,12 @@ impl<'a> PageDecoder<'a> {
         }
     }
 
-    pub fn try_read<T>(&self, slot_index: u16) -> Result<T, ()>
+    pub fn try_read<T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
     where
         T: DekuContainerRead<'a> + std::fmt::Debug,
     {
         if slot_index as usize >= self.slots.len() {
-            return Err(());
+            return Err(PageDecoderError::SlotOutOfRange);
         }
 
         let slot = &self.slots[slot_index as usize];
@@ -315,9 +339,7 @@ impl<'a> PageDecoder<'a> {
 
         match T::from_reader_with_ctx(&mut reader, ()) {
             Ok(slot_t) => Ok(slot_t),
-            Err(e) => {
-                panic!("Failed to read slot. {:?}", e);
-            }
+            Err(e) => Err(PageDecoderError::FailedToDeserialise(e)),
         }
     }
 
