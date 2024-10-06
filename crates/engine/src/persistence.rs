@@ -6,32 +6,35 @@ use std::{
 };
 
 use crate::{
-    db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util, DATA_FILE_EXT,
-    LOG_FILE_EXT,
+    db::FileType, page_cache::PageBytes, server::MASTER_NAME, util, DATA_FILE_EXT, LOG_FILE_EXT,
 };
+use derive_more::derive::From;
+
+#[derive(Debug, From)]
+pub enum Error {
+    #[from]
+    Io(util::Error),
+    #[from]
+    StdIo(std::io::Error),
+    PageSeekFailed,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 // Returns true if the given file exists
-pub fn check_db_exists(db_name: &str, file_type: FileType) -> bool {
+pub fn check_db_exists(db_name: &str, file_type: FileType) -> Result<bool> {
     let path = get_db_path(db_name, file_type);
-    util::file_exists(&path)
+    Ok(util::file_exists(&path)?)
 }
 
 /// Create a database file, empty.
-pub fn create_db_file_empty(
-    db_name: &str,
-    file_type: FileType,
-) -> Result<File, CreateDatabaseError> {
+pub fn create_db_file_empty(db_name: &str, file_type: FileType) -> Result<File> {
     let master_path = get_db_path(db_name, file_type);
 
-    if util::file_exists(&master_path) {
-        return core::result::Result::Err(CreateDatabaseError::DatabaseExists(String::from(
-            "Database exists",
-        )));
-    }
+    util::file_exists(&master_path)?;
+    util::ensure_path_exists(&master_path)?;
 
-    util::ensure_path_exists(&master_path);
-
-    util::create_file(&master_path)
+    Ok(util::create_file(&master_path)?)
 }
 
 // Get a PathBuf to a file with the given name and extension
@@ -51,16 +54,16 @@ pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
 }
 
 /// Seek to a specific page index in the file and write the given data
-pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> std::io::Result<()> {
+pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> Result<()> {
     seek_page_index(file, page_index)?;
     file.write_all(data)?;
 
     // This ensures the write ACTUALLY writes
-    file.sync_data()
+    Ok(file.sync_data()?)
 }
 
 /// Seek to a specific page index in the file and read the entire page
-pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<PageBytes> {
+pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes> {
     seek_page_index(file, page_index)?;
 
     let mut buf = [0; crate::PAGE_SIZE_BYTES_USIZE];
@@ -70,21 +73,20 @@ pub fn read_page(mut file: &std::fs::File, page_index: u32) -> std::io::Result<P
 }
 
 /// Seek to a given page index on a given File.
-pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> std::io::Result<()> {
+pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> {
     let page_size: u32 = crate::PAGE_SIZE_BYTES.try_into().unwrap();
     let offset: u64 = (page_index * page_size).into();
     let offset_from_start = std::io::SeekFrom::Start(offset);
-
     let pos = file.seek(offset_from_start)?;
 
-    if pos != offset {
-        panic!("Failed to seek file.");
+    if pos == offset {
+        Ok(())
+    } else {
+        Err(Error::PageSeekFailed)
     }
-
-    Ok(())
 }
 
-pub fn find_user_databases() -> std::io::Result<Box<impl Iterator<Item = String>>> {
+pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
     let base_path = util::get_base_path();
     let data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
 
@@ -96,6 +98,12 @@ pub fn find_user_databases() -> std::io::Result<Box<impl Iterator<Item = String>
 
         if path.is_dir() {
             return None;
+        }
+
+        if let Some(filename) = path.file_stem() {
+            if filename == MASTER_NAME {
+                return None;
+            }
         }
 
         path.extension()

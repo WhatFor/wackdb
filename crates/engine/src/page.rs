@@ -141,16 +141,7 @@ impl PageEncoder {
         let bytes = slot.to_bytes();
 
         match bytes {
-            Ok(bytes_ok) => {
-                let add_slot = self.add_slot_internal(bytes_ok);
-
-                match &add_slot {
-                    Ok(ok) => println!("Added slot. Index: {:?}", ok.pointer_index),
-                    Err(_) => {}
-                }
-
-                add_slot
-            }
+            Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
             Err(e) => Err(PageEncoderError::FailedToSerialise(e)),
         }
     }

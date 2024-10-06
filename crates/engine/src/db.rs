@@ -1,15 +1,38 @@
 #![allow(non_snake_case)]
 
 use deku::ctx::Endian;
-use deku::prelude::*;
+use deku::prelude::{DekuRead, DekuWrite};
+use derive_more::derive::From;
 use std::{fs::File, time::SystemTime};
 
 use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
-    persistence,
-    server::CreateDatabaseError,
-    CURRENT_DATABASE_VERSION,
+    persistence, CURRENT_DATABASE_VERSION,
 };
+
+#[derive(Debug, From)]
+pub enum Error {
+    #[from]
+    DekuError(deku::error::DekuError),
+    #[from]
+    PersistenceError(persistence::Error),
+    #[from]
+    ValidationError(ValidationError),
+    #[from]
+    PageEncoderError(crate::page::PageEncoderError),
+}
+
+#[derive(Debug, From)]
+pub enum ValidationError {
+    #[from]
+    FailedToOpenFileInfo,
+    #[from]
+    FileInfoChecksumIncorrect(crate::page::ChecksumResult),
+    #[from]
+    PersistenceError(persistence::Error),
+}
+
+pub type DbResult<T> = std::result::Result<T, Error>;
 
 /// The constant page index of the FILE_INFO page.
 pub const FILE_INFO_PAGE_INDEX: u32 = 0;
@@ -97,54 +120,28 @@ impl DatabaseInfo {
     }
 }
 
-pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> Result<File, CreateDatabaseError> {
+pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> DbResult<File> {
     let file = persistence::create_db_file_empty(&db_name, FileType::Primary)?;
 
-    let file_info_page = write_file_info(&file);
-
-    match file_info_page {
-        Ok(_) => println!("Wrote FILE_INFO page."),
-        Err(err) => return Err(err),
-    }
-
-    let db_info_page = write_db_info(&file, db_name, db_id);
-
-    match db_info_page {
-        Ok(_) => println!("Wrote DATABASE_INFO page."),
-        Err(err) => {
-            return Err(err);
-        }
-    }
+    write_file_info(&file)?;
+    write_db_info(&file, db_name, db_id)?;
 
     Ok(file)
 }
 
-pub fn create_db_log_file(db_name: &str) -> Result<File, CreateDatabaseError> {
-    let file = persistence::create_db_file_empty(&db_name, FileType::Log);
-
-    file
+pub fn create_db_log_file(db_name: &str) -> DbResult<File> {
+    Ok(persistence::create_db_file_empty(&db_name, FileType::Log)?)
 }
 
-#[derive(Debug)]
-pub enum ValidationError {
-    FailedToOpenFileInfo,
-    FileInfoChecksumIncorrect(crate::page::ChecksumResult),
-}
+pub fn validate_data_file(file: &File) -> DbResult<()> {
+    let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX)?;
 
-pub fn validate_data_file(file: &File) -> Result<(), ValidationError> {
-    let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX);
+    let page = PageDecoder::from_bytes(&file_info_page);
+    let checksum_pass = page.check();
 
-    match file_info_page {
-        Ok(page_bytes) => {
-            let page = PageDecoder::from_bytes(&page_bytes);
-            let checksum_pass = page.check();
-
-            match checksum_pass.pass {
-                true => Ok(()),
-                false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
-            }
-        }
-        Err(_) => Err(ValidationError::FailedToOpenFileInfo),
+    match checksum_pass.pass {
+        true => Ok(()),
+        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
     }
 }
 
@@ -157,46 +154,38 @@ pub fn validate_data_file(file: &File) -> Result<(), ValidationError> {
 //       to the file handles, so now's the time to figure that out.
 
 /// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
-fn write_file_info(file: &std::fs::File) -> Result<(), CreateDatabaseError> {
+fn write_file_info(file: &std::fs::File) -> DbResult<()> {
     let header = PageHeader::new(PageType::FileInfo);
     let mut page = PageEncoder::new(header);
 
     let created_date = SystemTime::now();
     let body = FileInfo::new(FileType::Primary, created_date);
 
-    match page.add_slot(body) {
-        Ok(_) => {
-            let collected = page.collect();
-            match persistence::write_page(&file, &collected, FILE_INFO_PAGE_INDEX) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(CreateDatabaseError::UnableToCreateFile(e)),
-            }
-        }
-        Err(err) => Err(CreateDatabaseError::UnableToWrite(err)),
-    }
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    Ok(persistence::write_page(
+        &file,
+        &collected,
+        FILE_INFO_PAGE_INDEX,
+    )?)
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
-fn write_db_info(
-    file: &std::fs::File,
-    db_name: &str,
-    db_id: DatabaseId,
-) -> Result<(), CreateDatabaseError> {
+fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseId) -> DbResult<()> {
     let header = PageHeader::new(PageType::DatabaseInfo);
     let mut page = PageEncoder::new(header);
 
     let body = DatabaseInfo::new(db_name, db_id, CURRENT_DATABASE_VERSION);
 
-    match page.add_slot(body) {
-        Ok(_) => {
-            let collected = page.collect();
-            match persistence::write_page(&file, &collected, DATABASE_INFO_PAGE_INDEX) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(CreateDatabaseError::UnableToCreateFile(e)),
-            }
-        }
-        Err(e) => Err(CreateDatabaseError::UnableToWrite(e)),
-    }
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    Ok(persistence::write_page(
+        &file,
+        &collected,
+        DATABASE_INFO_PAGE_INDEX,
+    )?)
 }
 
 #[cfg(test)]

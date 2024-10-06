@@ -3,18 +3,28 @@ use std::fs::File;
 use crate::{
     db::{self, DatabaseId, FileType},
     page::PageEncoderError,
-    persistence,
+    persistence, util,
 };
+use derive_more::derive::From;
 use parser::ast::CreateDatabaseBody;
 
-const MASTER_NAME: &str = "master";
+pub const MASTER_NAME: &str = "master";
 pub const MASTER_DB_ID: u16 = 0;
 
-#[derive(Debug)]
+pub type Result<T> = std::result::Result<T, CreateDatabaseError>;
+
+#[derive(Debug, From)]
 pub enum CreateDatabaseError {
+    #[from]
     DatabaseExists(String),
-    UnableToCreateFile(std::io::Error),
+    #[from]
     UnableToWrite(PageEncoderError),
+    #[from]
+    UnableToCreateFile(util::Error),
+    #[from]
+    DiskError(persistence::Error),
+    #[from]
+    DbError(db::Error),
 }
 
 pub struct OpenDatabaseResult {
@@ -23,13 +33,8 @@ pub struct OpenDatabaseResult {
     pub log: File,
 }
 
-#[derive(Debug)]
-pub enum OpenDatabaseError {
-    Err(),
-}
-
-pub fn open_or_create_master_db() -> Result<OpenDatabaseResult, CreateDatabaseError> {
-    let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary);
+pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
+    let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary)?;
 
     if exists {
         let db = persistence::open_db(&MASTER_NAME.to_owned());
@@ -47,20 +52,17 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult, CreateDatabaseEr
 }
 
 pub fn create_user_database(
-    create_database_statement: &CreateDatabaseBody,
+    statement: &CreateDatabaseBody,
     db_id: DatabaseId,
-) -> Result<OpenDatabaseResult, CreateDatabaseError> {
-    let db_name = create_database_statement.database_name.value.as_str();
+) -> Result<OpenDatabaseResult> {
+    let db_name = statement.database_name.value.as_str();
 
     create_database(db_name, db_id)
 }
 
-pub fn create_database(
-    db_name: &str,
-    db_id: DatabaseId,
-) -> Result<OpenDatabaseResult, CreateDatabaseError> {
-    let data_exists = persistence::check_db_exists(db_name, FileType::Primary);
-    let log_exists = persistence::check_db_exists(db_name, FileType::Log);
+pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseResult> {
+    let data_exists = persistence::check_db_exists(db_name, FileType::Primary)?;
+    let log_exists = persistence::check_db_exists(db_name, FileType::Log)?;
 
     if data_exists || log_exists {
         return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)));

@@ -1,12 +1,12 @@
-use std::{cell::RefCell, fs::File, io::Error, rc::Rc};
-
 use cli_common::ExecuteError;
 use db::{DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
+use derive_more::derive::From;
 use fm::{FileId, FileManager, IdentifiedFile};
 use page::PageDecoder;
-use parser::ast::{Program, ServerStatement, UserStatement};
-
 use page_cache::PageCache;
+use parser::ast::{Program, ServerStatement, UserStatement};
+use server::{CreateDatabaseError, OpenDatabaseResult, MASTER_DB_ID};
+use std::{cell::RefCell, fs::File, rc::Rc};
 
 mod db;
 mod fm;
@@ -16,7 +16,6 @@ mod page_cache;
 mod persistence;
 mod server;
 mod util;
-use server::{CreateDatabaseError, OpenDatabaseError, OpenDatabaseResult, MASTER_DB_ID};
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = "wak";
@@ -42,16 +41,26 @@ pub struct Engine {
 #[derive(Debug)]
 pub struct ExecuteResult {
     pub results: Vec<StatementResult>,
-    pub errors: Vec<StatementError>,
+    pub errors: Vec<Error>,
 }
 
 #[derive(Debug)]
 pub struct StatementResult {}
 
-#[derive(Debug)]
-pub enum StatementError {
+#[derive(Debug, From)]
+pub enum Error {
+    ExecuteError(ExecuteError),
     CreateDatabase(CreateDatabaseError),
+    PersistenceError(persistence::Error),
+    PageDecoderError(page::PageDecoderError),
 }
+
+#[derive(Debug)]
+pub enum OpenDatabaseError {
+    Err(),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl Engine {
     pub fn new() -> Self {
@@ -74,18 +83,7 @@ impl Engine {
                 fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
             }
             Err(error) => match error {
-                CreateDatabaseError::DatabaseExists(_) => {
-                    println!("Master database already exists. Continuing.")
-                }
-                CreateDatabaseError::UnableToCreateFile(error) => {
-                    println!("Unable to create database file. See: {:?}", error)
-                }
-                CreateDatabaseError::UnableToWrite(page_encoder_error) => {
-                    println!(
-                        "Unable to write to database file. See: {:?}",
-                        page_encoder_error
-                    )
-                }
+                _ => println!("Error creating/reading master: {:?}", error),
             },
         }
 
@@ -106,7 +104,7 @@ impl Engine {
         self.validate_files();
     }
 
-    pub fn execute(&self, prog: &Program) -> Result<ExecuteResult, ExecuteError> {
+    pub fn execute(&self, prog: &Program) -> Result<ExecuteResult> {
         let mut results = vec![];
         let mut errors = vec![];
 
@@ -138,10 +136,7 @@ impl Engine {
     }
 
     /// Userland statements. For example, SELECT, INSERT, etc.
-    pub fn execute_user_statement(
-        &self,
-        statement: &UserStatement,
-    ) -> Result<StatementResult, StatementError> {
+    pub fn execute_user_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
         dbg!(&statement);
         match statement {
             UserStatement::Select(select_expression_body) => {
@@ -168,16 +163,13 @@ impl Engine {
     }
 
     /// Serverland statements. For example, CREATE DATABASE.
-    pub fn execute_server_statement(
-        &self,
-        statement: &ServerStatement,
-    ) -> Result<StatementResult, StatementError> {
+    pub fn execute_server_statement(&self, statement: &ServerStatement) -> Result<StatementResult> {
         match statement {
             ServerStatement::CreateDatabase(s) => {
                 let next_id = self.next_id();
 
                 server::create_user_database(s, next_id)
-                    .map_err(|e| StatementError::CreateDatabase(e))
+                    .map_err(|e| Error::CreateDatabase(e))
                     .map(|result| {
                         self.file_manager
                             .borrow_mut()
@@ -214,72 +206,65 @@ impl Engine {
                 );
             }
             Err(err) => match err {
-                db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
-                    println!(
-                        "ERR: Checksum failed for DB {}:{:?}. Expected: {:?}. Actual: {:?}.",
-                        identifiable_file.id.id,
-                        identifiable_file.id.ty,
-                        checksum_result.expected,
-                        checksum_result.actual,
-                    )
-                }
-                db::ValidationError::FailedToOpenFileInfo => {
-                    println!("Failed to open file_info")
+                db::Error::ValidationError(validation_error) => match validation_error {
+                    db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
+                        println!(
+                            "ERR: Checksum failed for DB {}:{:?}. Expected: {:?}. Actual: {:?}.",
+                            identifiable_file.id.id,
+                            identifiable_file.id.ty,
+                            checksum_result.expected,
+                            checksum_result.actual,
+                        )
+                    }
+                    db::ValidationError::FailedToOpenFileInfo => {
+                        println!("Failed to open file_info")
+                    }
+                    db::ValidationError::PersistenceError(error) => {
+                        println!("Persistence error: {:?}", error)
+                    }
+                },
+                _ => {
+                    println!("Unknown error: {:?}", err)
                 }
             },
         };
     }
 
-    pub fn open_user_dbs(
-        &self,
-    ) -> Result<Box<impl Iterator<Item = OpenDatabaseResult> + '_>, OpenDatabaseError> {
-        match persistence::find_user_databases() {
-            Ok(dbs) => {
-                let results = dbs.map(|db| {
-                    let user_db = persistence::open_db(&db);
-                    let id = self.get_db_id(&user_db.dat);
+    pub fn open_user_dbs(&self) -> Result<Box<impl Iterator<Item = OpenDatabaseResult> + '_>> {
+        let dbs = persistence::find_user_databases()?;
 
-                    if id.is_err() {
-                        panic!("I have no idea");
-                    }
+        let results = dbs.map(|db| {
+            let user_db = persistence::open_db(&db);
+            let id = self.get_db_id(&user_db.dat);
 
-                    println!("Opening user DB: {:?}", db);
-
-                    OpenDatabaseResult {
-                        id: id.unwrap(),
-                        dat: user_db.dat,
-                        log: user_db.log,
-                    }
-                });
-
-                Ok(Box::new(results))
+            if id.is_err() {
+                panic!("I have no idea");
             }
-            Err(_) => {
-                return Err(OpenDatabaseError::Err());
+
+            println!("Opening user DB: {:?}", db);
+
+            OpenDatabaseResult {
+                id: id.unwrap(),
+                dat: user_db.dat,
+                log: user_db.log,
             }
-        }
+        });
+
+        Ok(Box::new(results))
     }
 
     fn next_id(&self) -> DatabaseId {
         self.file_manager.borrow().next_id()
     }
 
-    pub fn get_db_id(&self, file: &File) -> Result<DatabaseId, Error> {
+    pub fn get_db_id(&self, file: &File) -> Result<DatabaseId> {
         //Circumvent the page cache - can't use it until we have the db_id
         let page_bytes = persistence::read_page(&file, DATABASE_INFO_PAGE_INDEX)?;
 
         let page = PageDecoder::from_bytes(&page_bytes);
 
-        let db_info = page.try_read::<DatabaseInfo>(0);
+        let db_info = page.try_read::<DatabaseInfo>(0)?;
 
-        match db_info {
-            Ok(info) => Ok(info.database_id),
-            Err(err) => {
-                println!("Failed to read database info page. See: {:?}", err);
-                Err(Error::from(std::io::Error::from(
-                    std::io::ErrorKind::InvalidData,
-                )))
-            }
-        }
+        Ok(db_info.database_id)
     }
 }

@@ -3,7 +3,7 @@ use std::{
     process::exit,
 };
 
-use cli_common::{ExecuteError, ParseError};
+use cli_common::ParseError;
 use engine::Engine;
 use lexer::Lexer;
 use parser::Parser;
@@ -26,7 +26,7 @@ pub enum ReplResult {
 pub enum CommandResult {
     _UnrecognisedCommand,
     ParseError(Vec<ParseError>),
-    ExecuteError(ExecuteError),
+    ExecuteError(engine::Error),
     Failed(String),
     Ok,
 }
@@ -64,9 +64,7 @@ impl Repl {
                                 }
                             }
                             CommandResult::ExecuteError(err) => {
-                                let message = err.kind;
-                                let pos = err.position;
-                                println!("Execution Error: {message} (Position {pos})");
+                                println!("Execution Error: {err:?}");
                             }
                             CommandResult::Ok => {
                                 // TODO: https://github.com/zhiburt/tabled

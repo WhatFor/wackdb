@@ -5,6 +5,7 @@ edition = "2021"
 resolver = "2"
 
 [dependencies]
+derive_more = { version = "1.0.0", features = [ "from"]}
 parser = { path = "../parser" }
 cli_common = { path = "../cli_common" }
 macros = { path = "../macros" }

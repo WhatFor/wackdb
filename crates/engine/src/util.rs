@@ -1,45 +1,44 @@
 use std::path::{Path, PathBuf};
 
-pub fn file_exists(path: &PathBuf) -> bool {
+use derive_more::derive::From;
 
-    match Path::try_exists(path) {
-        Ok(exists) => exists,
-        Err(err) => panic!("Error: Unable to read filesystem. See: {}", err),
-    }
+#[derive(Debug, From)]
+pub enum Error {
+    #[from]
+    Io(std::io::Error),
 }
 
-pub fn ensure_path_exists(path: &std::path::PathBuf) {
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub fn file_exists(path: &PathBuf) -> Result<bool> {
+    Ok(Path::try_exists(path)?)
+}
+
+pub fn ensure_path_exists(path: &std::path::PathBuf) -> Result<()> {
     let dir = match path.is_dir() {
         true => path,
         false => path.parent().unwrap(),
     };
 
-    match std::fs::create_dir_all(dir) {
-        Err(err) => panic!("Error: Unable to write filesystem. See: {}", err),
-        _ => {}
-    }
+    std::fs::create_dir_all(dir)?;
+    Ok(())
 }
 
-pub fn create_file(path: &PathBuf) -> Result<std::fs::File, crate::CreateDatabaseError> {
-    let file = std::fs::OpenOptions::new()
+pub fn create_file(path: &PathBuf) -> Result<std::fs::File> {
+    Ok(std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         // TODO: Only works on windows - Need multiplatform support.
         //.custom_flags(0x80000000) // FILE_FLAG_WRITE_THROUGH
-        .open(path);
-
-    match file {
-        Ok(file_result) => Ok(file_result),
-        Err(err) => Err(crate::CreateDatabaseError::UnableToCreateFile(err)),
-    }
+        .open(path)?)
 }
 
-pub fn open_file(path: &PathBuf) -> Result<std::fs::File, std::io::Error> {
-    std::fs::OpenOptions::new()
+pub fn open_file(path: &PathBuf) -> Result<std::fs::File> {
+    Ok(std::fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(path)
+        .open(path)?)
 }
 
 pub fn get_base_path() -> std::path::PathBuf {
@@ -88,7 +87,7 @@ mod util_tests {
     #[test]
     fn test_file_exists_when_true() {
         let (_, temp_path) = get_temp_file();
-        let actual = file_exists(&temp_path);
+        let actual = file_exists(&temp_path).unwrap();
 
         assert_eq!(actual, true);
 
@@ -99,7 +98,7 @@ mod util_tests {
     #[test]
     fn test_file_exists_when_false() {
         let temp_path = temp_dir_path();
-        let actual = file_exists(&temp_path);
+        let actual = file_exists(&temp_path).unwrap();
 
         assert_eq!(actual, false);
     }
@@ -110,7 +109,7 @@ mod util_tests {
         temp_dir.push("test.file");
 
         println!("{:?}", temp_dir);
-        ensure_path_exists(&temp_dir);
+        ensure_path_exists(&temp_dir).unwrap();
     }
 
     #[test]
@@ -131,8 +130,7 @@ mod util_tests {
         let temp_path = temp_dir_path();
 
         {
-            create_file(&temp_path)
-                .expect("Unable to create test file.");
+            create_file(&temp_path).expect("Unable to create test file.");
         }
 
         let actual = open_file(&temp_path);
