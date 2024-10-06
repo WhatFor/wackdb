@@ -44,7 +44,7 @@ pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
     let base_path = util::get_base_path();
     let mut data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
 
-    let file_name = db_name.to_owned() + ext;
+    let file_name = db_name.to_owned() + "." + ext;
     PathBuf::push(&mut data_path, file_name);
 
     data_path
@@ -98,18 +98,16 @@ pub fn find_user_databases() -> std::io::Result<Box<impl Iterator<Item = String>
             return None;
         }
 
-        if let Some(e) = path.extension() {
-            if e != DATA_FILE_EXT && e != LOG_FILE_EXT {
-                return None;
-            }
-        } else {
-            return None;
-        }
-
-        path.file_stem().and_then(OsStr::to_str).map(str::to_owned)
+        path.extension()
+            .filter(|e| is_wack_file(e))
+            .and_then(|_| path.file_stem().and_then(OsStr::to_str).map(str::to_owned))
     });
 
     Ok(Box::new(unique_file_names))
+}
+
+fn is_wack_file(extension: &OsStr) -> bool {
+    extension.eq_ignore_ascii_case(DATA_FILE_EXT) || extension.eq_ignore_ascii_case(LOG_FILE_EXT)
 }
 
 pub struct OpenDatabaseResult {
