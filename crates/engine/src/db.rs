@@ -8,7 +8,7 @@ use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
     persistence,
     server::CreateDatabaseError,
-    util, CURRENT_DATABASE_VERSION,
+    CURRENT_DATABASE_VERSION,
 };
 
 /// The constant page index of the FILE_INFO page.
@@ -127,8 +127,6 @@ pub fn create_db_log_file(db_name: &str) -> Result<File, CreateDatabaseError> {
 
 #[derive(Debug)]
 pub enum ValidationError {
-    FileNotExists,
-    FailedToOpenFile(std::io::Error),
     FailedToOpenFileInfo,
     FileInfoChecksumIncorrect(crate::page::ChecksumResult),
 }
@@ -147,36 +145,6 @@ pub fn validate_data_file(file: &File) -> Result<(), ValidationError> {
             }
         }
         Err(_) => Err(ValidationError::FailedToOpenFileInfo),
-    }
-}
-
-pub fn validate_db_data_file(db_name: &str) -> Result<(), ValidationError> {
-    let path = persistence::get_db_path(db_name, FileType::Primary);
-
-    if !util::file_exists(&path) {
-        return Err(ValidationError::FileNotExists);
-    }
-
-    let open_file = util::open_file(&path);
-
-    match open_file {
-        Ok(file) => {
-            let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX);
-
-            match file_info_page {
-                Ok(page_bytes) => {
-                    let page = PageDecoder::from_bytes(&page_bytes);
-                    let checksum_pass = page.check();
-
-                    match checksum_pass.pass {
-                        true => Ok(()),
-                        false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)),
-                    }
-                }
-                Err(_) => Err(ValidationError::FailedToOpenFileInfo),
-            }
-        }
-        Err(err) => Err(ValidationError::FailedToOpenFile(err)),
     }
 }
 

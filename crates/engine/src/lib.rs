@@ -218,12 +218,6 @@ impl Engine {
                         checksum_result.actual,
                     )
                 }
-                db::ValidationError::FileNotExists => {
-                    println!("File does not exist.")
-                }
-                db::ValidationError::FailedToOpenFile(err) => {
-                    println!("Failed to open file: {:?}", err)
-                }
                 db::ValidationError::FailedToOpenFileInfo => {
                     println!("Failed to open file_info")
                 }

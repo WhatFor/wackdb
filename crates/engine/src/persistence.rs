@@ -1,10 +1,14 @@
 use std::{
+    ffi::OsStr,
     fs::File,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
-use crate::{db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util, DATA_FILE_EXT, LOG_FILE_EXT};
+use crate::{
+    db::FileType, page_cache::PageBytes, server::CreateDatabaseError, util, DATA_FILE_EXT,
+    LOG_FILE_EXT,
+};
 
 // Returns true if the given file exists
 pub fn check_db_exists(db_name: &str, file_type: FileType) -> bool {
@@ -95,20 +99,21 @@ pub fn find_user_databases() -> std::io::Result<Vec<String>> {
             continue;
         }
 
-        if let Some(ext) = path.extension(){
-            if ext != DATA_FILE_EXT || ext != LOG_FILE_EXT {
+        if let Some(e) = path.extension() {
+            if e != DATA_FILE_EXT && e != LOG_FILE_EXT {
                 continue;
             }
-        }
-
-        // todo: spicy unwraps
-        let file_name = path.file_stem().unwrap().to_str().unwrap().to_owned();
-
-        if unique_file_names.contains(&file_name) {
+        } else {
             continue;
         }
 
-        unique_file_names.push(file_name);
+        if let Some(file_name) = path.file_stem().and_then(OsStr::to_str).map(str::to_owned) {
+            if unique_file_names.contains(&file_name) {
+                continue;
+            }
+
+            unique_file_names.push(file_name);
+        }
     }
 
     Ok(unique_file_names)
