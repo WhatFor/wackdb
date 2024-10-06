@@ -92,9 +92,7 @@ impl Engine {
             },
         }
 
-        let user_dbs_r = server::open_user_dbs();
-
-        match user_dbs_r {
+        match server::open_user_dbs() {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     println!("Database loaded. ID: {}", user_db.id);
@@ -188,16 +186,10 @@ impl Engine {
     /// For all files in self.file_manager, validate them
     fn validate_files(&self) {
         let fm = self.file_manager.borrow();
-        let identifiable_files = fm.get_all();
 
-        for identifiable_file in identifiable_files {
-            if identifiable_file.id.ty == FileType::Log {
-                // Don't validate log files
-                continue;
-            }
-
-            self.validate_file(identifiable_file);
-        }
+        fm.get_all()
+            .filter(|file| file.id.ty != FileType::Log)
+            .for_each(|file| self.validate_file(file));
     }
 
     fn validate_file(&self, identifiable_file: IdentifiedFile) {

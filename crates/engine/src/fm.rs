@@ -38,11 +38,12 @@ impl FileManager {
         self.handles.get(id)
     }
 
-    pub fn get_all(&self) -> Vec<IdentifiedFile> {
-        self.handles
-            .iter()
-            .map(|(id, file)| IdentifiedFile { id, file })
-            .collect()
+    pub fn get_all(&self) -> Box<dyn Iterator<Item = IdentifiedFile> + '_> {
+        Box::new(
+            self.handles
+                .iter()
+                .map(|(id, file)| IdentifiedFile { id, file }),
+        )
     }
 
     pub fn next_id(&self) -> DatabaseId {

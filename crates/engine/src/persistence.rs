@@ -84,39 +84,32 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> std::io::Re
     Ok(())
 }
 
-pub fn find_user_databases() -> std::io::Result<Vec<String>> {
+pub fn find_user_databases() -> std::io::Result<Box<impl Iterator<Item = String>>> {
     let base_path = util::get_base_path();
     let data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
 
     let files = std::fs::read_dir(data_path);
-    let mut unique_file_names = Vec::new();
 
-    for entry in files? {
-        let entry = entry?;
+    let unique_file_names = files?.filter_map(|entry| {
+        let entry = entry.ok()?;
         let path = entry.path();
 
         if path.is_dir() {
-            continue;
+            return None;
         }
 
         if let Some(e) = path.extension() {
             if e != DATA_FILE_EXT && e != LOG_FILE_EXT {
-                continue;
+                return None;
             }
         } else {
-            continue;
+            return None;
         }
 
-        if let Some(file_name) = path.file_stem().and_then(OsStr::to_str).map(str::to_owned) {
-            if unique_file_names.contains(&file_name) {
-                continue;
-            }
+        path.file_stem().and_then(OsStr::to_str).map(str::to_owned)
+    });
 
-            unique_file_names.push(file_name);
-        }
-    }
-
-    Ok(unique_file_names)
+    Ok(Box::new(unique_file_names))
 }
 
 pub struct OpenDatabaseResult {
