@@ -61,7 +61,7 @@ impl Repl {
                                 for e in err {
                                     let message = e.kind;
                                     let pos = e.position;
-                                    println!("Syntax Error: {message} (Position {pos})");
+                                    println!("Syntax Error: {message:?} (Position {pos})");
                                 }
                             }
                             CommandResult::ExecuteError(err) => {

@@ -1,5 +1,3 @@
-use core::fmt;
-
 use anyhow::Result;
 use deku::ctx::Endian;
 use deku::prelude::*;
@@ -230,28 +228,12 @@ pub struct PageDecoder<'a> {
     slots: Vec<&'a [u8]>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum PageDecoderError {
+    #[error("Slot index out of range")]
     SlotOutOfRange,
+    #[error("Failed to deserialise: {0}")]
     FailedToDeserialise(DekuError),
-}
-
-impl fmt::Display for PageDecoderError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PageDecoderError::SlotOutOfRange => write!(f, "Slot out of range"),
-            PageDecoderError::FailedToDeserialise(e) => write!(f, "Failed to deserialise: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for PageDecoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            PageDecoderError::SlotOutOfRange => None,
-            PageDecoderError::FailedToDeserialise(e) => Some(e),
-        }
-    }
 }
 
 #[derive(Debug)]
