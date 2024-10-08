@@ -17,3 +17,10 @@ crc = "3.2.1"
 uuid = { version = "1.9.1", features = [ "v4" ]}
 thiserror = "1.0.64"
 anyhow = "1.0.89"
+
+[dev-dependencies]
+divan = "0.1.14"
+
+[[bench]]
+name = "page"
+harness = false
