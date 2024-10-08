@@ -6,12 +6,16 @@ use std::{
 };
 
 use anyhow::Result;
+use derive_more::derive::From;
 use thiserror::Error;
 
 use crate::{
-    db::FileType, page_cache::PageBytes, server::MASTER_NAME, util, DATA_FILE_EXT, LOG_FILE_EXT,
+    db::FileType,
+    engine::{DATA_FILE_EXT, LOG_FILE_EXT, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE, WACK_DIRECTORY},
+    page_cache::PageBytes,
+    server::MASTER_NAME,
+    util,
 };
-use derive_more::derive::From;
 
 #[derive(Debug, From, Error)]
 pub enum PersistenceError {
@@ -42,12 +46,12 @@ pub fn create_db_file_empty(db_name: &str, file_type: FileType) -> Result<File> 
 // Get a PathBuf to a file with the given name and extension
 pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
     let ext = match file_type {
-        FileType::Primary => crate::DATA_FILE_EXT,
-        FileType::Log => crate::LOG_FILE_EXT,
+        FileType::Primary => DATA_FILE_EXT,
+        FileType::Log => LOG_FILE_EXT,
     };
 
     let base_path = util::get_base_path();
-    let mut data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+    let mut data_path = Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));
 
     let file_name = db_name.to_owned() + "." + ext;
     PathBuf::push(&mut data_path, file_name);
@@ -68,7 +72,7 @@ pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> Res
 pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes> {
     seek_page_index(file, page_index)?;
 
-    let mut buf = [0; crate::PAGE_SIZE_BYTES_USIZE];
+    let mut buf = [0; PAGE_SIZE_BYTES_USIZE];
     file.read_exact(&mut buf)?;
 
     Ok(buf)
@@ -76,7 +80,7 @@ pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes>
 
 /// Seek to a given page index on a given File.
 pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> {
-    let page_size: u32 = crate::PAGE_SIZE_BYTES.try_into().unwrap();
+    let page_size: u32 = PAGE_SIZE_BYTES.try_into().unwrap();
     let offset: u64 = (page_index * page_size).into();
     let offset_from_start = std::io::SeekFrom::Start(offset);
     let pos = file.seek(offset_from_start)?;
@@ -90,7 +94,7 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> 
 
 pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
     let base_path = util::get_base_path();
-    let data_path = Path::join(&base_path, std::path::Path::new(crate::WACK_DIRECTORY));
+    let data_path = Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));
 
     let files = std::fs::read_dir(data_path);
 
@@ -141,6 +145,7 @@ fn open_db_of_type(database_name: &String, file_type: FileType) -> File {
 mod persistence_tests {
     use crate::*;
 
+    use engine::PAGE_SIZE_BYTES;
     use persistence::{read_page, write_page};
     use std::{
         env::temp_dir,

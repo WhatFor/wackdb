@@ -3,7 +3,8 @@ use deku::ctx::Endian;
 use deku::prelude::*;
 use thiserror::Error;
 
-use crate::{page_cache::PageBytes, PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
+use crate::engine::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE};
+use crate::page_cache::PageBytes;
 
 /// The max, current version number for the Page Header record
 pub const CURRENT_HEADER_VERSION: u8 = 1;
@@ -173,7 +174,7 @@ impl PageEncoder {
     }
 
     fn collect_internal(&mut self) -> Option<PageBytes> {
-        let mut full_page_vec = [0; crate::PAGE_SIZE_BYTES_USIZE];
+        let mut full_page_vec = [0; PAGE_SIZE_BYTES_USIZE];
 
         let header_bytes = self.header.to_bytes();
 
@@ -346,6 +347,7 @@ impl<'a> PageDecoder<'a> {
 mod page_encoder_tests {
     use crate::*;
     use deku::prelude::*;
+    use engine::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
     use page::{PageEncoder, PageEncoderError, PageHeader};
 
     #[test]

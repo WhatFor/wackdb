@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Error;
 use cli_common::ParseError;
-use engine::Engine;
+use engine::engine::Engine;
 use lexer::Lexer;
 use parser::Parser;
 

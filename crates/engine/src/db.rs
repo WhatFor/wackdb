@@ -7,9 +7,10 @@ use derive_more::derive::From;
 use std::{fs::File, time::SystemTime};
 use thiserror::Error;
 
+use crate::engine::CURRENT_DATABASE_VERSION;
 use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
-    persistence, CURRENT_DATABASE_VERSION,
+    persistence,
 };
 
 #[derive(Debug, From, Error)]
