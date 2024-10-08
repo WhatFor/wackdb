@@ -108,7 +108,6 @@ mod util_tests {
         let mut temp_dir = temp_dir();
         temp_dir.push("test.file");
 
-        println!("{:?}", temp_dir);
         ensure_path_exists(&temp_dir).unwrap();
     }
 

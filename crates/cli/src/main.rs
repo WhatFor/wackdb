@@ -1,10 +1,22 @@
+use env_logger::{Builder, Env};
 use repl::Repl;
 use std::env::args;
 
 mod repl;
 
+fn init_logger() {
+    let env = Env::default().default_filter_or("TRACE");
+
+    env_logger::Builder::from_env(env)
+        .format_target(false)
+        .init();
+}
+
 fn main() {
-    println!("WackDB");
+    init_logger();
+
+    log::info!("Welcome to WackDB");
+    log::info!("-----------------");
 
     let args: Vec<String> = args().collect();
     let repl = Repl::new();

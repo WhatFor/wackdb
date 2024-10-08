@@ -827,7 +827,6 @@ impl<'a> Parser<'a> {
                 })
             }
             x => {
-                println!("found: {x:?}");
                 self.push_error(ParseErrorKind::ExpectedIdentifier);
                 None
             }

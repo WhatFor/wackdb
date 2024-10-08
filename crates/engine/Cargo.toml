@@ -5,9 +5,11 @@ edition = "2021"
 resolver = "2"
 
 [dependencies]
-derive_more = { version = "1.0.0", features = [ "from"]}
 parser = { path = "../parser" }
 cli_common = { path = "../cli_common" }
+
+log = "0.4.22"
+derive_more = { version = "1.0.0", features = [ "from"]}
 macros = { path = "../macros" }
 deku = "0.18"
 hexlit = "0.5.5"

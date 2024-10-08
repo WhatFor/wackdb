@@ -8,3 +8,5 @@ lexer = { path = "../lexer" }
 cli_common = { path = "../cli_common" }
 parser = { path = "../parser" }
 engine = { path = "../engine" }
+log = "0.4.22"
+env_logger = "0.11.5"
