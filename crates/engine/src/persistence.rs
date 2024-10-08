@@ -5,21 +5,23 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::Result;
+use thiserror::Error;
+
 use crate::{
     db::FileType, page_cache::PageBytes, server::MASTER_NAME, util, DATA_FILE_EXT, LOG_FILE_EXT,
 };
 use derive_more::derive::From;
 
-#[derive(Debug, From)]
-pub enum Error {
-    #[from]
+#[derive(Debug, From, Error)]
+pub enum PersistenceError {
+    #[error("IO Error: {0}")]
     Io(util::Error),
-    #[from]
+    #[error("IO Error: {0}")]
     StdIo(std::io::Error),
+    #[error("Failed to seek to page index.")]
     PageSeekFailed,
 }
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 // Returns true if the given file exists
 pub fn check_db_exists(db_name: &str, file_type: FileType) -> Result<bool> {
@@ -82,7 +84,7 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> 
     if pos == offset {
         Ok(())
     } else {
-        Err(Error::PageSeekFailed)
+        Err(PersistenceError::PageSeekFailed.into())
     }
 }
 

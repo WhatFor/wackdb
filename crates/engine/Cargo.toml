@@ -7,11 +7,13 @@ resolver = "2"
 [dependencies]
 parser = { path = "../parser" }
 cli_common = { path = "../cli_common" }
+macros = { path = "../macros" }
 
 log = "0.4.22"
 derive_more = { version = "1.0.0", features = [ "from"]}
-macros = { path = "../macros" }
 deku = "0.18"
 hexlit = "0.5.5"
 crc = "3.2.1"
 uuid = { version = "1.9.1", features = [ "v4" ]}
+thiserror = "1.0.64"
+anyhow = "1.0.89"

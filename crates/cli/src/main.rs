@@ -1,4 +1,4 @@
-use env_logger::{Builder, Env};
+use env_logger::Env;
 use repl::Repl;
 use std::env::args;
 

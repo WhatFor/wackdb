@@ -826,7 +826,7 @@ impl<'a> Parser<'a> {
                     nullable: false, // TODO
                 })
             }
-            x => {
+            _ => {
                 self.push_error(ParseErrorKind::ExpectedIdentifier);
                 None
             }

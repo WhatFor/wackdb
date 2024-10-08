@@ -1,4 +1,5 @@
 use core::fmt;
+use thiserror::Error;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ParseError {
@@ -47,7 +48,8 @@ impl fmt::Display for ParseErrorKind {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Error)]
+#[error("Parse error: {kind}")]
 pub struct ExecuteError {
     pub kind: ExecuteErrorKind,
     pub position: usize,

@@ -1,11 +1,10 @@
-use cli_common::ExecuteError;
+use anyhow::Result;
 use db::{DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
-use derive_more::derive::From;
 use fm::{FileId, FileManager, IdentifiedFile};
 use page::PageDecoder;
 use page_cache::PageCache;
 use parser::ast::{Program, ServerStatement, UserStatement};
-use server::{CreateDatabaseError, OpenDatabaseResult, MASTER_DB_ID};
+use server::{OpenDatabaseResult, MASTER_DB_ID};
 use std::{cell::RefCell, fs::File, rc::Rc};
 
 mod db;
@@ -41,26 +40,16 @@ pub struct Engine {
 #[derive(Debug)]
 pub struct ExecuteResult {
     pub results: Vec<StatementResult>,
-    pub errors: Vec<Error>,
+    pub errors: Vec<anyhow::Error>,
 }
 
 #[derive(Debug)]
 pub struct StatementResult {}
 
-#[derive(Debug, From)]
-pub enum Error {
-    ExecuteError(ExecuteError),
-    CreateDatabase(CreateDatabaseError),
-    PersistenceError(persistence::Error),
-    PageDecoderError(page::PageDecoderError),
-}
-
 #[derive(Debug)]
 pub enum OpenDatabaseError {
     Err(),
 }
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 impl Engine {
     pub fn new() -> Self {
@@ -97,7 +86,8 @@ impl Engine {
                 }
             }
             Err(err) => {
-                panic!("Unable to open user databases. See: {:?}", err)
+                log::error!("Error opening user databases: {:?}", err);
+                return;
             }
         }
 
@@ -168,22 +158,20 @@ impl Engine {
             ServerStatement::CreateDatabase(s) => {
                 let next_id = self.next_id();
 
-                server::create_user_database(s, next_id)
-                    .map_err(|e| Error::CreateDatabase(e))
-                    .map(|result| {
-                        self.file_manager
-                            .borrow_mut()
-                            .add(FileId::new(result.id, db::FileType::Primary), result.dat);
+                let result = server::create_user_database(s, next_id)?;
 
-                        self.file_manager
-                            .borrow_mut()
-                            .add(FileId::new(result.id, db::FileType::Log), result.log);
+                self.file_manager
+                    .borrow_mut()
+                    .add(FileId::new(result.id, db::FileType::Primary), result.dat);
 
-                        // Revalidate all files
-                        self.validate_files();
+                self.file_manager
+                    .borrow_mut()
+                    .add(FileId::new(result.id, db::FileType::Log), result.log);
 
-                        StatementResult {}
-                    })
+                // Revalidate all files
+                self.validate_files();
+
+                Ok(StatementResult {})
             }
         }
     }
@@ -207,26 +195,12 @@ impl Engine {
                 );
             }
             Err(err) => match err {
-                db::Error::ValidationError(validation_error) => match validation_error {
-                    db::ValidationError::FileInfoChecksumIncorrect(checksum_result) => {
-                        log::error!(
-                            "ERR: Checksum failed for DB {}:{:?}. Expected: {:?}. Actual: {:?}.",
-                            identifiable_file.id.id,
-                            identifiable_file.id.ty,
-                            checksum_result.expected,
-                            checksum_result.actual,
-                        )
-                    }
-                    db::ValidationError::FailedToOpenFileInfo => {
-                        log::error!("Failed to open file_info")
-                    }
-                    db::ValidationError::PersistenceError(error) => {
-                        log::error!("Persistence error: {:?}", error)
-                    }
-                },
-                _ => {
-                    log::error!("Unknown error: {:?}", err)
-                }
+                _ => log::error!(
+                    "Database {}:{:?} failed validation: {:?}",
+                    identifiable_file.id.id,
+                    identifiable_file.id.ty,
+                    err
+                ),
             },
         };
     }

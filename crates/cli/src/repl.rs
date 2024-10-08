@@ -3,6 +3,7 @@ use std::{
     process::exit,
 };
 
+use anyhow::Error;
 use cli_common::ParseError;
 use engine::Engine;
 use lexer::Lexer;
@@ -26,7 +27,7 @@ pub enum ReplResult {
 pub enum CommandResult {
     _UnrecognisedCommand,
     ParseError(Vec<ParseError>),
-    ExecuteError(engine::Error),
+    ExecuteError(Error),
     Failed(String),
     Ok,
 }

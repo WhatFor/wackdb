@@ -1,14 +1,13 @@
-use std::path::{Path, PathBuf};
-
+use anyhow::Result;
 use derive_more::derive::From;
+use std::path::{Path, PathBuf};
+use thiserror::Error;
 
-#[derive(Debug, From)]
+#[derive(Debug, From, Error)]
 pub enum Error {
-    #[from]
+    #[error("IO Error: {0}")]
     Io(std::io::Error),
 }
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn file_exists(path: &PathBuf) -> Result<bool> {
     Ok(Path::try_exists(path)?)

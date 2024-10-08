@@ -1,7 +1,9 @@
 use core::fmt;
 
+use anyhow::Result;
 use deku::ctx::Endian;
 use deku::prelude::*;
+use thiserror::Error;
 
 use crate::{page_cache::PageBytes, PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
 
@@ -87,32 +89,18 @@ pub struct PageEncoder {
     slots: Vec<Vec<u8>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum PageEncoderError {
+    #[error("Not enough space for slot")]
     NotEnoughSpace,
+    #[error("Failed to serialise: {0}")]
+    #[allow(dead_code)]
     FailedToSerialise(DekuError),
-}
-
-impl fmt::Display for PageEncoderError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PageEncoderError::FailedToSerialise(e) => write!(f, "Failed to serialise: {}", e),
-            PageEncoderError::NotEnoughSpace => write!(f, "Not enough space"),
-        }
-    }
-}
-
-impl std::error::Error for PageEncoderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            PageEncoderError::FailedToSerialise(e) => Some(e),
-            PageEncoderError::NotEnoughSpace => None,
-        }
-    }
 }
 
 #[derive(Debug)]
 pub struct AddSlot {
+    #[allow(dead_code)]
     pointer_index: SlotPointer,
 }
 
@@ -130,23 +118,19 @@ impl PageEncoder {
     }
 
     #[allow(dead_code)] // Used for testing
-    pub fn add_slot_bytes(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
+    pub fn add_slot_bytes(&mut self, slot: Vec<u8>) -> Result<AddSlot> {
         self.add_slot_internal(slot)
     }
 
-    pub fn add_slot<T>(&mut self, slot: T) -> Result<AddSlot, PageEncoderError>
+    pub fn add_slot<T>(&mut self, slot: T) -> Result<AddSlot>
     where
         T: DekuContainerWrite,
     {
-        let bytes = slot.to_bytes();
-
-        match bytes {
-            Ok(bytes_ok) => self.add_slot_internal(bytes_ok),
-            Err(e) => Err(PageEncoderError::FailedToSerialise(e)),
-        }
+        let bytes = slot.to_bytes()?;
+        self.add_slot_internal(bytes)
     }
 
-    fn add_slot_internal(&mut self, slot: Vec<u8>) -> Result<AddSlot, PageEncoderError> {
+    fn add_slot_internal(&mut self, slot: Vec<u8>) -> Result<AddSlot> {
         let length = slot.len() as u16;
         let has_space = self.has_space_for(length);
 
@@ -165,7 +149,7 @@ impl PageEncoder {
                 let pointer_index = self.header.allocated_slot_count - 1;
                 Ok(AddSlot { pointer_index })
             }
-            false => Err(PageEncoderError::NotEnoughSpace),
+            false => Err(PageEncoderError::NotEnoughSpace.into()),
         }
     }
 
@@ -273,7 +257,9 @@ impl std::error::Error for PageDecoderError {
 #[derive(Debug)]
 pub struct ChecksumResult {
     pub pass: bool,
+    #[allow(dead_code)]
     pub expected: [u8; 2],
+    #[allow(dead_code)]
     pub actual: [u8; 2],
 }
 
@@ -497,8 +483,10 @@ mod page_encoder_tests {
         let slot_result = encoder.add_slot(slot);
 
         // Verify Result
-        assert_eq!(slot_result.is_err(), true);
-        assert_eq!(slot_result.err().unwrap(), PageEncoderError::NotEnoughSpace);
+        assert!(slot_result.is_err());
+        if let Err(e) = slot_result {
+            assert_eq!(e.to_string(), PageEncoderError::NotEnoughSpace.to_string());
+        }
     }
 
     // #[test]
