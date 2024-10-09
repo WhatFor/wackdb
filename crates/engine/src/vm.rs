@@ -1,32 +1,11 @@
+use core::fmt;
+
 use anyhow::Result;
 use parser::ast::{Expr, Identifier, UserStatement, Value};
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct VmResult {
-    result_set: ResultSet,
-}
+use crate::engine::{ColumnResult, ExprResult, ResultSet, StatementResult};
 
-#[derive(Debug, PartialEq, Clone)]
-struct ResultSet {
-    columns: Vec<ColumnResult>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct ColumnResult {
-    name: String,
-    value: ExprResult,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum ExprResult {
-    Int(u32),
-    Byte(u8),
-    Bool(bool),
-    String(String),
-    Null,
-}
-
-pub fn execute_user_statement(statement: &UserStatement) -> Result<VmResult> {
+pub fn execute_user_statement(statement: &UserStatement) -> Result<StatementResult> {
     let is_const_expr = is_constant_statement(statement);
 
     if is_const_expr {
@@ -82,20 +61,21 @@ fn is_const_exp(expr: &Expr) -> bool {
     }
 }
 
-fn evaluate_constant_statement(statement: &UserStatement) -> Result<VmResult> {
+fn evaluate_constant_statement(statement: &UserStatement) -> Result<StatementResult> {
     match statement {
         UserStatement::Select(select_expression_body) => {
             let columns = select_expression_body
                 .select_item_list
                 .item_list
                 .iter()
-                .map(|item| ColumnResult {
-                    name: evaluate_column_name(&item.alias),
+                .enumerate()
+                .map(|(index, item)| ColumnResult {
+                    name: evaluate_column_name(&item.alias, index),
                     value: evaluate_constant_expr(&item.expr),
                 })
                 .collect();
 
-            return Ok(VmResult {
+            return Ok(StatementResult {
                 result_set: ResultSet { columns },
             });
         }
@@ -106,11 +86,10 @@ fn evaluate_constant_statement(statement: &UserStatement) -> Result<VmResult> {
     }
 }
 
-fn evaluate_column_name(identifier: &Option<Identifier>) -> String {
+fn evaluate_column_name(identifier: &Option<Identifier>, index: usize) -> String {
     match identifier {
         Some(id) => id.value.to_string(),
-        // TODO
-        None => String::from("Column"),
+        None => String::from("Column ") + &index.to_string(),
     }
 }
 

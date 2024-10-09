@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Error;
 use cli_common::ParseError;
-use engine::engine::Engine;
+use engine::engine::{Engine, StatementResult};
 use lexer::Lexer;
 use parser::Parser;
 
@@ -29,7 +29,7 @@ pub enum CommandResult {
     ParseError(Vec<ParseError>),
     ExecuteError(Error),
     Failed(String),
-    Ok,
+    Ok(Vec<StatementResult>),
 }
 
 impl Repl {
@@ -67,9 +67,28 @@ impl Repl {
                             CommandResult::ExecuteError(err) => {
                                 println!("Execution Error: {err:?}");
                             }
-                            CommandResult::Ok => {
-                                // TODO: https://github.com/zhiburt/tabled
-                                println!("OK!");
+                            CommandResult::Ok(results) => {
+                                for result in results {
+                                    let pivoted_results = result.result_set.columns.iter().fold(
+                                        vec![],
+                                        |acc, col| {
+                                            let mut new_acc = acc.clone();
+                                            new_acc.push(col.name.clone());
+                                            new_acc.push(col.value.to_string());
+                                            new_acc
+                                        },
+                                    );
+
+                                    let repl_output = tabled::Table::new(result.result_set.columns)
+                                        .with(tabled::settings::Disable::row(
+                                            tabled::settings::object::Rows::first(),
+                                        ))
+                                        .with(tabled::settings::Rotate::Top)
+                                        .with(tabled::settings::Rotate::Right)
+                                        .to_string();
+
+                                    println!("{}", repl_output);
+                                }
                             }
                         },
                         ReplResult::Help => {
@@ -118,8 +137,7 @@ impl Repl {
                             println!("{err:?}")
                         }
 
-                        // todo: bit of a mess of error types
-                        CommandResult::Ok
+                        CommandResult::Ok(ok_result.results)
                     }
                     Err(err) => CommandResult::ExecuteError(err),
                 }

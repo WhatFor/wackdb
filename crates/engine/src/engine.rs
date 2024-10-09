@@ -7,7 +7,9 @@ use crate::{persistence, vm};
 
 use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
+use std::fmt::Display;
 use std::{cell::RefCell, fs::File, rc::Rc};
+use tabled::Tabled;
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = "wak";
@@ -36,8 +38,50 @@ pub struct ExecuteResult {
     pub errors: Vec<anyhow::Error>,
 }
 
-#[derive(Debug)]
-pub struct StatementResult {}
+#[derive(Debug, PartialEq, Clone)]
+pub struct StatementResult {
+    pub result_set: ResultSet,
+}
+
+impl Default for StatementResult {
+    fn default() -> Self {
+        StatementResult {
+            result_set: ResultSet { columns: vec![] },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ResultSet {
+    pub columns: Vec<ColumnResult>,
+}
+
+#[derive(Debug, PartialEq, Clone, Tabled)]
+pub struct ColumnResult {
+    pub name: String,
+    pub value: ExprResult,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ExprResult {
+    Int(u32),
+    Byte(u8),
+    Bool(bool),
+    String(String),
+    Null,
+}
+
+impl Display for ExprResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExprResult::Int(x) => write!(f, "{}", x),
+            ExprResult::Byte(x) => write!(f, "{}", x),
+            ExprResult::Bool(x) => write!(f, "{}", x),
+            ExprResult::String(x) => write!(f, "{}", x),
+            ExprResult::Null => write!(f, "NULL"),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum OpenDatabaseError {
@@ -124,26 +168,23 @@ impl Engine {
         match statement {
             UserStatement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                let result = vm::execute_user_statement(statement)?;
-                log::info!("Result: {:?}", result);
-
-                Ok(StatementResult {})
+                vm::execute_user_statement(statement)
             }
             UserStatement::Update => {
                 log::info!("Updating");
-                Ok(StatementResult {})
+                Ok(StatementResult::default())
             }
             UserStatement::Insert => {
                 log::info!("Inserting");
-                Ok(StatementResult {})
+                Ok(StatementResult::default())
             }
             UserStatement::Delete => {
                 log::info!("Deleting");
-                Ok(StatementResult {})
+                Ok(StatementResult::default())
             }
             UserStatement::CreateTable(_create_table_body) => {
                 log::info!("Creating Table");
-                Ok(StatementResult {})
+                Ok(StatementResult::default())
             }
         }
     }
@@ -167,7 +208,7 @@ impl Engine {
                 // Revalidate all files
                 self.validate_files();
 
-                Ok(StatementResult {})
+                Ok(StatementResult::default())
             }
         }
     }
