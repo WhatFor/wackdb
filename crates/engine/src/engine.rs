@@ -2,8 +2,8 @@ use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_IND
 use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::persistence;
 use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID};
+use crate::{persistence, vm};
 
 use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
@@ -124,6 +124,9 @@ impl Engine {
         match statement {
             UserStatement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
+                let result = vm::execute_user_statement(statement)?;
+                log::info!("Result: {:?}", result);
+
                 Ok(StatementResult {})
             }
             UserStatement::Update => {

@@ -7,3 +7,4 @@ mod page_cache;
 mod persistence;
 mod server;
 mod util;
+mod vm;
