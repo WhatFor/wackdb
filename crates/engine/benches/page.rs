@@ -6,8 +6,8 @@ fn main() {
     divan::main();
 }
 
-#[divan::bench(args = [1, 2, 4, 8, 16, 32])]
-fn write_slots(n: u64) {
+#[divan::bench(args = [1, 2, 4, 8, 16, 32, 64, 128, 240])]
+fn write_slots(n: u16) {
     let header = PageHeader::new(page::PageType::DatabaseInfo);
     let mut encoder = PageEncoder::new(header);
 
