@@ -176,8 +176,8 @@ impl Repl {
 
     fn handle_meta_command(&self, buf: &str) -> ReplResult {
         match buf.to_lowercase().as_ref() {
-            ".exit" => ReplResult::Exit,
-            ".help" => ReplResult::Help,
+            ".exit" | ".quit" | ".close" => ReplResult::Exit,
+            ".help" | ".h" | "?" | ".?" => ReplResult::Help,
             ".dbg" => ReplResult::RunDebug,
             "" => ReplResult::NoInput,
             _ => ReplResult::UnrecognisedInput,
