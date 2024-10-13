@@ -5,3 +5,4 @@ members = [
     "crates/lexer",
     "crates/parser",
 ]
+resolver = "2"
