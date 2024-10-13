@@ -1,9 +1,12 @@
-use std::collections::{HashMap, VecDeque};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+};
 
 pub struct LRUCache<K, V> {
     capacity: usize,
     map: HashMap<K, V>,
-    order: VecDeque<K>,
+    order: RefCell<VecDeque<K>>,
 }
 
 impl<K: std::hash::Hash + Eq + Clone, V> LRUCache<K, V> {
@@ -11,14 +14,16 @@ impl<K: std::hash::Hash + Eq + Clone, V> LRUCache<K, V> {
         LRUCache {
             capacity,
             map: HashMap::new(),
-            order: VecDeque::new(),
+            order: RefCell::new(VecDeque::new()),
         }
     }
 
-    pub fn get(&mut self, key: &K) -> Option<&V> {
+    pub fn get(&self, key: &K) -> Option<&V> {
         if self.map.contains_key(key) {
-            self.order.retain(|k| k != key);
-            self.order.push_back(key.clone());
+            let mut order = self.order.borrow_mut();
+            order.retain(|k| k != key);
+            order.push_back(key.clone());
+
             self.map.get(key)
         } else {
             None
@@ -26,14 +31,17 @@ impl<K: std::hash::Hash + Eq + Clone, V> LRUCache<K, V> {
     }
 
     pub fn put(&mut self, key: &K, value: V) {
+        let mut order = self.order.borrow_mut();
+
         if self.map.contains_key(key) {
-            self.order.retain(|k| k != key);
+            order.retain(|k| k != key);
         } else if self.map.len() == self.capacity {
-            if let Some(old_key) = self.order.pop_front() {
+            if let Some(old_key) = order.pop_front() {
                 self.map.remove(&old_key);
             }
         }
-        self.order.push_back(key.clone());
+
+        order.push_back(key.clone());
         self.map.insert(key.to_owned(), value);
     }
 }
@@ -53,7 +61,10 @@ mod lru_tests {
         assert_eq!(*index_1.unwrap(), 1);
 
         // 1 should be be at the start of the order
-        assert_eq!(lru.order[0], 1);
+        {
+            let order = lru.order.borrow();
+            assert_eq!(order[0], 1);
+        }
 
         lru.put(&2, 2);
 
