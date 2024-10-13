@@ -16,13 +16,13 @@ use crate::{
 #[derive(Debug, From, Error)]
 pub enum DbError {
     #[error("Deku Error: {0}")]
-    DekuError(deku::error::DekuError),
+    Deku(deku::error::DekuError),
     #[error("Persistence Error: {0}")]
-    PersistenceError(persistence::PersistenceError),
+    Persistence(persistence::PersistenceError),
     #[error("Validation Error: {0}")]
-    ValidationError(ValidationError),
+    Validation(ValidationError),
     #[error("Page Encoder Error: {0}")]
-    PageEncoderError(crate::page::PageEncoderError),
+    PageEncoder(crate::page::PageEncoderError),
 }
 
 #[derive(Debug, From, Error)]
@@ -117,13 +117,13 @@ impl DatabaseInfo {
             database_name_len: database_name.len() as u8,
             database_name: database_name.to_owned().into_bytes(),
             database_version: version,
-            database_id: database_id,
+            database_id,
         }
     }
 }
 
 pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> Result<File> {
-    let file = persistence::create_db_file_empty(&db_name, FileType::Primary)?;
+    let file = persistence::create_db_file_empty(db_name, FileType::Primary)?;
 
     write_file_info(&file)?;
     write_db_info(&file, db_name, db_id)?;
@@ -132,11 +132,11 @@ pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> Result<File> {
 }
 
 pub fn create_db_log_file(db_name: &str) -> Result<File> {
-    Ok(persistence::create_db_file_empty(&db_name, FileType::Log)?)
+    persistence::create_db_file_empty(db_name, FileType::Log)
 }
 
 pub fn validate_data_file(file: &File) -> Result<()> {
-    let file_info_page = persistence::read_page(&file, FILE_INFO_PAGE_INDEX)?;
+    let file_info_page = persistence::read_page(file, FILE_INFO_PAGE_INDEX)?;
 
     let page = PageDecoder::from_bytes(&file_info_page);
     let checksum_pass = page.check();
@@ -166,11 +166,11 @@ fn write_file_info(file: &std::fs::File) -> Result<()> {
     page.add_slot(body)?;
     let collected = page.collect();
 
-    Ok(persistence::write_page(
-        &file,
+    persistence::write_page(
+        file,
         &collected,
         FILE_INFO_PAGE_INDEX,
-    )?)
+    )
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
@@ -183,11 +183,11 @@ fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseId) -> Resu
     page.add_slot(body)?;
     let collected = page.collect();
 
-    Ok(persistence::write_page(
-        &file,
+    persistence::write_page(
+        file,
         &collected,
         DATABASE_INFO_PAGE_INDEX,
-    )?)
+    )
 }
 
 #[cfg(test)]

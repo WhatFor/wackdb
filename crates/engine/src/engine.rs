@@ -88,6 +88,12 @@ pub enum OpenDatabaseError {
     Err(),
 }
 
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Engine {
     pub fn new() -> Self {
         let file_manager = Rc::new(RefCell::new(FileManager::new()));
@@ -108,9 +114,7 @@ impl Engine {
                 fm.add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
                 fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
             }
-            Err(error) => match error {
-                _ => log::error!("Error creating/reading master: {:?}", error),
-            },
+            Err(error) => log::error!("Error creating/reading master: {:?}", error),
         }
 
         match self.open_user_dbs() {
@@ -231,14 +235,12 @@ impl Engine {
                     identifiable_file.id.ty
                 );
             }
-            Err(err) => match err {
-                _ => log::error!(
-                    "Database {}:{:?} failed validation: {:?}",
-                    identifiable_file.id.id,
-                    identifiable_file.id.ty,
-                    err
-                ),
-            },
+            Err(err) => log::error!(
+                "Database {}:{:?} failed validation: {:?}",
+                identifiable_file.id.id,
+                identifiable_file.id.ty,
+                err
+            ),
         };
     }
 
@@ -271,7 +273,7 @@ impl Engine {
 
     pub fn get_db_id(&self, file: &File) -> Result<DatabaseId> {
         //Circumvent the page cache - can't use it until we have the db_id
-        let page_bytes = persistence::read_page(&file, DATABASE_INFO_PAGE_INDEX)?;
+        let page_bytes = persistence::read_page(file, DATABASE_INFO_PAGE_INDEX)?;
 
         let page = PageDecoder::from_bytes(&page_bytes);
 

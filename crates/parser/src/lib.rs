@@ -76,13 +76,10 @@ impl<'a> Parser<'a> {
                 break;
             }
 
-            match self.peek() {
-                Some(Token::EOF) => {
-                    parsed_full = true;
-                    self.eat();
-                    break;
-                }
-                _ => {}
+            if let Some(Token::EOF) = self.peek() {
+                parsed_full = true;
+                self.eat();
+                break;
             }
 
             self.next_significant_token();
@@ -444,14 +441,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_subexpr(&mut self, precedence: u8) -> Option<Expr> {
-        let depth_guard = self.recursion_guard.dec();
-
-        match depth_guard {
-            Err(err) => {
-                self.push_error(err);
-                return None;
-            }
-            _ => {}
+        if let Err(err) = self.recursion_guard.dec() {
+            self.push_error(err);
+            return None;
         }
 
         let mut expr = self.parse_prefix()?;
@@ -704,19 +696,11 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(Token::Keyword(Keyword::Table)) => {
                     let body = self.parse_create_table_statement();
-
-                    match body {
-                        Some(x) => Some(Statement::User(UserStatement::CreateTable(x))),
-                        None => None,
-                    }
+                    body.map(|x| Statement::User(UserStatement::CreateTable(x)))
                 }
                 Some(Token::Keyword(Keyword::Database)) => {
                     let body = self.parse_create_database_statement();
-
-                    match body {
-                        Some(x) => Some(Statement::Server(ServerStatement::CreateDatabase(x))),
-                        None => None,
-                    }
+                    body.map(|x| Statement::Server(ServerStatement::CreateDatabase(x)))
                 }
                 _ => {
                     self.push_error(ParseErrorKind::UnsupportedSyntax);
@@ -777,14 +761,14 @@ impl<'a> Parser<'a> {
     fn parse_table_create_column_list(&mut self) -> Option<Vec<ColumnDefinition>> {
         self.next_significant_token();
 
-        if self.match_(Token::ParenOpen) == false {
+        if !self.match_(Token::ParenOpen) {
             self.push_error(ParseErrorKind::ExpectedParentheses("(".to_string()));
             return None;
         }
 
         let mut columns = vec![];
 
-        while self.lookahead(Token::ParenClose) == false {
+        while !self.lookahead(Token::ParenClose) {
             self.match_(Token::Comma);
             self.next_significant_token();
 
@@ -792,7 +776,7 @@ impl<'a> Parser<'a> {
             columns.push(column_definition);
         }
 
-        if self.match_(Token::ParenClose) == false {
+        if !self.match_(Token::ParenClose) {
             self.push_error(ParseErrorKind::ExpectedParentheses(")".to_string()));
             return None;
         }
@@ -886,7 +870,7 @@ impl<'a> Parser<'a> {
 
     // Move to the next significant token
     fn next_significant_token(&mut self) {
-        while self.is_significant_token() == false {
+        while !self.is_significant_token() {
             self.eat();
         }
     }
@@ -896,10 +880,8 @@ impl<'a> Parser<'a> {
         let next = self.peek();
 
         match next {
-            Some(tok) => match tok {
-                Token::Space => false,
-                _ => true,
-            },
+            Some(Token::Space) => false,
+            Some(_) => true,
             None => false,
         }
     }
@@ -927,7 +909,7 @@ mod parser_tests {
     use lexer::token::{Comparison, Slice, Value as LexerValue};
     use pretty_assertions::assert_eq;
 
-    const EMPTY_QUERY: &'static str = "";
+    const EMPTY_QUERY: &str = "";
 
     #[test]
     fn test_simple_select_statement() {
@@ -1943,7 +1925,7 @@ mod parser_tests {
     #[test]
     fn test_empty_tokens() {
         let tokens = vec![];
-        let actual = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let actual = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
         let expected = Ok(Program::Statements(vec![]));
 
         assert_eq!(actual, expected);
@@ -1952,7 +1934,7 @@ mod parser_tests {
     #[test]
     fn test_select_statement_missing_select_items_list() {
         let tokens = vec![Token::Keyword(Keyword::Select), Token::EOF];
-        let actual = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let actual = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
         let errors = match actual {
             Ok(_) => vec![],
@@ -1998,7 +1980,7 @@ mod parser_tests {
     #[test]
     fn test_missing_statement() {
         let tokens = vec![Token::Semicolon];
-        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
         let errors = match lexer {
             Ok(_) => vec![],
@@ -2018,7 +2000,7 @@ mod parser_tests {
     #[test]
     fn test_simple_insert_statement() {
         let tokens = vec![Token::Keyword(Keyword::Insert), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Statements(vec![Statement::User(
             UserStatement::Insert,
@@ -2030,7 +2012,7 @@ mod parser_tests {
     #[test]
     fn test_simple_update_statement() {
         let tokens = vec![Token::Keyword(Keyword::Update), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Statements(vec![Statement::User(
             UserStatement::Update,
@@ -2042,7 +2024,7 @@ mod parser_tests {
     #[test]
     fn test_simple_delete_statement() {
         let tokens = vec![Token::Keyword(Keyword::Delete), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, &EMPTY_QUERY).parse();
+        let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
         let expected = Ok(Program::Statements(vec![Statement::User(
             UserStatement::Delete,

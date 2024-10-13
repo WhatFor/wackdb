@@ -9,11 +9,11 @@ pub enum Error {
     Io(std::io::Error),
 }
 
-pub fn file_exists(path: &PathBuf) -> Result<bool> {
+pub fn file_exists(path: &Path) -> Result<bool> {
     Ok(Path::try_exists(path)?)
 }
 
-pub fn ensure_path_exists(path: &std::path::PathBuf) -> Result<()> {
+pub fn ensure_path_exists(path: &Path) -> Result<()> {
     let dir = match path.is_dir() {
         true => path,
         false => path.parent().unwrap(),
@@ -28,6 +28,7 @@ pub fn create_file(path: &PathBuf) -> Result<std::fs::File> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         // TODO: Only works on windows - Need multiplatform support.
         //.custom_flags(0x80000000) // FILE_FLAG_WRITE_THROUGH
         .open(path)?)
@@ -77,6 +78,7 @@ mod util_tests {
             .write(true)
             .read(true)
             .create(true)
+            .truncate(false)
             .open(&path)
             .expect("Failed to create temp file");
 
@@ -88,7 +90,7 @@ mod util_tests {
         let (_, temp_path) = get_temp_file();
         let actual = file_exists(&temp_path).unwrap();
 
-        assert_eq!(actual, true);
+        assert!(actual);
 
         // Clean down
         std::fs::remove_file(temp_path).expect("Unable to clear down test.");
@@ -99,7 +101,7 @@ mod util_tests {
         let temp_path = temp_dir_path();
         let actual = file_exists(&temp_path).unwrap();
 
-        assert_eq!(actual, false);
+        assert!(!actual);
     }
 
     #[test]
@@ -115,12 +117,12 @@ mod util_tests {
         let temp_path = temp_dir_path();
         let actual = create_file(&temp_path);
 
-        assert_eq!(actual.is_ok(), true);
+        assert!(actual.is_ok());
 
         let is_readonly = actual.unwrap().metadata().unwrap().permissions().readonly();
 
         // Should be writable
-        assert_eq!(is_readonly, false);
+        assert!(!is_readonly);
     }
 
     #[test]
@@ -133,10 +135,10 @@ mod util_tests {
 
         let actual = open_file(&temp_path);
 
-        assert_eq!(actual.is_ok(), true);
+        assert!(actual.is_ok());
         let is_readonly = actual.unwrap().metadata().unwrap().permissions().readonly();
 
         // Should be writable
-        assert_eq!(is_readonly, false);
+        assert!(!is_readonly);
     }
 }

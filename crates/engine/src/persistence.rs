@@ -30,7 +30,7 @@ pub enum PersistenceError {
 // Returns true if the given file exists
 pub fn check_db_exists(db_name: &str, file_type: FileType) -> Result<bool> {
     let path = get_db_path(db_name, file_type);
-    Ok(util::file_exists(&path)?)
+    util::file_exists(&path)
 }
 
 /// Create a database file, empty.
@@ -40,7 +40,7 @@ pub fn create_db_file_empty(db_name: &str, file_type: FileType) -> Result<File> 
     util::file_exists(&master_path)?;
     util::ensure_path_exists(&master_path)?;
 
-    Ok(util::create_file(&master_path)?)
+    util::create_file(&master_path)
 }
 
 // Get a PathBuf to a file with the given name and extension
@@ -80,7 +80,7 @@ pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes>
 
 /// Seek to a given page index on a given File.
 pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> {
-    let page_size: u32 = PAGE_SIZE_BYTES.try_into().unwrap();
+    let page_size: u32 = PAGE_SIZE_BYTES.into();
     let offset: u64 = (page_index * page_size).into();
     let offset_from_start = std::io::SeekFrom::Start(offset);
     let pos = file.seek(offset_from_start)?;
@@ -129,14 +129,14 @@ pub struct OpenDatabaseResult {
     pub log: File,
 }
 
-pub fn open_db(database_name: &String) -> OpenDatabaseResult {
+pub fn open_db(database_name: &str) -> OpenDatabaseResult {
     let dat = open_db_of_type(database_name, FileType::Primary);
     let log = open_db_of_type(database_name, FileType::Log);
 
     OpenDatabaseResult { dat, log }
 }
 
-fn open_db_of_type(database_name: &String, file_type: FileType) -> File {
+fn open_db_of_type(database_name: &str, file_type: FileType) -> File {
     let path = get_db_path(database_name, file_type);
     util::open_file(&path).expect("Failed to open database.")
 }
@@ -169,6 +169,7 @@ mod persistence_tests {
             .write(true)
             .read(true)
             .create(true)
+            .truncate(false)
             .open(&path)
             .expect("Failed to create temp file");
 
@@ -182,7 +183,7 @@ mod persistence_tests {
 
         let result = write_page(&temp_file, &data, 0);
 
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         // Clean down
         std::fs::remove_file(temp_path).expect("Unable to clear down test.");

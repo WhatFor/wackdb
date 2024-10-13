@@ -26,7 +26,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> LRUCache<K, V> {
     }
 
     pub fn put(&mut self, key: &K, value: V) {
-        if self.map.contains_key(&key) {
+        if self.map.contains_key(key) {
             self.order.retain(|k| k != key);
         } else if self.map.len() == self.capacity {
             if let Some(old_key) = self.order.pop_front() {

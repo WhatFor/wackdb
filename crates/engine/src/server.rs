@@ -37,7 +37,7 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
     let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary)?;
 
     if exists {
-        let db = persistence::open_db(&MASTER_NAME.to_owned());
+        let db = persistence::open_db(MASTER_NAME);
 
         log::info!("Opened existing master DB.");
 
@@ -71,9 +71,9 @@ pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseR
     let data_file = db::create_db_data_file(db_name, db_id)?;
     let log_file = db::create_db_log_file(db_name)?;
 
-    return Ok(OpenDatabaseResult {
+    Ok(OpenDatabaseResult {
         id: db_id,
         dat: data_file,
         log: log_file,
-    });
+    })
 }

@@ -62,24 +62,20 @@ impl fmt::Display for SelectExpressionBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SELECT {} ", self.select_item_list)?;
 
-        match &self.from_clause {
-            Some(c) => write!(f, "FROM {} ", c)?,
-            _ => {}
+        if let Some(c) = &self.from_clause {
+            write!(f, "FROM {} ", c)?
         }
 
-        match &self.where_clause {
-            Some(c) => write!(f, "WHERE {} ", c)?,
-            _ => {}
+        if let Some(c) = &self.where_clause {
+            write!(f, "WHERE {} ", c)?
         }
 
-        match &self.group_by_clause {
-            Some(c) => write!(f, "GROUP BY {} ", c)?,
-            _ => {}
+        if let Some(c) = &self.group_by_clause {
+            write!(f, "GROUP BY {} ", c)?
         }
 
-        match &self.order_by_clause {
-            Some(c) => write!(f, "ORDER BY {}", c)?,
-            _ => {}
+        if let Some(c) = &self.order_by_clause {
+            write!(f, "ORDER BY {}", c)?
         }
 
         Ok(())

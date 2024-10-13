@@ -240,10 +240,7 @@ impl<'a> Lexer<'a> {
                 c if c == '-' || c == '.' || c.is_numeric() => {
                     // Very greedily collect the number and include alphabetical to be handled later.
                     let end_pos = self.scan_until(curr_offset, |c| {
-                        c.is_numeric() == false
-                            && c.is_alphabetic() == false
-                            && c != '.'
-                            && c != '-'
+                        !c.is_numeric() && !c.is_alphabetic() && c != '.' && c != '-'
                     });
 
                     self.pos += end_pos - curr_offset;

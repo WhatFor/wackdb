@@ -12,6 +12,8 @@ fn init_logger() {
         .init();
 }
 
+const FILE_EXT: &str = ".wak";
+
 fn main() {
     init_logger();
 
@@ -26,11 +28,11 @@ fn main() {
     }
 
     // TODO: Probably swap this to a cmdline flag for safety (e.g. -f or -i)
-    const FILE_EXT: &str = ".wak";
     let looks_like_file = args[1].to_lowercase().ends_with(FILE_EXT);
 
-    let _ = match looks_like_file {
-        true => repl.eval_file(&args[1]),
-        false => repl.eval_command(&args[1]),
+    if looks_like_file {
+        repl.eval_file(&args[1])
+    } else {
+        repl.eval_command(&args[1])
     };
 }

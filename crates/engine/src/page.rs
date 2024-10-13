@@ -71,7 +71,7 @@ impl PageHeader {
         PageHeader {
             page_id: 0, // TODO
             header_version: CURRENT_HEADER_VERSION,
-            page_type: page_type,
+            page_type,
             checksum: 0, // Not calc'd until collected
             flags: 0,    // Not set
             allocated_slot_count: 0,
@@ -183,7 +183,7 @@ impl PageEncoder {
                 // Write the header bytes into the page vec;
                 // We could specifically write 32 bytes (our header length), but that would mean
                 // we'd have to pad out the `header_bytes` from it's current size for no real win.
-                full_page_vec[0..header.len() as usize].copy_from_slice(&header);
+                full_page_vec[0..header.len()].copy_from_slice(&header);
 
                 for slot in &self.slots {
                     // Calculate the new start position of the free space,
@@ -193,7 +193,7 @@ impl PageEncoder {
                     // Write the bytes
                     let _ = &full_page_vec
                         [self.header.free_space_start_offset.into()..slot_end_pointer.into()]
-                        .copy_from_slice(&slot);
+                        .copy_from_slice(slot);
 
                     // Set the new start of free space
                     self.header.free_space_start_offset = slot_end_pointer;
@@ -220,7 +220,7 @@ impl PageEncoder {
 
 fn check(bytes: &[u8]) -> [u8; 2] {
     let crc = crc::Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
-    crc.checksum(&bytes).to_be_bytes()
+    crc.checksum(bytes).to_be_bytes()
 }
 
 pub struct PageDecoder<'a> {
@@ -432,10 +432,10 @@ mod page_encoder_tests {
         let slot_result_2 = encoder.add_slot_bytes(slot2.clone());
 
         // Verify Result
-        assert_eq!(slot_result_1.is_ok(), true);
+        assert!(slot_result_1.is_ok());
         assert_eq!(slot_result_1.expect("Failed to add slot.").pointer_index, 0);
 
-        assert_eq!(slot_result_2.is_ok(), true);
+        assert!(slot_result_2.is_ok());
         assert_eq!(slot_result_2.expect("Failed to add slot.").pointer_index, 1);
 
         // Verify Internals
@@ -462,7 +462,7 @@ mod page_encoder_tests {
 
         let data = vec![0; 8157];
         let len = data.len() as u16;
-        let slot = TooBigForAPage { id: data, len: len };
+        let slot = TooBigForAPage { id: data, len };
 
         let slot_result = encoder.add_slot(slot);
 

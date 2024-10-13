@@ -23,6 +23,12 @@ pub struct FileManager {
     handles: HashMap<FileId, File>,
 }
 
+impl Default for FileManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileManager {
     pub fn new() -> Self {
         FileManager {

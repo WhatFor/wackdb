@@ -1,4 +1,4 @@
-use core::fmt;
+#![allow(unused_variables)]
 
 use anyhow::Result;
 use parser::ast::{Expr, Identifier, UserStatement, Value};
@@ -50,9 +50,7 @@ fn is_const_exp(expr: &Expr) -> bool {
         Expr::IsNull(expr) => is_const_exp(expr),
         Expr::IsNotNull(expr) => is_const_exp(expr),
         Expr::Like { expr, pattern } => is_const_exp(expr) && is_const_exp(pattern),
-        Expr::IsIn { expr, list } => {
-            is_const_exp(expr) && list.iter().all(|expr| is_const_exp(expr))
-        }
+        Expr::IsIn { expr, list } => is_const_exp(expr) && list.iter().all(is_const_exp),
         Expr::IsNotFalse(expr) => is_const_exp(expr),
         Expr::IsNotTrue(expr) => is_const_exp(expr),
         Expr::Value(_) => true,
@@ -75,9 +73,9 @@ fn evaluate_constant_statement(statement: &UserStatement) -> Result<StatementRes
                 })
                 .collect();
 
-            return Ok(StatementResult {
+            Ok(StatementResult {
                 result_set: ResultSet { columns },
-            });
+            })
         }
         UserStatement::Update => todo!(),
         UserStatement::Insert => todo!(),
@@ -175,16 +173,16 @@ fn evaluate_constant_expr(expr: &Expr) -> ExprResult {
                 match (left, right) {
                     (ExprResult::Int(l), ExprResult::Int(r)) => {
                         if r == 0 {
-                            return ExprResult::Int(0);
+                            ExprResult::Int(0)
                         } else {
-                            return ExprResult::Int(l / r);
+                            ExprResult::Int(l / r)
                         }
                     }
                     (ExprResult::Byte(l), ExprResult::Byte(r)) => {
                         if r == 0 {
-                            return ExprResult::Byte(0);
+                            ExprResult::Byte(0)
                         } else {
-                            return ExprResult::Byte(l / r);
+                            ExprResult::Byte(l / r)
                         }
                     }
                     // Cannot divide strings
@@ -318,10 +316,10 @@ fn evaluate_value(value: &Value) -> ExprResult {
     }
 }
 
-fn evaluate_number(number: &String) -> ExprResult {
+fn evaluate_number(number: &str) -> ExprResult {
     if let Ok(parse) = number.parse() {
         return ExprResult::Int(parse);
     }
 
-    return ExprResult::Null;
+    ExprResult::Null
 }

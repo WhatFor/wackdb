@@ -16,7 +16,7 @@ impl RecursionGuard {
             return Err(ParseErrorKind::MaximumRecursionDepthReached);
         }
 
-        self.remaining = self.remaining - 1;
+        self.remaining -= 1;
 
         Ok(())
     }
@@ -24,6 +24,6 @@ impl RecursionGuard {
 
 impl Drop for RecursionGuard {
     fn drop(&mut self) {
-        self.remaining = self.remaining + 1;
+        self.remaining += 1;
     }
 }

@@ -39,7 +39,7 @@ impl PageCache {
 
     pub fn get_page(&mut self, id: &FilePageId) -> Option<PageBytes> {
         if let Some(page) = self.lru_cache.borrow_mut().get(id) {
-            return Some(page.clone());
+            return Some(*page);
         }
 
         let fm_borrow = self.file_manager.borrow();
@@ -58,10 +58,10 @@ impl PageCache {
                         self.lru_cache.borrow_mut().put(id, disk_page_ok);
 
                         if let Some(created) = self.lru_cache.borrow_mut().get(id) {
-                            return Some(created.clone());
+                            return Some(*created);
                         }
 
-                        return None;
+                        None
                     }
                     Err(_err) => None,
                 }

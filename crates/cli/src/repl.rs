@@ -14,7 +14,7 @@ pub struct Repl {
 }
 
 #[derive(Debug)]
-pub enum ReplResult {
+pub enum Result {
     Exit,
     Help,
     RunDebug,
@@ -42,15 +42,15 @@ impl Repl {
 
     pub fn run(&self) {
         loop {
-            self.print_prompt();
+            Repl::print_prompt();
 
             let mut buf = String::new();
             match stdin().read_line(&mut buf) {
                 Ok(_) => {
-                    let command_status = self.handle_repl_command(buf);
+                    let command_status = self.handle_repl_command(&buf);
 
                     match command_status {
-                        ReplResult::Ok(command_result) => match command_result {
+                        Result::Ok(command_result) => match command_result {
                             CommandResult::_UnrecognisedCommand => {
                                 println!("Error! Unrecognised command.");
                             }
@@ -69,16 +69,6 @@ impl Repl {
                             }
                             CommandResult::Ok(results) => {
                                 for result in results {
-                                    let pivoted_results = result.result_set.columns.iter().fold(
-                                        vec![],
-                                        |acc, col| {
-                                            let mut new_acc = acc.clone();
-                                            new_acc.push(col.name.clone());
-                                            new_acc.push(col.value.to_string());
-                                            new_acc
-                                        },
-                                    );
-
                                     let repl_output = tabled::Table::new(result.result_set.columns)
                                         .with(tabled::settings::Disable::row(
                                             tabled::settings::object::Rows::first(),
@@ -87,26 +77,26 @@ impl Repl {
                                         .with(tabled::settings::Rotate::Right)
                                         .to_string();
 
-                                    println!("{}", repl_output);
+                                    println!("{repl_output}");
                                 }
                             }
                         },
-                        ReplResult::Help => {
+                        Result::Help => {
                             println!("Sorry, you're on your own.");
                         }
-                        ReplResult::RunDebug => {
+                        Result::RunDebug => {
                             self.eval_command("CREATE TABLE TestTable (Id INT, Age INT);");
                             self.eval_command("INSERT INTO TestTable (Id, Age) VALUES (1, 20);");
                             self.eval_command("SELECT * FROM TestTable;");
                         }
-                        ReplResult::UnrecognisedInput => {
+                        Result::UnrecognisedInput => {
                             println!("Error! Command not recognised.");
                         }
-                        ReplResult::Exit => {
+                        Result::Exit => {
                             println!("Goodbye.");
                             break;
                         }
-                        ReplResult::NoInput => {
+                        Result::NoInput => {
                             continue;
                         }
                     };
@@ -134,7 +124,7 @@ impl Repl {
                 match execute_result {
                     Ok(ok_result) => {
                         for err in ok_result.errors {
-                            println!("{err:?}")
+                            println!("{err:?}");
                         }
 
                         CommandResult::Ok(ok_result.results)
@@ -157,34 +147,32 @@ impl Repl {
     /// to be validated as a command by this point.
     /// This will either eval a command or
     /// short-circuit for a meta command.
-    fn handle_repl_command(&self, buf: String) -> ReplResult {
+    fn handle_repl_command(&self, buf: &str) -> Result {
         let fmt_buf = buf.trim();
-        let is_meta = self.is_meta_command(&fmt_buf);
-
-        match is_meta {
-            true => self.handle_meta_command(&fmt_buf),
-            false => {
-                let command_result = self.eval_command(&fmt_buf);
-                ReplResult::Ok(command_result)
-            }
+        
+        if Repl::is_meta_command(fmt_buf) {
+            Repl::handle_meta_command(fmt_buf)
+        } else {
+            let command_result = self.eval_command(fmt_buf);
+            Result::Ok(command_result)
         }
     }
 
-    fn is_meta_command(&self, buf: &str) -> bool {
-        buf.starts_with(".")
+    fn is_meta_command(buf: &str) -> bool {
+        buf.starts_with('.')
     }
 
-    fn handle_meta_command(&self, buf: &str) -> ReplResult {
+    fn handle_meta_command(buf: &str) -> Result {
         match buf.to_lowercase().as_ref() {
-            ".exit" | ".quit" | ".close" => ReplResult::Exit,
-            ".help" | ".h" | "?" | ".?" => ReplResult::Help,
-            ".dbg" => ReplResult::RunDebug,
-            "" => ReplResult::NoInput,
-            _ => ReplResult::UnrecognisedInput,
+            ".exit" | ".quit" | ".close" => Result::Exit,
+            ".help" | ".h" | "?" | ".?" => Result::Help,
+            ".dbg" => Result::RunDebug,
+            "" => Result::NoInput,
+            _ => Result::UnrecognisedInput,
         }
     }
 
-    fn print_prompt(&self) {
+    fn print_prompt() {
         print!("> ");
         stdout().flush().unwrap();
     }
