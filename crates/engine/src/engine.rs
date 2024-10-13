@@ -114,7 +114,15 @@ impl Engine {
                 fm.add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
                 fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
             }
-            Err(error) => log::error!("Error creating/reading master: {:?}", error),
+            Err(error) => {
+                log::error!("Error creating/reading master: {:?}", error);
+                return;
+            }
+        }
+
+        if let Err(e) = server::ensure_master_tables_exist() {
+            log::error!("Error initialising master tables: {:?}", e);
+            return;
         }
 
         match self.open_user_dbs() {

@@ -77,3 +77,13 @@ pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseR
         log: log_file,
     })
 }
+
+pub fn ensure_master_tables_exist() -> Result<()> {
+    // create a databases table
+    // id, name, created_date, database_version
+    // id = primary key for index
+    // this lists all databases tracked (including self).
+    // create an indexes table
+    //
+    Ok(())
+}
