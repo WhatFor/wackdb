@@ -51,8 +51,9 @@ Most tables will benefit from indexes. Indexes are stored in the primary file ju
 
 The `indexes` table is:
 
-| col      | description                               |
-| -------- | ----------------------------------------- |
-| id       | The index id.                             |
-| table_id | The id of the table the index belongs to. |
-| name     | The index name.                           |
+| col          | description                               |
+| ------------ | ----------------------------------------- |
+| id           | The index id.                             |
+| table_id     | The id of the table the index belongs to. |
+| name         | The index name.                           |
+| created_date | The date the index was created.           |

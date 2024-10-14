@@ -1,13 +1,16 @@
 use anyhow::Result;
+use deku::{DekuRead, DekuWrite};
 use derive_more::derive::From;
 use parser::ast::CreateDatabaseBody;
-use std::fs::File;
+use std::{fs::File, time::SystemTime};
 use thiserror::Error;
 
 use crate::{
     db::{self, DatabaseId, FileType},
+    engine::CURRENT_DATABASE_VERSION,
     page::PageEncoderError,
-    persistence, util,
+    persistence,
+    util::{self, now_bytes},
 };
 
 pub const MASTER_NAME: &str = "master";
@@ -78,12 +81,106 @@ pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseR
     })
 }
 
+#[derive(DekuRead, DekuWrite)]
+pub struct Database {
+    id: DatabaseId,
+    name: String,
+    database_version: u8,
+    created_date: u16,
+}
+
+#[derive(DekuRead, DekuWrite)]
+pub struct Table {
+    id: DatabaseId,
+    database_id: DatabaseId,
+    name: String,
+    created_date: u16,
+}
+
+#[derive(DekuRead, DekuWrite)]
+pub struct Column {
+    id: DatabaseId,
+    table_id: DatabaseId,
+    name: String,
+    position: u8,
+    is_nullable: bool,
+    default_value: String,
+    data_type: String,
+    max_srt_length: u16,
+    num_precision: u8,
+    created_date: u16,
+}
+
+pub struct Index {
+    id: DatabaseId,
+    table_id: DatabaseId,
+    name: String,
+    created_date: u16,
+}
+
+const DATABASES_TABLE: &str = "databases";
+const TABLES_TABLE: &str = "tables";
+const COLUMNS_TABLE: &str = "columns";
+const INDEXES_TABLE: &str = "indexes";
+
 pub fn ensure_master_tables_exist() -> Result<()> {
     // create a databases table
     // id, name, created_date, database_version
     // id = primary key for index
     // this lists all databases tracked (including self).
-    // create an indexes table
-    //
+    // create an indexes table?
+
+    // Master DB
+    let databases = vec![Database {
+        id: MASTER_DB_ID,
+        name: String::from(MASTER_NAME),
+        created_date: util::now_bytes(),
+        database_version: CURRENT_DATABASE_VERSION,
+    }];
+
+    let tables = vec![
+        // Database table
+        Table {
+            id: 0, //todo
+            database_id: MASTER_DB_ID,
+            name: String::from(DATABASES_TABLE),
+            created_date: now_bytes(),
+        },
+        // Tables table
+        Table {
+            id: 0, //todo
+            database_id: MASTER_DB_ID,
+            name: String::from(TABLES_TABLE),
+            created_date: now_bytes(),
+        },
+        // Columns table
+        Table {
+            id: 0, //todo
+            database_id: MASTER_DB_ID,
+            name: String::from(COLUMNS_TABLE),
+            created_date: now_bytes(),
+        },
+        // Indexes table
+        Table {
+            id: 0, //todo
+            database_id: MASTER_DB_ID,
+            name: String::from(INDEXES_TABLE),
+            created_date: now_bytes(),
+        },
+    ];
+
+    let columns = vec![Column {
+        id: 0, //todo
+        table_id: todo!(),
+        name: todo!(),
+        position: todo!(),
+        is_nullable: todo!(),
+        default_value: todo!(),
+        data_type: todo!(),
+        max_srt_length: todo!(),
+        num_precision: todo!(),
+        created_date: todo!(),
+    }];
+
     Ok(())
 }

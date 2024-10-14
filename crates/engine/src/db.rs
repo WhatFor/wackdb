@@ -8,6 +8,7 @@ use std::{fs::File, time::SystemTime};
 use thiserror::Error;
 
 use crate::engine::CURRENT_DATABASE_VERSION;
+use crate::util::time_bytes;
 use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
     persistence,
@@ -79,10 +80,7 @@ impl FileInfo {
             magic_string: [0, 1, 6, 1],
             file_type,
             sector_size_bytes: 0, // TODO: Find this value
-            created_date_unix: time
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u16,
+            created_date_unix: time_bytes(time),
         }
     }
 }
@@ -166,11 +164,7 @@ fn write_file_info(file: &std::fs::File) -> Result<()> {
     page.add_slot(body)?;
     let collected = page.collect();
 
-    persistence::write_page(
-        file,
-        &collected,
-        FILE_INFO_PAGE_INDEX,
-    )
+    persistence::write_page(file, &collected, FILE_INFO_PAGE_INDEX)
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
@@ -183,11 +177,7 @@ fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseId) -> Resu
     page.add_slot(body)?;
     let collected = page.collect();
 
-    persistence::write_page(
-        file,
-        &collected,
-        DATABASE_INFO_PAGE_INDEX,
-    )
+    persistence::write_page(file, &collected, DATABASE_INFO_PAGE_INDEX)
 }
 
 #[cfg(test)]
@@ -195,6 +185,7 @@ mod master_engine_tests {
     use db::{FileInfo, FileType};
     use deku::DekuContainerWrite;
     use std::time::SystemTime;
+    use util::time_bytes;
 
     use crate::*;
 
@@ -230,10 +221,7 @@ mod master_engine_tests {
         let file_info = FileInfo::new(FileType::Primary, time);
         let bytes = file_info.to_bytes().unwrap();
 
-        let time_bytes = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u16;
+        let time_bytes = time_bytes(time);
 
         let expected = vec![
             // Magic string
@@ -260,10 +248,7 @@ mod master_engine_tests {
         let file_info = FileInfo::new(FileType::Log, time);
         let bytes = file_info.to_bytes().unwrap();
 
-        let time_bytes = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u16;
+        let time_bytes = time_bytes(time);
 
         let time_l = (time_bytes >> 8) as u8;
         let time_h = (time_bytes & 0xFF) as u8;
