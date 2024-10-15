@@ -81,7 +81,7 @@ pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseR
     })
 }
 
-#[derive(DekuRead, DekuWrite)]
+// #[derive(DekuRead, DekuWrite)]
 pub struct Database {
     id: DatabaseId,
     name: String,
@@ -89,7 +89,7 @@ pub struct Database {
     created_date: u16,
 }
 
-#[derive(DekuRead, DekuWrite)]
+// #[derive(DekuRead, DekuWrite)]
 pub struct Table {
     id: DatabaseId,
     database_id: DatabaseId,
@@ -97,7 +97,7 @@ pub struct Table {
     created_date: u16,
 }
 
-#[derive(DekuRead, DekuWrite)]
+// #[derive(DekuRead, DekuWrite)]
 pub struct Column {
     id: DatabaseId,
     table_id: DatabaseId,
