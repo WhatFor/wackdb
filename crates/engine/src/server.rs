@@ -1,14 +1,13 @@
 use anyhow::Result;
-use deku::{DekuRead, DekuWrite};
 use derive_more::derive::From;
 use parser::ast::CreateDatabaseBody;
-use std::{fs::File, time::SystemTime};
+use std::fs::File;
 use thiserror::Error;
 
 use crate::{
     db::{self, DatabaseId, FileType},
     engine::CURRENT_DATABASE_VERSION,
-    page::PageEncoderError,
+    page::{PageEncoderError, PageId},
     persistence,
     util::{self, now_bytes},
 };
@@ -51,7 +50,7 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
         });
     }
 
-    create_database(MASTER_NAME, MASTER_DB_ID)
+    create_database(MASTER_NAME, MASTER_DB_ID, true)
 }
 
 pub fn create_user_database(
@@ -60,10 +59,14 @@ pub fn create_user_database(
 ) -> Result<OpenDatabaseResult> {
     let db_name = statement.database_name.value.as_str();
 
-    create_database(db_name, db_id)
+    create_database(db_name, db_id, false)
 }
 
-pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseResult> {
+pub fn create_database(
+    db_name: &str,
+    db_id: DatabaseId,
+    is_master: bool,
+) -> Result<OpenDatabaseResult> {
     let data_exists = persistence::check_db_exists(db_name, FileType::Primary)?;
     let log_exists = persistence::check_db_exists(db_name, FileType::Log)?;
 
@@ -71,7 +74,7 @@ pub fn create_database(db_name: &str, db_id: DatabaseId) -> Result<OpenDatabaseR
         return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)).into());
     }
 
-    let data_file = db::create_db_data_file(db_name, db_id)?;
+    let data_file = db::create_db_data_file(db_name, db_id, is_master)?;
     let log_file = db::create_db_log_file(db_name)?;
 
     Ok(OpenDatabaseResult {
@@ -97,6 +100,16 @@ pub struct Table {
     created_date: u16,
 }
 
+pub enum ColumnType {
+    Bit,
+    Byte,
+    Int,
+    String,
+    Boolean,
+    Date,
+    DateTime,
+}
+
 // #[derive(DekuRead, DekuWrite)]
 pub struct Column {
     id: DatabaseId,
@@ -104,17 +117,26 @@ pub struct Column {
     name: String,
     position: u8,
     is_nullable: bool,
-    default_value: String,
-    data_type: String,
-    max_srt_length: u16,
-    num_precision: u8,
+    default_value: Option<String>,
+    data_type: ColumnType,
+    max_str_length: Option<u16>,
+    num_precision: Option<u8>,
     created_date: u16,
+}
+
+pub enum IndexType {
+    PK,
+    FK,
+    Index,
 }
 
 pub struct Index {
     id: DatabaseId,
     table_id: DatabaseId,
     name: String,
+    index_type: IndexType,
+    is_unique: bool,
+    root_page_id: PageId,
     created_date: u16,
 }
 
@@ -131,14 +153,14 @@ pub fn ensure_master_tables_exist() -> Result<()> {
     // create an indexes table?
 
     // Master DB
-    let databases = vec![Database {
+    let databases = [Database {
         id: MASTER_DB_ID,
         name: String::from(MASTER_NAME),
-        created_date: util::now_bytes(),
+        created_date: now_bytes(),
         database_version: CURRENT_DATABASE_VERSION,
     }];
 
-    let tables = vec![
+    let tables = [
         // Database table
         Table {
             id: 0, //todo
@@ -169,18 +191,316 @@ pub fn ensure_master_tables_exist() -> Result<()> {
         },
     ];
 
-    let columns = vec![Column {
-        id: 0, //todo
-        table_id: todo!(),
-        name: todo!(),
-        position: todo!(),
-        is_nullable: todo!(),
-        default_value: todo!(),
-        data_type: todo!(),
-        max_srt_length: todo!(),
-        num_precision: todo!(),
-        created_date: todo!(),
-    }];
+    let database_table_columns = [
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "id".to_string(),
+            position: 0,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "name".to_string(),
+            position: 1,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "database_version".to_string(),
+            position: 2,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Byte,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "created_date".to_string(),
+            position: 3,
+            is_nullable: false,
+            default_value: None, // todo: a function?
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+    ];
+
+    let tables_table_columns = [
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "id".to_string(),
+            position: 0,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "database_id".to_string(),
+            position: 1,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "name".to_string(),
+            position: 2,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "created_date".to_string(),
+            position: 3,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+    ];
+    let columns_table_columns = [
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "id".to_string(),
+            position: 0,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "table_id".to_string(),
+            position: 1,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "name".to_string(),
+            position: 2,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "position".to_string(),
+            position: 3,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "is_nullable".to_string(),
+            position: 4,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Boolean,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "default_value".to_string(),
+            position: 5,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "data_type".to_string(),
+            position: 6,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "max_str_length".to_string(),
+            position: 7,
+            is_nullable: false,
+            default_value: Some(i32::MAX.to_string()),
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "num_precision".to_string(),
+            position: 8,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       //todo
+            table_id: 0, //todo
+            name: "created_date".to_string(),
+            position: 9,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+    ];
+
+    let indexes_table_columns = [
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "id".to_string(),
+            position: 0,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "table_id".to_string(),
+            position: 1,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "name".to_string(),
+            position: 2,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "type".to_string(),
+            position: 3,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Byte,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "is_unique".to_string(),
+            position: 4,
+            is_nullable: false,
+            default_value: Some("false".to_string()),
+            data_type: ColumnType::Boolean,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "root_page_id".to_string(),
+            position: 5,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::Int,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+        Column {
+            id: 0,       // todo
+            table_id: 0, // todo
+            name: "created_date".to_string(),
+            position: 6,
+            is_nullable: false,
+            default_value: None,
+            data_type: ColumnType::String,
+            max_str_length: None,
+            num_precision: None,
+            created_date: now_bytes(),
+        },
+    ];
 
     Ok(())
 }

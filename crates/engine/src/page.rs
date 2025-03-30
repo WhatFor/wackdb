@@ -14,6 +14,8 @@ pub const SLOT_POINTER_SIZE: u16 = 2;
 
 pub type SlotPointer = u16;
 
+pub type PageId = u32;
+
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
 #[deku(
     id_type = "u8",
@@ -26,6 +28,8 @@ pub enum PageType {
     FileInfo,
     #[deku(id = 1)]
     DatabaseInfo,
+    #[deku(id = 2)]
+    SchemaInfo,
 }
 
 /// A general purpose Page header.
@@ -34,7 +38,7 @@ pub enum PageType {
 #[deku(endian = "big")]
 pub struct PageHeader {
     #[deku(bytes = 4)]
-    page_id: u32,
+    page_id: PageId,
 
     #[deku(bytes = 1)]
     header_version: u8,
