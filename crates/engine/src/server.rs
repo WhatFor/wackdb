@@ -33,6 +33,7 @@ pub struct OpenDatabaseResult {
     pub id: DatabaseId,
     pub dat: File,
     pub log: File,
+    pub allocated_page_count: u64,
 }
 
 pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
@@ -40,13 +41,18 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
 
     if exists {
         let db = persistence::open_db(MASTER_NAME);
+        let allocated_page_count = persistence::get_allocated_page_count(&db.dat);
 
-        log::info!("Opened existing master DB.");
+        log::info!(
+            "Opened existing master DB, containing {} pages.",
+            allocated_page_count
+        );
 
         return Ok(OpenDatabaseResult {
             id: MASTER_DB_ID,
             dat: db.dat,
             log: db.log,
+            allocated_page_count,
         });
     }
 
@@ -81,6 +87,7 @@ pub fn create_database(
         id: db_id,
         dat: data_file,
         log: log_file,
+        allocated_page_count: 3,
     })
 }
 

@@ -12,6 +12,7 @@ use thiserror::Error;
 use crate::{
     db::FileType,
     engine::{DATA_FILE_EXT, LOG_FILE_EXT, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE, WACK_DIRECTORY},
+    page,
     page_cache::PageBytes,
     server::MASTER_NAME,
     util,
@@ -127,6 +128,16 @@ fn is_wack_file(extension: &OsStr) -> bool {
 pub struct OpenDatabaseResult {
     pub dat: File,
     pub log: File,
+}
+
+pub fn get_allocated_page_count(file: &File) -> u64 {
+    let metadata = file.metadata();
+    let page_len: u64 = PAGE_SIZE_BYTES.into();
+
+    match metadata {
+        Ok(md) => md.len() / page_len,
+        Err(_) => 0,
+    }
 }
 
 pub fn open_db(database_name: &str) -> OpenDatabaseResult {

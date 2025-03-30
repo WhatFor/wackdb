@@ -49,7 +49,7 @@ pub const DATABASE_INFO_PAGE_INDEX: u32 = 1;
 /// as an entry-point into reading all user-db schema info.
 pub const SCHEMA_INFO_PAGE_INDEX: u32 = 2;
 
-#[derive(DekuRead, DekuWrite, Debug, PartialEq, Eq, Hash)]
+#[derive(DekuRead, DekuWrite, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -146,17 +146,6 @@ pub struct SchemaInfo {
     indexes_root_page_id: PageId,
 }
 
-impl SchemaInfo {
-    pub fn new() -> Self {
-        SchemaInfo {
-            databases_root_page_id: 0,
-            tables_root_page_id: 0,
-            columns_root_page_id: 0,
-            indexes_root_page_id: 0,
-        }
-    }
-}
-
 pub fn create_db_data_file(db_name: &str, db_id: DatabaseId, is_master: bool) -> Result<File> {
     let file = persistence::create_db_file_empty(db_name, FileType::Primary)?;
 
@@ -226,7 +215,12 @@ fn write_schema_info(file: &std::fs::File) -> Result<()> {
     let header = PageHeader::new(PageType::SchemaInfo);
     let mut page = PageEncoder::new(header);
 
-    let body = SchemaInfo::new();
+    let body = SchemaInfo {
+        databases_root_page_id: 0,
+        tables_root_page_id: 0,
+        columns_root_page_id: 0,
+        indexes_root_page_id: 0,
+    };
 
     page.add_slot(body)?;
     let collected = page.collect();
