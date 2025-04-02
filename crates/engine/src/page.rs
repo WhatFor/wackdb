@@ -30,6 +30,10 @@ pub enum PageType {
     DatabaseInfo,
     #[deku(id = 2)]
     SchemaInfo,
+    #[deku(id = 3)]
+    Data,
+    #[deku(id = 4)]
+    Index,
 }
 
 /// A general purpose Page header.
