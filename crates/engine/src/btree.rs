@@ -9,8 +9,8 @@ const MAX_KEYS: usize = 4;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct KeyValuePair<K, V> {
-    key: K,
-    value: V,
+    pub key: K,
+    pub value: V,
 }
 
 type Key = u32;
@@ -32,7 +32,7 @@ pub enum NodeType {
 }
 
 pub struct BTree {
-    root: NodeType,
+    pub root: NodeType,
 }
 
 impl BTree {

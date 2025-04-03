@@ -126,7 +126,7 @@ impl Engine {
             }
         }
 
-        if let Err(e) = server::ensure_master_tables_exist() {
+        if let Err(e) = server::ensure_master_tables_exist(self.file_manager.borrow_mut()) {
             log::error!("Error initialising master tables: {:?}", e);
             return;
         }

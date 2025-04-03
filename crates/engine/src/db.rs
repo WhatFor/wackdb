@@ -134,16 +134,16 @@ impl DatabaseInfo {
 #[deku(endian = "big")]
 pub struct SchemaInfo {
     #[deku(bytes = 4)]
-    databases_root_page_id: PageId,
+    pub databases_root_page_id: PageId,
 
     #[deku(bytes = 4)]
-    tables_root_page_id: PageId,
+    pub tables_root_page_id: PageId,
 
     #[deku(bytes = 4)]
-    columns_root_page_id: PageId,
+    pub columns_root_page_id: PageId,
 
     #[deku(bytes = 4)]
-    indexes_root_page_id: PageId,
+    pub indexes_root_page_id: PageId,
 }
 
 pub fn create_db_data_file(db_name: &str, db_id: DatabaseId, is_master: bool) -> Result<File> {

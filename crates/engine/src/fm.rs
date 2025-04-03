@@ -1,6 +1,9 @@
 use std::{collections::HashMap, fs::File};
 
-use crate::db::{DatabaseId, FileType};
+use crate::{
+    db::{DatabaseId, FileType},
+    page::PageId,
+};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy)]
 pub struct FileId {
@@ -21,7 +24,7 @@ pub struct IdentifiedFile<'a> {
 
 pub struct FileManager {
     handles: HashMap<FileId, File>,
-    allocated_page_count: HashMap<FileId, u64>,
+    allocated_page_count: HashMap<FileId, PageId>,
 }
 
 impl Default for FileManager {
@@ -38,7 +41,7 @@ impl FileManager {
         }
     }
 
-    pub fn add(&mut self, id: FileId, file: File, page_count: u64) {
+    pub fn add(&mut self, id: FileId, file: File, page_count: PageId) {
         self.handles.insert(id, file);
         self.allocated_page_count.insert(id, page_count);
     }
@@ -53,6 +56,10 @@ impl FileManager {
                 .iter()
                 .map(|(id, file)| IdentifiedFile { id, file }),
         )
+    }
+
+    pub fn next_page_id(&self, id: &FileId) -> Option<&PageId> {
+        self.allocated_page_count.get(id)
     }
 
     pub fn next_id(&self) -> DatabaseId {

@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::{
     db::FileType,
     engine::{DATA_FILE_EXT, LOG_FILE_EXT, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE, WACK_DIRECTORY},
-    page,
+    page::{self, PageId},
     page_cache::PageBytes,
     server::MASTER_NAME,
     util,
@@ -130,12 +130,12 @@ pub struct OpenDatabaseResult {
     pub log: File,
 }
 
-pub fn get_allocated_page_count(file: &File) -> u64 {
+pub fn get_allocated_page_count(file: &File) -> PageId {
     let metadata = file.metadata();
     let page_len: u64 = PAGE_SIZE_BYTES.into();
 
     match metadata {
-        Ok(md) => md.len() / page_len,
+        Ok(md) => (md.len() / page_len) as u32,
         Err(_) => 0,
     }
 }

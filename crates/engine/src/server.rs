@@ -2,14 +2,15 @@ use anyhow::Result;
 use deku::{ctx::Endian, DekuContainerWrite, DekuRead, DekuWrite};
 use derive_more::derive::From;
 use parser::ast::CreateDatabaseBody;
-use std::fs::File;
+use std::{cell::RefMut, fs::File};
 use thiserror::Error;
 
 use crate::{
     btree::BTree,
-    db::{self, DatabaseId, FileType},
+    db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::CURRENT_DATABASE_VERSION,
-    page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
+    fm::{FileId, FileManager},
+    page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
     persistence,
     util::{self, now_bytes},
 };
@@ -35,7 +36,7 @@ pub struct OpenDatabaseResult {
     pub id: DatabaseId,
     pub dat: File,
     pub log: File,
-    pub allocated_page_count: u64,
+    pub allocated_page_count: PageId,
 }
 
 pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
@@ -275,13 +276,18 @@ pub struct Index {
     #[deku(bytes = 2)]
     created_date: u16,
 }
+#[derive(Debug, From, Error)]
+pub enum SchemaCreationError {
+    #[error("Failed to open file.")]
+    FailedToOpenFile,
+}
 
 const DATABASES_TABLE: &str = "databases";
 const TABLES_TABLE: &str = "tables";
 const COLUMNS_TABLE: &str = "columns";
 const INDEXES_TABLE: &str = "indexes";
 
-pub fn ensure_master_tables_exist() -> Result<()> {
+pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<()> {
     // create a databases table
     // id, name, created_date, database_version
     // id = primary key for index
@@ -293,20 +299,51 @@ pub fn ensure_master_tables_exist() -> Result<()> {
     let database_bytes = database.to_bytes()?;
     databases_index.add(database.id.into(), database_bytes);
 
-    // TODO: Collect the nodes of the B-Tree into data pages, save to db, get root page ID and save to SchemaInfo in master DB.
-
-    // pseudo code:
+    // TODO: This only builds one page (if it's a leaf page, which it will be) of the index...
     let header = PageHeader::new(PageType::Index);
-    let mut encoder = PageEncoder::new(header);
+    let mut page = PageEncoder::new(header);
 
-    // probably more like: foreach node in b-tree, add all keys from node as slots to a new page.
-    encoder.add_slot_bytes(databases_index);
+    match databases_index.root {
+        crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
+        crate::btree::NodeType::Leaf(leaf) => {
+            for key in leaf {
+                page.add_slot_bytes(key.value)?;
+            }
+        }
+    }
 
-    let page_bytes = encoder.collect();
-    let index = 0; // todo: this needs to come from file_manager...?
-    let file = None; // ???
-    persistence::write_page(file, &page_bytes, index);
-    // pseudo end
+    let page_bytes = page.collect();
+
+    let master_db_id = &FileId::new(MASTER_DB_ID, FileType::Primary);
+    let root_page_id = file_manager.next_page_id(master_db_id).unwrap();
+    let master_db_file = file_manager.get(master_db_id);
+
+    if let Some(file) = master_db_file {
+        // write the index to the master db file
+        persistence::write_page(file, &page_bytes, *root_page_id)?;
+
+        // read out the schema info page
+        // TODO: should use page cache
+        let file_info_page = persistence::read_page(file, SCHEMA_INFO_PAGE_INDEX)?;
+        let page = PageDecoder::from_bytes(&file_info_page);
+        let mut schema_info = page.try_read::<SchemaInfo>(0)?;
+
+        schema_info.databases_root_page_id = root_page_id.to_owned();
+        schema_info.columns_root_page_id = 99;
+        schema_info.indexes_root_page_id = 98;
+        schema_info.tables_root_page_id = 97;
+
+        // write schema info back
+        // TODO: this is building a whole new page to write a single number... how do I want to do this better?
+        let schema_header = PageHeader::new(PageType::SchemaInfo);
+        let mut schema_page = PageEncoder::new(schema_header);
+        let schema_info_bytes = schema_info.to_bytes()?;
+        schema_page.add_slot_bytes(schema_info_bytes)?;
+        let schema_page_bytes = schema_page.collect();
+        persistence::write_page(file, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
+    } else {
+        return Result::Err(SchemaCreationError::FailedToOpenFile.into());
+    }
 
     let tables = [
         Table::new(0, MASTER_DB_ID, DATABASES_TABLE.to_string()),
