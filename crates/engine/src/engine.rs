@@ -3,6 +3,7 @@ use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID};
+use crate::vm::VirtualMachine;
 use crate::{persistence, vm};
 
 use anyhow::Result;
@@ -30,6 +31,7 @@ pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/a
 pub struct Engine {
     pub page_cache: PageCache,
     pub file_manager: Rc<RefCell<FileManager>>,
+    pub vm: VirtualMachine,
 }
 
 #[derive(Debug)]
@@ -98,10 +100,12 @@ impl Engine {
     pub fn new() -> Self {
         let file_manager = Rc::new(RefCell::new(FileManager::new()));
         let page_cache = PageCache::new(PAGE_CACHE_CAPACITY, Rc::clone(&file_manager));
+        let vm = VirtualMachine::new();
 
         Engine {
             page_cache,
             file_manager,
+            vm,
         }
     }
 
@@ -197,7 +201,7 @@ impl Engine {
         match statement {
             UserStatement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                vm::execute_user_statement(statement)
+                self.vm.execute_user_statement(statement)
             }
             UserStatement::Update => {
                 log::info!("Updating");
