@@ -2,8 +2,9 @@ use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_IND
 use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID};
-use crate::{persistence, vm};
+use crate::persistence;
+use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID, MASTER_NAME};
+use crate::vm::VirtualMachine;
 
 use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
@@ -30,6 +31,7 @@ pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/a
 pub struct Engine {
     pub page_cache: PageCache,
     pub file_manager: Rc<RefCell<FileManager>>,
+    pub vm: VirtualMachine,
 }
 
 #[derive(Debug)]
@@ -98,10 +100,12 @@ impl Engine {
     pub fn new() -> Self {
         let file_manager = Rc::new(RefCell::new(FileManager::new()));
         let page_cache = PageCache::new(PAGE_CACHE_CAPACITY, Rc::clone(&file_manager));
+        let vm = VirtualMachine::new(Rc::clone(&file_manager));
 
         Engine {
             page_cache,
             file_manager,
+            vm,
         }
     }
 
@@ -111,19 +115,56 @@ impl Engine {
         match master_db_result {
             Ok(x) => {
                 let mut fm = self.file_manager.borrow_mut();
-                fm.add(FileId::new(MASTER_DB_ID, db::FileType::Primary), x.dat);
-                fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log);
+
+                fm.add(
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Primary),
+                    x.dat,
+                    x.allocated_page_count,
+                );
+
+                fm.add(
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Log),
+                    x.log,
+                    0,
+                );
             }
-            Err(error) => log::error!("Error creating/reading master: {:?}", error),
+            Err(error) => {
+                log::error!("Error creating/reading master: {:?}", error);
+                return;
+            }
+        }
+
+        if let Err(e) = server::ensure_master_tables_exist(self.file_manager.borrow_mut()) {
+            log::error!("Error initialising master tables: {:?}", e);
+            return;
         }
 
         match self.open_user_dbs() {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
-                    log::info!("Database loaded. ID: {}", user_db.id);
+                    log::info!(
+                        "Database {} loaded, containing {} pages.",
+                        user_db.id,
+                        user_db.allocated_page_count
+                    );
+
                     let mut fm = self.file_manager.borrow_mut();
-                    fm.add(FileId::new(user_db.id, db::FileType::Primary), user_db.dat);
-                    fm.add(FileId::new(user_db.id, db::FileType::Log), user_db.log);
+
+                    fm.add(
+                        FileId::new(
+                            user_db.id,
+                            user_db.name.clone().into(),
+                            db::FileType::Primary,
+                        ),
+                        user_db.dat,
+                        user_db.allocated_page_count,
+                    );
+
+                    fm.add(
+                        FileId::new(user_db.id, user_db.name.into(), db::FileType::Log),
+                        user_db.log,
+                        0,
+                    );
                 }
             }
             Err(err) => {
@@ -172,7 +213,7 @@ impl Engine {
         match statement {
             UserStatement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                vm::execute_user_statement(statement)
+                self.vm.execute_user_statement(statement)
             }
             UserStatement::Update => {
                 log::info!("Updating");
@@ -201,13 +242,17 @@ impl Engine {
 
                 let result = server::create_user_database(s, next_id)?;
 
-                self.file_manager
-                    .borrow_mut()
-                    .add(FileId::new(result.id, db::FileType::Primary), result.dat);
+                self.file_manager.borrow_mut().add(
+                    FileId::new(result.id, result.name.clone(), db::FileType::Primary),
+                    result.dat,
+                    result.allocated_page_count,
+                );
 
-                self.file_manager
-                    .borrow_mut()
-                    .add(FileId::new(result.id, db::FileType::Log), result.log);
+                self.file_manager.borrow_mut().add(
+                    FileId::new(result.id, result.name, db::FileType::Log),
+                    result.log,
+                    0,
+                );
 
                 // Revalidate all files
                 self.validate_files();
@@ -249,6 +294,7 @@ impl Engine {
 
         let results = dbs.map(|db| {
             let user_db = persistence::open_db(&db);
+            let allocated_page_count = persistence::get_allocated_page_count(&user_db.dat);
             let id = self.get_db_id(&user_db.dat);
 
             if id.is_err() {
@@ -259,8 +305,10 @@ impl Engine {
 
             OpenDatabaseResult {
                 id: id.unwrap(),
+                name: db,
                 dat: user_db.dat,
                 log: user_db.log,
+                allocated_page_count,
             }
         });
 

@@ -9,6 +9,16 @@ pub enum Error {
     Io(std::io::Error),
 }
 
+pub fn now_bytes() -> u16 {
+    time_bytes(std::time::SystemTime::now())
+}
+
+pub fn time_bytes(time: std::time::SystemTime) -> u16 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u16
+}
+
 pub fn file_exists(path: &Path) -> Result<bool> {
     Ok(Path::try_exists(path)?)
 }
