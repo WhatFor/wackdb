@@ -1,13 +1,24 @@
 #![allow(unused_variables)]
 
-use anyhow::Result;
+use std::{cell::RefCell, rc::Rc};
+
+use anyhow::{Error, Result};
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
 use thiserror::Error;
 
-use crate::engine::{ColumnResult, ExprResult, ResultSet, StatementResult};
+use crate::{
+    db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    engine::{ColumnResult, ExprResult, ResultSet, StatementResult},
+    fm::FileManager,
+    page::PageDecoder,
+    persistence,
+    server::MASTER_DB_ID,
+};
 
-pub struct VirtualMachine {}
+pub struct VirtualMachine {
+    file_manager: Rc<RefCell<FileManager>>,
+}
 
 #[derive(Debug, From, Error)]
 enum SelectStatementError {
@@ -16,8 +27,8 @@ enum SelectStatementError {
 }
 
 impl VirtualMachine {
-    pub fn new() -> Self {
-        VirtualMachine {}
+    pub fn new(file_manager: Rc<RefCell<FileManager>>) -> Self {
+        VirtualMachine { file_manager }
     }
 
     pub fn execute_user_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
@@ -115,7 +126,7 @@ impl VirtualMachine {
                 log::debug!("   ITEMS: {:?}", statement.select_item_list.item_list);
 
                 let table_name = &from.identifier.value;
-                let is_qualified = &from.qualifier.is_some();
+                let is_qualified = from.qualifier.is_some();
 
                 match is_qualified {
                     true => log::debug!(
@@ -136,6 +147,39 @@ impl VirtualMachine {
                 // 6. from there, get the root of the table index
                 // 7. read the data (???)
                 // 8. return the data
+
+                // TODO: this is me just falling back to the master database if the user doesn't specify a db. not a final solution...
+                let database_name = if is_qualified {
+                    from.qualifier.as_ref().unwrap().value.clone()
+                } else {
+                    String::from("master")
+                };
+
+                let fm = self.file_manager.borrow_mut();
+                let master_data_file = fm.get_from_id(MASTER_DB_ID, FileType::Primary);
+
+                if master_data_file.is_none() {
+                    return Err(Error::msg("Failed to read Master data file"));
+                }
+
+                let schema_page_bytes =
+                    persistence::read_page(master_data_file.unwrap(), SCHEMA_INFO_PAGE_INDEX)?;
+
+                let schema_page = PageDecoder::from_bytes(&schema_page_bytes);
+                let schema_info = schema_page.try_read::<SchemaInfo>(0)?;
+
+                let databases_table_index_page = persistence::read_page(
+                    master_data_file.unwrap(),
+                    schema_info.databases_root_page_id,
+                )?;
+
+                let databases_table_index_root_page =
+                    PageDecoder::from_bytes(&databases_table_index_page);
+
+                // todo: next step is to read all rows from the index... probably not something to do here?
+
+                log::debug!("Fetching file handle for {}", &database_name);
+                let data_file = fm.get_from_name(database_name, FileType::Primary);
 
                 // TODO: Group By, Order By, Where
 

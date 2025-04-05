@@ -1,9 +1,4 @@
-use crate::{
-    db::FileType,
-    fm::{FileId, FileManager},
-    lru::LRUCache,
-    persistence,
-};
+use crate::{db::FileType, fm::FileManager, lru::LRUCache, persistence};
 use std::{cell::RefCell, rc::Rc};
 
 pub type PageBytes = [u8; 8192];
@@ -43,11 +38,7 @@ impl PageCache {
         }
 
         let fm_borrow = self.file_manager.borrow();
-
-        let file = fm_borrow.get(&FileId {
-            id: id.db_id,
-            ty: FileType::Primary,
-        });
+        let file = fm_borrow.get_from_id(id.db_id, FileType::Primary);
 
         match file {
             Some(file_handle) => {

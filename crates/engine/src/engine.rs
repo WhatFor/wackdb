@@ -2,9 +2,9 @@ use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_IND
 use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID};
+use crate::persistence;
+use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID, MASTER_NAME};
 use crate::vm::VirtualMachine;
-use crate::{persistence, vm};
 
 use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
@@ -100,7 +100,7 @@ impl Engine {
     pub fn new() -> Self {
         let file_manager = Rc::new(RefCell::new(FileManager::new()));
         let page_cache = PageCache::new(PAGE_CACHE_CAPACITY, Rc::clone(&file_manager));
-        let vm = VirtualMachine::new();
+        let vm = VirtualMachine::new(Rc::clone(&file_manager));
 
         Engine {
             page_cache,
@@ -117,12 +117,16 @@ impl Engine {
                 let mut fm = self.file_manager.borrow_mut();
 
                 fm.add(
-                    FileId::new(MASTER_DB_ID, db::FileType::Primary),
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Primary),
                     x.dat,
                     x.allocated_page_count,
                 );
 
-                fm.add(FileId::new(MASTER_DB_ID, db::FileType::Log), x.log, 0);
+                fm.add(
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Log),
+                    x.log,
+                    0,
+                );
             }
             Err(error) => {
                 log::error!("Error creating/reading master: {:?}", error);
@@ -147,12 +151,20 @@ impl Engine {
                     let mut fm = self.file_manager.borrow_mut();
 
                     fm.add(
-                        FileId::new(user_db.id, db::FileType::Primary),
+                        FileId::new(
+                            user_db.id,
+                            user_db.name.clone().into(),
+                            db::FileType::Primary,
+                        ),
                         user_db.dat,
                         user_db.allocated_page_count,
                     );
 
-                    fm.add(FileId::new(user_db.id, db::FileType::Log), user_db.log, 0);
+                    fm.add(
+                        FileId::new(user_db.id, user_db.name.into(), db::FileType::Log),
+                        user_db.log,
+                        0,
+                    );
                 }
             }
             Err(err) => {
@@ -231,13 +243,13 @@ impl Engine {
                 let result = server::create_user_database(s, next_id)?;
 
                 self.file_manager.borrow_mut().add(
-                    FileId::new(result.id, db::FileType::Primary),
+                    FileId::new(result.id, result.name.clone(), db::FileType::Primary),
                     result.dat,
                     result.allocated_page_count,
                 );
 
                 self.file_manager.borrow_mut().add(
-                    FileId::new(result.id, db::FileType::Log),
+                    FileId::new(result.id, result.name, db::FileType::Log),
                     result.log,
                     0,
                 );
@@ -293,6 +305,7 @@ impl Engine {
 
             OpenDatabaseResult {
                 id: id.unwrap(),
+                name: db,
                 dat: user_db.dat,
                 log: user_db.log,
                 allocated_page_count,

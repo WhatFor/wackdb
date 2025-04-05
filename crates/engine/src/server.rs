@@ -34,6 +34,7 @@ pub enum CreateDatabaseError {
 
 pub struct OpenDatabaseResult {
     pub id: DatabaseId,
+    pub name: String,
     pub dat: File,
     pub log: File,
     pub allocated_page_count: PageId,
@@ -53,6 +54,7 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
 
         return Ok(OpenDatabaseResult {
             id: MASTER_DB_ID,
+            name: MASTER_NAME.into(),
             dat: db.dat,
             log: db.log,
             allocated_page_count,
@@ -88,6 +90,7 @@ pub fn create_database(
 
     Ok(OpenDatabaseResult {
         id: db_id,
+        name: db_name.into(),
         dat: data_file,
         log: log_file,
         allocated_page_count: 3,
@@ -294,7 +297,7 @@ pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<(
     // this lists all databases tracked (including self).
     // create an indexes table?
 
-    let database = Database::new(MASTER_DB_ID, MASTER_NAME.to_string());
+    let database = Database::new(MASTER_DB_ID, MASTER_NAME.into());
     let mut databases_index = BTree::new();
     let database_bytes = database.to_bytes()?;
     databases_index.add(database.id.into(), database_bytes);
@@ -314,9 +317,11 @@ pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<(
 
     let page_bytes = page.collect();
 
-    let master_db_id = &FileId::new(MASTER_DB_ID, FileType::Primary);
-    let root_page_id = file_manager.next_page_id(master_db_id).unwrap();
-    let master_db_file = file_manager.get(master_db_id);
+    let root_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    let master_db_file = file_manager.get_from_id(MASTER_DB_ID, FileType::Primary);
 
     if let Some(file) = master_db_file {
         // write the index to the master db file
