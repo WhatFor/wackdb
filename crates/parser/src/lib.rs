@@ -304,10 +304,12 @@ impl<'a> Parser<'a> {
 
                     let alias = self.parse_table_alias();
 
+                    let (qualifier, identifier) =
+                        self.parse_from_clause_identifier_and_optional_qualifier(identifier_str);
+
                     Some(FromClause {
-                        identifier: Identifier {
-                            value: identifier_str,
-                        },
+                        identifier: identifier?,
+                        qualifier,
                         alias,
                     })
                 }
@@ -318,6 +320,33 @@ impl<'a> Parser<'a> {
             }
         } else {
             None
+        }
+    }
+
+    fn parse_from_clause_identifier_and_optional_qualifier(
+        &mut self,
+        identifier: String,
+    ) -> (Option<Identifier>, Option<Identifier>) {
+        let dot_count = identifier.chars().filter(|c| *c == '.').count();
+        let is_qualified = dot_count > 0;
+
+        match is_qualified {
+            true => {
+                if dot_count > 1 {
+                    self.push_error(ParseErrorKind::UnsupportedSyntax);
+
+                    return (None, None);
+                }
+
+                // Safety: unwrap is okay because of the UnsupportedSyntax check
+                let (qualifier, ident) = identifier.split_once('.').unwrap();
+
+                (
+                    Some(Identifier::from(String::from(qualifier))),
+                    Some(Identifier::from(String::from(ident))),
+                )
+            }
+            false => (None, Some(Identifier::from(identifier))),
         }
     }
 
@@ -1060,6 +1089,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("a"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: None,
@@ -1072,7 +1102,7 @@ mod parser_tests {
     }
 
     #[test]
-    fn test_qualified_table_select_statement() {
+    fn test_qualified_column_select_statement() {
         let query = String::from("select u.Name from Users u");
         let tokens = vec![
             Token::Keyword(Keyword::Select),
@@ -1100,7 +1130,76 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("Users"),
                     },
+                    qualifier: None,
                     alias: Some(Identifier::from("u".to_string())),
+                }),
+                where_clause: None,
+                order_by_clause: None,
+                group_by_clause: None,
+            }),
+        )]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_qualified_table_select_statement() {
+        let query = String::from("select Name from master.Users");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 11))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(17, 29))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Statements(vec![Statement::User(
+            UserStatement::Select(SelectExpressionBody {
+                select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
+                from_clause: Some(FromClause {
+                    identifier: Identifier::from(String::from("Users")),
+                    qualifier: Some(Identifier::from(String::from("master"))),
+                    alias: None,
+                }),
+                where_clause: None,
+                order_by_clause: None,
+                group_by_clause: None,
+            }),
+        )]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
+    fn test_qualified_table_select_statement_with_alias() {
+        let query = String::from("select Name from master.Users u");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 11))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(17, 29))),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(30, 31))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Statements(vec![Statement::User(
+            UserStatement::Select(SelectExpressionBody {
+                select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
+                from_clause: Some(FromClause {
+                    identifier: Identifier::from(String::from("Users")),
+                    qualifier: Some(Identifier::from(String::from("master"))),
+                    alias: Some(Identifier::from(String::from("u"))),
                 }),
                 where_clause: None,
                 order_by_clause: None,
@@ -1550,6 +1649,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("b"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: Some(WhereClause {
@@ -1602,6 +1702,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("b"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: Some(WhereClause {
@@ -1648,6 +1749,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("b"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: Some(WhereClause {
@@ -1696,6 +1798,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("b"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: Some(WhereClause {
@@ -1850,6 +1953,7 @@ mod parser_tests {
                         identifier: Identifier {
                             value: String::from("Users"),
                         },
+                        qualifier: None,
                         alias: None,
                     }),
                     where_clause: Some(WhereClause {
@@ -1907,6 +2011,7 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("b"),
                     },
+                    qualifier: None,
                     alias: None,
                 }),
                 where_clause: None,

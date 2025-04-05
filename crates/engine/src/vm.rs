@@ -1,7 +1,9 @@
 #![allow(unused_variables)]
 
 use anyhow::Result;
-use parser::ast::{Expr, Identifier, UserStatement, Value};
+use derive_more::derive::From;
+use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
+use thiserror::Error;
 
 use crate::engine::{ColumnResult, ExprResult, ResultSet, StatementResult};
 
@@ -14,7 +16,7 @@ pub fn execute_user_statement(statement: &UserStatement) -> Result<StatementResu
     }
 
     match statement {
-        UserStatement::Select(_) => todo!(),
+        UserStatement::Select(s) => evaluate_select_statement(s),
         UserStatement::Update => todo!(),
         UserStatement::Insert => todo!(),
         UserStatement::Delete => todo!(),
@@ -81,6 +83,53 @@ fn evaluate_constant_statement(statement: &UserStatement) -> Result<StatementRes
         UserStatement::Insert => todo!(),
         UserStatement::Delete => todo!(),
         UserStatement::CreateTable(_) => todo!(),
+    }
+}
+
+#[derive(Debug, From, Error)]
+enum SelectStatementError {
+    #[error("Non-constant query contains no 'FROM' expression.")]
+    NonConstantExprNoFrom,
+}
+
+fn evaluate_select_statement(statement: &SelectExpressionBody) -> Result<StatementResult> {
+    log::debug!("SELECT:");
+    match &statement.from_clause {
+        Some(from) => {
+            let is_select_wildcard =
+                statement.select_item_list.item_list[0] == SelectItem::new(Expr::Wildcard);
+            log::debug!("   ITEMS: {:?}", statement.select_item_list.item_list);
+
+            let table_name = &from.identifier.value;
+            let is_qualified = &from.qualifier.is_some();
+
+            match is_qualified {
+                true => log::debug!(
+                    "   FROM: {}.{}",
+                    &from.qualifier.as_ref().unwrap(),
+                    table_name
+                ),
+                false => log::debug!("   FROM: {}", table_name),
+            }
+
+            // we need to find the table we're asking for. we have it's identifier, so...
+            // ideally the schema info should already be in memory, but we're going to do it from disk as a POC here.
+            // 1. read schema page to get root index page IDs.
+            // 2. read the root page of the databases index and check the db we're querying exists.
+            // 3. if not, error
+            // 4. read the root page of the tables index and check the table exists.
+            // 5. if not, error
+            // 6. from there, get the root of the table index
+            // 7. read the data (???)
+            // 8. return the data
+
+            // TODO: Group By, Order By, Where
+
+            Ok(StatementResult {
+                result_set: ResultSet { columns: vec![] },
+            })
+        }
+        None => Err(SelectStatementError::NonConstantExprNoFrom.into()),
     }
 }
 
