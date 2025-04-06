@@ -50,10 +50,20 @@ impl Iterator for IndexPagerIterator {
         let page_bytes = page_cache.get_page(&FilePageId::new(self.file_id, self.current_page))?;
         let page = PageDecoder::from_bytes(&page_bytes);
 
-        // TODO: what do we read?
-        let slot = page.try_read(self.current_page_slot);
+        let slot = page.try_read_bytes(self.current_page_slot);
+
+        if let Err(err) = slot {
+            log::debug!("IndexPagerIterator error: {}", err);
+            return None;
+        }
 
         self.current_page_slot += 1;
+
+        // TODO: how?
+        if self.current_page_slot == page.slot_count {
+            self.current_page += 1;
+            self.current_page_slot = 0;
+        }
 
         todo!()
     }
