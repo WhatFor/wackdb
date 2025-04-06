@@ -1,23 +1,23 @@
-#![allow(unused_variables)]
-
-use std::{cell::RefCell, rc::Rc};
-
 use anyhow::{Error, Result};
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
+use std::{cell::RefCell, rc::Rc};
 use thiserror::Error;
 
 use crate::{
     db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::{ColumnResult, ExprResult, ResultSet, StatementResult},
     fm::FileManager,
+    index_pager::{self, IndexPager},
     page::PageDecoder,
+    page_cache::FilePageId,
     persistence,
     server::MASTER_DB_ID,
 };
 
 pub struct VirtualMachine {
     file_manager: Rc<RefCell<FileManager>>,
+    index_pager: Rc<RefCell<IndexPager>>,
 }
 
 #[derive(Debug, From, Error)]
@@ -27,8 +27,14 @@ enum SelectStatementError {
 }
 
 impl VirtualMachine {
-    pub fn new(file_manager: Rc<RefCell<FileManager>>) -> Self {
-        VirtualMachine { file_manager }
+    pub fn new(
+        file_manager: Rc<RefCell<FileManager>>,
+        index_pager: Rc<RefCell<IndexPager>>,
+    ) -> Self {
+        VirtualMachine {
+            file_manager,
+            index_pager,
+        }
     }
 
     pub fn execute_user_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
@@ -168,18 +174,19 @@ impl VirtualMachine {
                 let schema_page = PageDecoder::from_bytes(&schema_page_bytes);
                 let schema_info = schema_page.try_read::<SchemaInfo>(0)?;
 
-                let databases_table_index_page = persistence::read_page(
-                    master_data_file.unwrap(),
+                let pager = self.index_pager.borrow();
+
+                let page_iter = pager.create_pager(FilePageId::new(
+                    MASTER_DB_ID,
                     schema_info.databases_root_page_id,
-                )?;
+                ));
 
-                let databases_table_index_root_page =
-                    PageDecoder::from_bytes(&databases_table_index_page);
-
-                // todo: next step is to read all rows from the index... probably not something to do here?
+                for item in page_iter {
+                    log::debug!("{:?}", item);
+                }
 
                 log::debug!("Fetching file handle for {}", &database_name);
-                let data_file = fm.get_from_name(database_name, FileType::Primary);
+                let _data_file = fm.get_from_name(database_name, FileType::Primary);
 
                 // TODO: Group By, Order By, Where
 

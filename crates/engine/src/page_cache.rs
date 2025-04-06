@@ -5,8 +5,8 @@ pub type PageBytes = [u8; 8192];
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FilePageId {
-    db_id: u16,
-    page_index: u32,
+    pub db_id: u16,
+    pub page_index: u32,
 }
 
 impl FilePageId {

@@ -1,5 +1,6 @@
 use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager, IdentifiedFile};
+use crate::index_pager::IndexPager;
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::persistence;
@@ -29,9 +30,10 @@ pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
 pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 pub struct Engine {
-    pub page_cache: PageCache,
-    pub file_manager: Rc<RefCell<FileManager>>,
-    pub vm: VirtualMachine,
+    page_cache: Rc<RefCell<PageCache>>,
+    file_manager: Rc<RefCell<FileManager>>,
+    vm: VirtualMachine,
+    index_pager: Rc<RefCell<IndexPager>>,
 }
 
 #[derive(Debug)]
@@ -99,13 +101,20 @@ impl Default for Engine {
 impl Engine {
     pub fn new() -> Self {
         let file_manager = Rc::new(RefCell::new(FileManager::new()));
-        let page_cache = PageCache::new(PAGE_CACHE_CAPACITY, Rc::clone(&file_manager));
-        let vm = VirtualMachine::new(Rc::clone(&file_manager));
+
+        let page_cache = Rc::new(RefCell::new(PageCache::new(
+            PAGE_CACHE_CAPACITY,
+            Rc::clone(&file_manager),
+        )));
+
+        let index_pager = Rc::new(RefCell::new(IndexPager::new(Rc::clone(&page_cache))));
+        let vm = VirtualMachine::new(Rc::clone(&file_manager), Rc::clone(&index_pager));
 
         Engine {
             page_cache,
             file_manager,
             vm,
+            index_pager,
         }
     }
 
