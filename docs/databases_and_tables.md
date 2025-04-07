@@ -14,7 +14,7 @@ Note this database largely mirrors the DATABASE_INFO page at page index 1 of eve
 
 | col              | description                                          |
 | ---------------- | ---------------------------------------------------- |
-| id               | The unique u16 id of the database.                   |
+| id [PK]          | The unique u16 id of the database.                   |
 | name             | The name of the database. Max length 128 characters. |
 | created_date     | The date the DB was created.                         |
 | database_version | u8                                                   |
@@ -44,3 +44,16 @@ and a `columns` table:
 | max_str_length | The max length of values in the column. Only applicable to string types. |
 | num_precision  | The precision of the value. Only applicable to number types.             |
 | created_date   | The date the table was created.                                          |
+
+### Indexes
+
+Most tables will benefit from indexes. Indexes are stored in the primary file just like the data, and is similarly stored in pages too.
+
+The `indexes` table is:
+
+| col          | description                               |
+| ------------ | ----------------------------------------- |
+| id           | The index id.                             |
+| table_id     | The id of the table the index belongs to. |
+| name         | The index name.                           |
+| created_date | The date the index was created.           |

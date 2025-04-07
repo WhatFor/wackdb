@@ -3,46 +3,47 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-pub struct LRUCache<K, V> {
+pub struct LRUCache<TKey, TValue> {
     capacity: usize,
-    map: HashMap<K, V>,
-    order: RefCell<VecDeque<K>>,
+    items: HashMap<TKey, TValue>,
+    order: RefCell<VecDeque<TKey>>,
 }
 
-impl<K: std::hash::Hash + Eq + Clone, V> LRUCache<K, V> {
+impl<TKey : Eq + std::hash::Hash + Clone, TValue> LRUCache<TKey, TValue> {
     pub fn new(capacity: usize) -> Self {
-        LRUCache {
+        LRUCache { 
             capacity,
-            map: HashMap::new(),
+            items: HashMap::with_capacity(capacity),
             order: RefCell::new(VecDeque::new()),
         }
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
-        if self.map.contains_key(key) {
+    pub fn get(&self, key: &TKey) -> Option<&TValue> {
+        if self.items.contains_key(key) {
             let mut order = self.order.borrow_mut();
-            order.retain(|k| k != key);
-            order.push_back(key.clone());
+            order.retain(|i| i != key);
+            order.push_back(key.to_owned());
 
-            self.map.get(key)
+            return self.items.get(key);
         } else {
             None
         }
     }
 
-    pub fn put(&mut self, key: &K, value: V) {
+    pub fn put(&mut self, key: &TKey, value: TValue) {
         let mut order = self.order.borrow_mut();
 
-        if self.map.contains_key(key) {
-            order.retain(|k| k != key);
-        } else if self.map.len() == self.capacity {
-            if let Some(old_key) = order.pop_front() {
-                self.map.remove(&old_key);
+        if self.items.contains_key(key) {
+            order.retain(|i| i != key);
+        }
+        else if self.items.len() == self.capacity {
+            if let Some(oldest_item_key) = order.pop_front() {
+                self.items.remove(&oldest_item_key);
             }
         }
 
-        order.push_back(key.clone());
-        self.map.insert(key.to_owned(), value);
+        order.push_back(key.to_owned());
+        self.items.insert(key.to_owned(), value);
     }
 }
 
@@ -77,9 +78,9 @@ mod lru_tests {
         lru.put(&3, 3);
         lru.put(&4, 4);
 
-        assert_eq!(lru.map.len(), 3);
+        assert_eq!(lru.items.len(), 3);
 
-        let mut values: Vec<_> = lru.map.values().cloned().collect();
+        let mut values: Vec<_> = lru.items.values().cloned().collect();
         values.sort();
         assert_eq!(values, [2, 3, 4]);
     }

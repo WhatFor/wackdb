@@ -14,6 +14,8 @@ pub const SLOT_POINTER_SIZE: u16 = 2;
 
 pub type SlotPointer = u16;
 
+pub type PageId = u32;
+
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
 #[deku(
     id_type = "u8",
@@ -26,6 +28,12 @@ pub enum PageType {
     FileInfo,
     #[deku(id = 1)]
     DatabaseInfo,
+    #[deku(id = 2)]
+    SchemaInfo,
+    #[deku(id = 3)]
+    Data,
+    #[deku(id = 4)]
+    Index,
 }
 
 /// A general purpose Page header.
@@ -34,34 +42,34 @@ pub enum PageType {
 #[deku(endian = "big")]
 pub struct PageHeader {
     #[deku(bytes = 4)]
-    page_id: u32,
+    pub page_id: PageId,
 
     #[deku(bytes = 1)]
-    header_version: u8,
+    pub header_version: u8,
 
     #[deku]
-    page_type: PageType,
+    pub page_type: PageType,
 
     #[deku(bytes = 2)]
-    checksum: u16,
+    pub checksum: u16,
 
     #[deku(bytes = 2)]
-    flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
+    pub flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
 
     #[deku(bytes = 2)]
-    allocated_slot_count: u16,
+    pub allocated_slot_count: u16,
 
     #[deku(bytes = 2)]
-    free_space: u16,
+    pub free_space: u16,
 
     #[deku(bytes = 2)]
-    free_space_start_offset: u16,
+    pub free_space_start_offset: u16,
 
     #[deku(bytes = 2)]
-    free_space_end_offset: u16,
+    pub free_space_end_offset: u16,
 
     #[deku(bytes = 2)]
-    total_allocated_bytes: u16,
+    pub total_allocated_bytes: u16,
 }
 
 impl PageHeader {
@@ -270,6 +278,10 @@ impl<'a> PageDecoder<'a> {
         }
     }
 
+    pub fn header(&self) -> &PageHeader {
+        &self.header
+    }
+
     pub fn check(&self) -> ChecksumResult {
         let body_bytes = &self.bytes[PAGE_HEADER_SIZE_BYTES.into()..];
 
@@ -285,6 +297,14 @@ impl<'a> PageDecoder<'a> {
         }
     }
 
+    pub fn try_read_bytes(&self, slot_index: u16) -> Result<Vec<u8>, PageDecoderError> {
+        if slot_index as usize >= self.slots.len() {
+            return Err(PageDecoderError::SlotOutOfRange);
+        }
+
+        Ok(self.slots[slot_index as usize].to_vec())
+    }
+
     pub fn try_read<T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
     where
         T: DekuContainerRead<'a> + std::fmt::Debug,
@@ -293,7 +313,7 @@ impl<'a> PageDecoder<'a> {
             return Err(PageDecoderError::SlotOutOfRange);
         }
 
-        let slot = &self.slots[slot_index as usize];
+        let slot = self.slots[slot_index as usize];
         let mut cursor = std::io::Cursor::new(slot);
         let mut reader = deku::reader::Reader::new(&mut cursor);
 

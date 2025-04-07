@@ -193,14 +193,21 @@ impl SelectItem {
 #[derive(PartialEq)]
 pub struct FromClause {
     pub identifier: Identifier,
+    pub qualifier: Option<Identifier>,
     pub alias: Option<Identifier>,
 }
 
 impl fmt::Display for FromClause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.alias {
-            Some(a) => write!(f, "{} AS {}", self.identifier, a),
-            None => write!(f, "{}", self.identifier),
+            Some(a) => match &self.qualifier {
+                Some(q) => write!(f, "{}.{} AS {}", q, self.identifier, a),
+                None => write!(f, "{} AS {}", self.identifier, a),
+            },
+            None => match &self.qualifier {
+                Some(q) => write!(f, "{}.{}", q, self.identifier),
+                None => write!(f, "{}", self.identifier),
+            },
         }
     }
 }

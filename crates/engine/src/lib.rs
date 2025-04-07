@@ -1,6 +1,8 @@
+pub mod btree;
 mod db;
 pub mod engine;
 mod fm;
+mod index_pager;
 mod lru;
 pub mod page;
 mod page_cache;

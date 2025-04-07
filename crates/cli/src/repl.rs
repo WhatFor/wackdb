@@ -69,6 +69,11 @@ impl Repl {
                             }
                             CommandResult::Ok(results) => {
                                 for result in results {
+                                    if result.result_set.columns.is_empty() {
+                                        println!("No results");
+                                        continue;
+                                    }
+
                                     let repl_output = tabled::Table::new(result.result_set.columns)
                                         .with(tabled::settings::Disable::row(
                                             tabled::settings::object::Rows::first(),
@@ -149,7 +154,7 @@ impl Repl {
     /// short-circuit for a meta command.
     fn handle_repl_command(&self, buf: &str) -> Result {
         let fmt_buf = buf.trim();
-        
+
         if Repl::is_meta_command(fmt_buf) {
             Repl::handle_meta_command(fmt_buf)
         } else {

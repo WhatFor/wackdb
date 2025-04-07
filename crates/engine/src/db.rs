@@ -8,6 +8,8 @@ use std::{fs::File, time::SystemTime};
 use thiserror::Error;
 
 use crate::engine::CURRENT_DATABASE_VERSION;
+use crate::page::PageId;
+use crate::util::time_bytes;
 use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
     persistence,
@@ -42,7 +44,12 @@ pub const FILE_INFO_PAGE_INDEX: u32 = 0;
 /// The constant page index of the DATABASE_INFO page.
 pub const DATABASE_INFO_PAGE_INDEX: u32 = 1;
 
-#[derive(DekuRead, DekuWrite, Debug, PartialEq, Eq, Hash)]
+/// The constant page index of the SCHEMA_INFO page.
+/// This page only exists in the master databse file
+/// as an entry-point into reading all user-db schema info.
+pub const SCHEMA_INFO_PAGE_INDEX: u32 = 2;
+
+#[derive(DekuRead, DekuWrite, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -79,10 +86,7 @@ impl FileInfo {
             magic_string: [0, 1, 6, 1],
             file_type,
             sector_size_bytes: 0, // TODO: Find this value
-            created_date_unix: time
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u16,
+            created_date_unix: time_bytes(time),
         }
     }
 }
@@ -122,11 +126,35 @@ impl DatabaseInfo {
     }
 }
 
-pub fn create_db_data_file(db_name: &str, db_id: DatabaseId) -> Result<File> {
+/// Information describing how to find schema information.
+/// This only exists in the master database, and works as
+/// a starting point to find all schema information from
+/// the schema tables.
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
+pub struct SchemaInfo {
+    #[deku(bytes = 4)]
+    pub databases_root_page_id: PageId,
+
+    #[deku(bytes = 4)]
+    pub tables_root_page_id: PageId,
+
+    #[deku(bytes = 4)]
+    pub columns_root_page_id: PageId,
+
+    #[deku(bytes = 4)]
+    pub indexes_root_page_id: PageId,
+}
+
+pub fn create_db_data_file(db_name: &str, db_id: DatabaseId, is_master: bool) -> Result<File> {
     let file = persistence::create_db_file_empty(db_name, FileType::Primary)?;
 
     write_file_info(&file)?;
     write_db_info(&file, db_name, db_id)?;
+
+    if is_master {
+        write_schema_info(&file)?;
+    }
 
     Ok(file)
 }
@@ -147,7 +175,7 @@ pub fn validate_data_file(file: &File) -> Result<()> {
     }
 }
 
-// TODO: The following 2 functions write pages to files
+// TODO: The following 3 functions write pages to files
 //       Next up to do is figure out how this should go through the page cache
 //       Maybe just a .put on the cache, and the cache should have a .flush function
 //       to force the write to disk.
@@ -166,11 +194,7 @@ fn write_file_info(file: &std::fs::File) -> Result<()> {
     page.add_slot(body)?;
     let collected = page.collect();
 
-    persistence::write_page(
-        file,
-        &collected,
-        FILE_INFO_PAGE_INDEX,
-    )
+    persistence::write_page(file, &collected, FILE_INFO_PAGE_INDEX)
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
@@ -183,11 +207,25 @@ fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseId) -> Resu
     page.add_slot(body)?;
     let collected = page.collect();
 
-    persistence::write_page(
-        file,
-        &collected,
-        DATABASE_INFO_PAGE_INDEX,
-    )
+    persistence::write_page(file, &collected, DATABASE_INFO_PAGE_INDEX)
+}
+
+/// Write a SCHEMA_INFO page to the correct page index, SCHEMA_INFO_PAGE_INDEX.
+fn write_schema_info(file: &std::fs::File) -> Result<()> {
+    let header = PageHeader::new(PageType::SchemaInfo);
+    let mut page = PageEncoder::new(header);
+
+    let body = SchemaInfo {
+        databases_root_page_id: 0,
+        tables_root_page_id: 0,
+        columns_root_page_id: 0,
+        indexes_root_page_id: 0,
+    };
+
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    persistence::write_page(file, &collected, SCHEMA_INFO_PAGE_INDEX)
 }
 
 #[cfg(test)]
@@ -195,6 +233,7 @@ mod master_engine_tests {
     use db::{FileInfo, FileType};
     use deku::DekuContainerWrite;
     use std::time::SystemTime;
+    use util::time_bytes;
 
     use crate::*;
 
@@ -230,10 +269,7 @@ mod master_engine_tests {
         let file_info = FileInfo::new(FileType::Primary, time);
         let bytes = file_info.to_bytes().unwrap();
 
-        let time_bytes = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u16;
+        let time_bytes = time_bytes(time);
 
         let expected = vec![
             // Magic string
@@ -260,10 +296,7 @@ mod master_engine_tests {
         let file_info = FileInfo::new(FileType::Log, time);
         let bytes = file_info.to_bytes().unwrap();
 
-        let time_bytes = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u16;
+        let time_bytes = time_bytes(time);
 
         let time_l = (time_bytes >> 8) as u8;
         let time_h = (time_bytes & 0xFF) as u8;
