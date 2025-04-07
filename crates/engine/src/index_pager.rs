@@ -59,12 +59,11 @@ impl Iterator for IndexPagerIterator {
 
         self.current_page_slot += 1;
 
-        // TODO: how?
-        if self.current_page_slot == page.slot_count {
+        if self.current_page_slot == page.header().allocated_slot_count {
             self.current_page += 1;
             self.current_page_slot = 0;
         }
 
-        todo!()
+        Some(slot.unwrap())
     }
 }

@@ -42,34 +42,34 @@ pub enum PageType {
 #[deku(endian = "big")]
 pub struct PageHeader {
     #[deku(bytes = 4)]
-    page_id: PageId,
+    pub page_id: PageId,
 
     #[deku(bytes = 1)]
-    header_version: u8,
+    pub header_version: u8,
 
     #[deku]
-    page_type: PageType,
+    pub page_type: PageType,
 
     #[deku(bytes = 2)]
-    checksum: u16,
+    pub checksum: u16,
 
     #[deku(bytes = 2)]
-    flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
+    pub flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
 
     #[deku(bytes = 2)]
-    allocated_slot_count: u16,
+    pub allocated_slot_count: u16,
 
     #[deku(bytes = 2)]
-    free_space: u16,
+    pub free_space: u16,
 
     #[deku(bytes = 2)]
-    free_space_start_offset: u16,
+    pub free_space_start_offset: u16,
 
     #[deku(bytes = 2)]
-    free_space_end_offset: u16,
+    pub free_space_end_offset: u16,
 
     #[deku(bytes = 2)]
-    total_allocated_bytes: u16,
+    pub total_allocated_bytes: u16,
 }
 
 impl PageHeader {
@@ -276,6 +276,10 @@ impl<'a> PageDecoder<'a> {
             bytes,
             slots: Self::read_slots(slot_count, bytes),
         }
+    }
+
+    pub fn header(&self) -> &PageHeader {
+        &self.header
     }
 
     pub fn check(&self) -> ChecksumResult {

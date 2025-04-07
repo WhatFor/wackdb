@@ -97,7 +97,7 @@ pub fn create_database(
     })
 }
 
-#[derive(DekuRead, DekuWrite)]
+#[derive(Debug, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Database {
     #[deku(bytes = 2)]

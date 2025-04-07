@@ -1,4 +1,5 @@
 use anyhow::{Error, Result};
+use deku::DekuReader;
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
 use std::{cell::RefCell, rc::Rc};
@@ -12,7 +13,7 @@ use crate::{
     page::PageDecoder,
     page_cache::FilePageId,
     persistence,
-    server::MASTER_DB_ID,
+    server::{Database, MASTER_DB_ID},
 };
 
 pub struct VirtualMachine {
@@ -161,7 +162,7 @@ impl VirtualMachine {
                     String::from("master")
                 };
 
-                let fm = self.file_manager.borrow_mut();
+                let fm = self.file_manager.borrow();
                 let master_data_file = fm.get_from_id(MASTER_DB_ID, FileType::Primary);
 
                 if master_data_file.is_none() {
@@ -182,7 +183,13 @@ impl VirtualMachine {
                 ));
 
                 for item in page_iter {
-                    log::debug!("{:?}", item);
+                    let mut cursor = std::io::Cursor::new(item);
+                    let mut reader = deku::reader::Reader::new(&mut cursor);
+
+                    match Database::from_reader_with_ctx(&mut reader, ()) {
+                        Ok(db) => log::debug!("{:?}", db),
+                        Err(e) => {} //todo
+                    }
                 }
 
                 log::debug!("Fetching file handle for {}", &database_name);
