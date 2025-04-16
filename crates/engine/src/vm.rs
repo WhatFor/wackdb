@@ -22,6 +22,12 @@ pub struct VirtualMachine {
 }
 
 #[derive(Debug, From, Error)]
+enum StatementError {
+    #[error("Database does not exist.")]
+    DbDoesNotExist,
+}
+
+#[derive(Debug, From, Error)]
 enum SelectStatementError {
     #[error("Non-constant query contains no 'FROM' expression.")]
     NonConstantExprNoFrom,
@@ -177,19 +183,24 @@ impl VirtualMachine {
 
                 let pager = self.index_pager.borrow();
 
-                let page_iter = pager.create_pager(FilePageId::new(
+                let databases_page_iter = pager.create_pager(FilePageId::new(
                     MASTER_DB_ID,
                     schema_info.databases_root_page_id,
                 ));
 
-                for item in page_iter {
+                let mut dbs = databases_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
                     let mut reader = deku::reader::Reader::new(&mut cursor);
 
-                    match Database::from_reader_with_ctx(&mut reader, ()) {
-                        Ok(db) => log::debug!("{:?}", db),
-                        Err(e) => {} //todo
-                    }
+                    return Database::from_reader_with_ctx(&mut reader, ());
+                });
+
+                // TODO: unwrap
+                let db_exists_by_name = dbs
+                    .any(|i| i.is_ok_and(|f| String::from_utf8(f.name).unwrap() == database_name));
+
+                if db_exists_by_name == false {
+                    return Err(StatementError::DbDoesNotExist.into());
                 }
 
                 log::debug!("Fetching file handle for {}", &database_name);

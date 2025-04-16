@@ -325,7 +325,7 @@ impl Engine {
     }
 
     fn next_id(&self) -> DatabaseId {
-        self.file_manager.borrow().next_id()
+        self.file_manager.borrow().next_file_id()
     }
 
     pub fn get_db_id(&self, file: &File) -> Result<DatabaseId> {

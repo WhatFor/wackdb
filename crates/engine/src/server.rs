@@ -9,8 +9,9 @@ use crate::{
     btree::BTree,
     db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::CURRENT_DATABASE_VERSION,
-    fm::{FileId, FileManager},
+    fm::{FileId, FileManager, IdMapKey},
     page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
+    page_cache::PageBytes,
     persistence,
     util::{self, now_bytes},
 };
@@ -101,15 +102,15 @@ pub fn create_database(
 #[deku(endian = "big")]
 pub struct Database {
     #[deku(bytes = 2)]
-    id: DatabaseId,
+    pub id: DatabaseId,
     #[deku(bytes = 1)]
-    name_len: u8,
+    pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
-    name: Vec<u8>,
+    pub name: Vec<u8>,
     #[deku(bytes = 1)]
-    database_version: u8,
+    pub database_version: u8,
     #[deku(bytes = 2)]
-    created_date: u16,
+    pub created_date: u16,
 }
 
 impl Database {
@@ -128,15 +129,15 @@ impl Database {
 #[deku(endian = "big")]
 pub struct Table {
     #[deku(bytes = 2)]
-    id: DatabaseId,
+    pub id: DatabaseId,
     #[deku(bytes = 2)]
-    database_id: DatabaseId,
+    pub database_id: DatabaseId,
     #[deku(bytes = 2)]
-    name_len: u8,
+    pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
-    name: Vec<u8>,
+    pub name: Vec<u8>,
     #[deku(bytes = 2)]
-    created_date: u16,
+    pub created_date: u16,
 }
 
 impl Table {
@@ -179,29 +180,29 @@ pub enum ColumnType {
 #[deku(endian = "big")]
 pub struct Column {
     #[deku(bytes = 2)]
-    id: DatabaseId,
+    pub id: DatabaseId,
     #[deku(bytes = 2)]
-    table_id: DatabaseId,
+    pub table_id: DatabaseId,
     #[deku(bytes = 1)]
-    name_len: u8,
+    pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
-    name: Vec<u8>,
+    pub name: Vec<u8>,
     #[deku(bytes = 1)]
-    position: u8,
+    pub position: u8,
     #[deku(bytes = 1)]
-    is_nullable: bool,
+    pub is_nullable: bool,
     #[deku(bytes = 1)]
-    default_value_len: u8,
+    pub default_value_len: u8,
     #[deku(bytes = 128, count = "default_value_len")]
-    default_value: Option<Vec<u8>>,
+    pub default_value: Option<Vec<u8>>,
     #[deku]
-    data_type: ColumnType,
+    pub data_type: ColumnType,
     #[deku(bytes = 2)]
-    max_str_length: Option<u16>,
+    pub max_str_length: Option<u16>,
     #[deku(bytes = 1)]
-    num_precision: Option<u8>,
+    pub num_precision: Option<u8>,
     #[deku(bytes = 2)]
-    created_date: u16,
+    pub created_date: u16,
 }
 
 impl Column {
@@ -263,21 +264,21 @@ pub enum IndexType {
 #[deku(endian = "big")]
 pub struct Index {
     #[deku(bytes = 2)]
-    id: DatabaseId,
+    pub id: DatabaseId,
     #[deku(bytes = 2)]
-    table_id: DatabaseId,
+    pub table_id: DatabaseId,
     #[deku(bytes = 1)]
-    name_len: u8,
+    pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
-    name: Vec<u8>,
+    pub name: Vec<u8>,
     #[deku]
-    index_type: IndexType,
+    pub index_type: IndexType,
     #[deku(bytes = 1)]
-    is_unique: bool,
+    pub is_unique: bool,
     #[deku(bytes = 4)]
-    root_page_id: PageId,
+    pub root_page_id: PageId,
     #[deku(bytes = 2)]
-    created_date: u16,
+    pub created_date: u16,
 }
 #[derive(Debug, From, Error)]
 pub enum SchemaCreationError {
@@ -290,13 +291,7 @@ const TABLES_TABLE: &str = "tables";
 const COLUMNS_TABLE: &str = "columns";
 const INDEXES_TABLE: &str = "indexes";
 
-pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<()> {
-    // create a databases table
-    // id, name, created_date, database_version
-    // id = primary key for index
-    // this lists all databases tracked (including self).
-    // create an indexes table?
-
+fn initialise_databases_table() -> Result<PageBytes> {
     let database = Database::new(MASTER_DB_ID, MASTER_NAME.into());
     let mut databases_index = BTree::new();
     let database_bytes = database.to_bytes()?;
@@ -315,41 +310,10 @@ pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<(
         }
     }
 
-    let page_bytes = page.collect();
+    Ok(page.collect())
+}
 
-    let root_page_id = file_manager
-        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
-
-    let master_db_file = file_manager.get_from_id(MASTER_DB_ID, FileType::Primary);
-
-    if let Some(file) = master_db_file {
-        // write the index to the master db file
-        persistence::write_page(file, &page_bytes, *root_page_id)?;
-
-        // read out the schema info page
-        // TODO: should use page cache
-        let file_info_page = persistence::read_page(file, SCHEMA_INFO_PAGE_INDEX)?;
-        let page = PageDecoder::from_bytes(&file_info_page);
-        let mut schema_info = page.try_read::<SchemaInfo>(0)?;
-
-        schema_info.databases_root_page_id = root_page_id.to_owned();
-        schema_info.columns_root_page_id = 99;
-        schema_info.indexes_root_page_id = 98;
-        schema_info.tables_root_page_id = 97;
-
-        // write schema info back
-        // TODO: this is building a whole new page to write a single number... how do I want to do this better?
-        let schema_header = PageHeader::new(PageType::SchemaInfo);
-        let mut schema_page = PageEncoder::new(schema_header);
-        let schema_info_bytes = schema_info.to_bytes()?;
-        schema_page.add_slot_bytes(schema_info_bytes)?;
-        let schema_page_bytes = schema_page.collect();
-        persistence::write_page(file, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
-    } else {
-        return Result::Err(SchemaCreationError::FailedToOpenFile.into());
-    }
-
+fn initialise_tables_table() -> Result<PageBytes> {
     let tables = [
         Table::new(0, MASTER_DB_ID, DATABASES_TABLE.to_string()),
         Table::new(0, MASTER_DB_ID, TABLES_TABLE.to_string()),
@@ -357,12 +321,77 @@ pub fn ensure_master_tables_exist(file_manager: RefMut<FileManager>) -> Result<(
         Table::new(0, MASTER_DB_ID, INDEXES_TABLE.to_string()),
     ];
 
-    let mut tables_index = BTree::new();
+    let mut index = BTree::new();
 
     for table in tables {
         let table_bytes = table.to_bytes()?;
-        tables_index.add(table.id.into(), table_bytes);
+        index.add(table.id.into(), table_bytes);
     }
+
+    let header = PageHeader::new(PageType::Index);
+    let mut page = PageEncoder::new(header);
+
+    match index.root {
+        crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
+        crate::btree::NodeType::Leaf(leaf) => {
+            for key in leaf {
+                page.add_slot_bytes(key.value)?;
+            }
+        }
+    }
+
+    Ok(page.collect())
+}
+
+pub fn ensure_master_tables_exist(mut file_manager: RefMut<FileManager>) -> Result<()> {
+    let master_id = &IdMapKey::new(MASTER_DB_ID, FileType::Primary);
+
+    // read out the schema info page
+    // TODO: should use page cache
+    let mut schema = file_manager.read_page_as::<SchemaInfo>(master_id, SCHEMA_INFO_PAGE_INDEX)?;
+
+    if schema.databases_root_page_id != 0 {
+        log::debug!("SchemaInfo Page exists. Skipping initialisation.");
+        return Ok(());
+    }
+
+    // Write DB page
+    let databases_page_bytes = initialise_databases_table()?;
+
+    let db_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    file_manager.write_page(master_id, &databases_page_bytes, db_page_id);
+
+    log::debug!("Wrote Databases index to pageID {}", db_page_id);
+
+    // Write Tables pages
+    let tables_page_bytes = initialise_tables_table()?;
+
+    let tables_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    file_manager.write_page(master_id, &tables_page_bytes, tables_page_id);
+
+    log::debug!("Wrote Tables index to pageID {}", tables_page_id);
+
+    schema.databases_root_page_id = db_page_id.to_owned();
+    schema.tables_root_page_id = tables_page_id.to_owned();
+    // TODO: fill in when populated
+    schema.columns_root_page_id = 99;
+    schema.indexes_root_page_id = 98;
+
+    // write schema info back
+    // TODO: this is building a whole new page to write a single number... how do I want to do this better?
+    let schema_header = PageHeader::new(PageType::SchemaInfo);
+    let mut schema_page = PageEncoder::new(schema_header);
+    let schema_info_bytes = schema.to_bytes()?;
+    schema_page.add_slot_bytes(schema_info_bytes)?;
+    let schema_page_bytes = schema_page.collect();
+
+    file_manager.write_page(master_id, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
 
     let database_table_columns = [
         Column::new(

@@ -305,9 +305,9 @@ impl<'a> PageDecoder<'a> {
         Ok(self.slots[slot_index as usize].to_vec())
     }
 
-    pub fn try_read<T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
+    pub fn try_read<'b, T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
     where
-        T: DekuContainerRead<'a> + std::fmt::Debug,
+        T: DekuContainerRead<'b> + std::fmt::Debug,
     {
         if slot_index as usize >= self.slots.len() {
             return Err(PageDecoderError::SlotOutOfRange);
