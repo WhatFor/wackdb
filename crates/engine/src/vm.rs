@@ -13,7 +13,7 @@ use crate::{
     page::PageDecoder,
     page_cache::FilePageId,
     persistence,
-    server::{Database, MASTER_DB_ID},
+    server::{Database, Table, MASTER_DB_ID},
 };
 
 pub struct VirtualMachine {
@@ -25,6 +25,8 @@ pub struct VirtualMachine {
 enum StatementError {
     #[error("Database does not exist.")]
     DbDoesNotExist,
+    #[error("Table does not exist.")]
+    TableDoesNotExist,
 }
 
 #[derive(Debug, From, Error)]
@@ -203,14 +205,48 @@ impl VirtualMachine {
                     return Err(StatementError::DbDoesNotExist.into());
                 }
 
-                log::debug!("Fetching file handle for {}", &database_name);
-                let _data_file = fm.get_from_name(database_name, FileType::Primary);
+                log::debug!("Validated database {} exists.", &database_name);
+
+                // not sure what i want to do here
+                //log::debug!("Fetching file handle for {}", &database_name);
+                //let _data_file = fm.get_from_name(database_name, FileType::Primary);
 
                 // Last up to here, 13/11/2025.
                 // have read the list of databases from the master db, and validated that the database exists.
                 // now need to check that the requested TABLE exists, similar process.
                 // From there, can get the table's root page ID and load it's index.
                 // Then, once we have the index, we can load all data. Quite easy to do a SELECT *.
+                let tables_page_iter = pager.create_pager(FilePageId::new(
+                    MASTER_DB_ID,
+                    schema_info.tables_root_page_id,
+                ));
+
+                let mut tables = tables_page_iter.map(|item| {
+                    let mut cursor = std::io::Cursor::new(item);
+                    let mut reader = deku::reader::Reader::new(&mut cursor);
+
+                    // TODO: currently erroring here.
+                    //   thread 'main' panicked at crates\engine\src\page.rs:358:36:
+                    //   slice index starts at 73 but ends at 60
+                    // this is probably either a bug in writing/reading pages,
+                    // or in me writing/reading the wrong thing...
+                    // we're expecting 4 slots to be writen to this page, which is true (if I can trust me debug output).
+                    // and we read the first slot after the header (32..46), which is 14 bytes.
+                    // reading the 2nd slot comes out at 73..60, which is clearly wrong.
+                    // check how we calculate slots. this seems like a bug in writing the slot pointers.
+                    return Table::from_reader_with_ctx(&mut reader, ());
+                });
+
+                // TODO: unwrap
+                // TODO: dont like having to deref the table_name pointer
+                let table_exists_by_name = tables
+                    .any(|i| i.is_ok_and(|f| String::from_utf8(f.name).unwrap() == *table_name));
+
+                if table_exists_by_name == false {
+                    return Err(StatementError::TableDoesNotExist.into());
+                }
+
+                log::debug!("Validated table {} exists.", &table_name);
 
                 // TODO: Group By, Order By, Where
 
