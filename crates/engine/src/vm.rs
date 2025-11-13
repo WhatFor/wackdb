@@ -206,6 +206,12 @@ impl VirtualMachine {
                 log::debug!("Fetching file handle for {}", &database_name);
                 let _data_file = fm.get_from_name(database_name, FileType::Primary);
 
+                // Last up to here, 13/11/2025.
+                // have read the list of databases from the master db, and validated that the database exists.
+                // now need to check that the requested TABLE exists, similar process.
+                // From there, can get the table's root page ID and load it's index.
+                // Then, once we have the index, we can load all data. Quite easy to do a SELECT *.
+
                 // TODO: Group By, Order By, Where
 
                 Ok(StatementResult {
