@@ -6,14 +6,14 @@ use std::{cell::RefCell, rc::Rc};
 use thiserror::Error;
 
 use crate::{
-    db::{DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::{ColumnResult, ExprResult, ResultSet, StatementResult},
     fm::FileManager,
-    index_pager::{self, IndexPager},
+    index_pager::IndexPager,
     page::{PageDecoder, PageId},
     page_cache::FilePageId,
     persistence,
-    server::{Database, Table, MASTER_DB_ID},
+    server::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
 };
 
 pub struct VirtualMachine {
@@ -27,6 +27,8 @@ enum StatementError {
     DbDoesNotExist,
     #[error("Table does not exist.")]
     TableDoesNotExist,
+    #[error("Column does not exist.")]
+    ColumnsDoNotExist(Vec<SelectItem>),
 }
 
 #[derive(Debug, From, Error)]
@@ -129,6 +131,7 @@ impl VirtualMachine {
         }
     }
 
+    // TODO: refactor this monster
     fn evaluate_select_statement(
         &self,
         statement: &SelectExpressionBody,
@@ -136,8 +139,10 @@ impl VirtualMachine {
         log::debug!("SELECT:");
         match &statement.from_clause {
             Some(from) => {
+                // TODO: this check if very simple (not fully correct)
                 let is_select_wildcard =
                     statement.select_item_list.item_list[0] == SelectItem::new(Expr::Wildcard);
+
                 log::debug!("   ITEMS: {:?}", statement.select_item_list.item_list);
 
                 let table_name = &from.identifier.value;
@@ -152,17 +157,6 @@ impl VirtualMachine {
                     false => log::debug!("   FROM: {}", table_name),
                 }
 
-                // we need to find the table we're asking for. we have it's identifier, so...
-                // ideally the schema info should already be in memory, but we're going to do it from disk as a POC here.
-                // 1. read schema page to get root index page IDs.
-                // 2. read the root page of the databases index and check the db we're querying exists.
-                // 3. if not, error
-                // 4. read the root page of the tables index and check the table exists.
-                // 5. if not, error
-                // 6. from there, get the root of the table index
-                // 7. read the data (???)
-                // 8. return the data
-
                 // TODO: this is me just falling back to the master database if the user doesn't specify a db. not a final solution...
                 let database_name = if is_qualified {
                     from.qualifier.as_ref().unwrap().value.clone()
@@ -170,6 +164,9 @@ impl VirtualMachine {
                     String::from("master")
                 };
 
+                // Step 1.
+                // Fetch the `master` database file, we need to read a lot of metadata from it
+                // in order to know where to read the user-query data from (and if it's even valid).
                 let fm = self.file_manager.borrow();
                 let master_data_file = fm.get_from_id(MASTER_DB_ID, FileType::Primary);
 
@@ -177,6 +174,10 @@ impl VirtualMachine {
                     return Err(Error::msg("Failed to read Master data file"));
                 }
 
+                // Step 2.
+                // Read the `master` SCHEMA_INFO page. This is going to tell us
+                // where in the `master` DB to find info on the databases, tables, columns
+                // and indexes that exist.
                 let schema_page_bytes =
                     persistence::read_page(master_data_file.unwrap(), SCHEMA_INFO_PAGE_INDEX)?;
 
@@ -185,6 +186,10 @@ impl VirtualMachine {
 
                 let pager = self.index_pager.borrow();
 
+                // Step 3.
+                // Create an pager and read all the Database records that exist
+                // in the schema.
+                // Validate if the database exists.
                 let databases_page_iter = pager.create_pager(FilePageId::new(
                     MASTER_DB_ID,
                     schema_info.databases_root_page_id,
@@ -208,11 +213,9 @@ impl VirtualMachine {
 
                 log::debug!("Validated database {} exists.", &database_name);
 
-                // Last up to here, 13/11/2025.
-                // have read the list of databases from the master db, and validated that the database exists.
-                // Have also done this for tables, so we're sure the table exists.
-                // From there, can get the table's root page ID and load it's index.
-                // Then, once we have the index, we can load all data. Quite easy to do a SELECT *.
+                // Step 4.
+                // Create a pager and read all the Table records that exist in the schema.
+                // Validate if the target table exists.
                 let tables_page_iter = pager.create_pager(FilePageId::new(
                     MASTER_DB_ID,
                     schema_info.tables_root_page_id,
@@ -238,26 +241,132 @@ impl VirtualMachine {
                     return Err(StatementError::TableDoesNotExist.into());
                 }
 
+                // TODO: unwraps
+                let target_table_id = target_table.unwrap().unwrap().id;
+
                 log::debug!("Validated table {} exists.", &table_name);
 
-                // TODO 2025-11-15
-                // Need to fetch the PK index for the target table
-                // then pass to this value:
-                let target_table_index_root_id: PageId = 0;
+                // Step 5.
+                // Create a pager and read from the Schema the indexes that exist.
+                // Then find the Primary Key index on the target table.
+                // This is needed to know where to start reading the data from.
+                let indexes_page_iter = pager.create_pager(FilePageId::new(
+                    MASTER_DB_ID,
+                    schema_info.indexes_root_page_id,
+                ));
 
-                let target_table_iter =
-                    pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
-
-                let mut target_table_data = target_table_iter.map(|item| {
+                let mut indexes = indexes_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
                     let mut reader = deku::reader::Reader::new(&mut cursor);
 
-                    // TODO: handle Result
-                    // TODO: We don't know what type we're reading from here, so this probably isn't the way forward.
-                    //       for the initial use case, we can just get SELECT * working. Will need eventually to select just
-                    //       the values we want though
-                    return Object::from_reader_with_ctx(&mut reader, ());
+                    return Index::from_reader_with_ctx(&mut reader, ());
                 });
+
+                // TODO: unwraps
+                let pk_index_for_target_table = indexes
+                    .find(|i| {
+                        i.as_ref().is_ok_and(|f| {
+                            f.table_id == target_table_id && f.index_type == IndexType::PK
+                        })
+                    })
+                    .unwrap()
+                    .unwrap();
+
+                let target_table_index_root_id: PageId = pk_index_for_target_table.root_page_id;
+
+                log::debug!("Found PK index for table {}.", &table_name);
+
+                // Step 6.
+                // Create a pager and read all Columns from the Schema that exist.
+                // Validate that the requested columns exist.
+                let columns_page_iter = pager.create_pager(FilePageId::new(
+                    MASTER_DB_ID,
+                    schema_info.columns_root_page_id,
+                ));
+
+                let mut columns = columns_page_iter.map(|item| {
+                    let mut cursor = std::io::Cursor::new(item);
+                    let mut reader = deku::reader::Reader::new(&mut cursor);
+
+                    return Column::from_reader_with_ctx(&mut reader, ());
+                });
+
+                let mut columns_of_target_table =
+                    columns.filter(|c| c.as_ref().is_ok_and(|f| f.table_id == target_table_id));
+
+                // Step 6.5.
+                // Validate that the requested columns exist.
+                // TODO: Handle all types of SelectItem expressions.
+                if !is_select_wildcard {
+                    let missing_columns: Vec<SelectItem> = statement
+                        .select_item_list
+                        .item_list
+                        .iter()
+                        .cloned()
+                        .filter(|i| match &i.expr {
+                            Expr::Identifier(ident) => columns_of_target_table.any(|c| {
+                                String::from_utf8(c.unwrap().name).unwrap() == ident.value
+                            }),
+                            _ => true,
+                        })
+                        .collect();
+
+                    if missing_columns.len() > 0 {
+                        return Err(StatementError::ColumnsDoNotExist(missing_columns).into());
+                    }
+                }
+
+                // Step 7.
+                // Because deku wont work to deserialise a type it knows nothing about,
+                // we need to use our column schema info to decide how to read the incoming row bytes.
+                let mut target_table_columns: Vec<(u16, u8, ColumnType)> = columns_of_target_table
+                    .map(|c| {
+                        let col = c.unwrap();
+                        let column_size = match col.data_type {
+                            crate::server::ColumnType::Bit => 1,
+                            crate::server::ColumnType::Byte => 1,
+                            crate::server::ColumnType::Int => 2,
+                            crate::server::ColumnType::String => 0, // TODO: I have no idea how to know this... There's a len byte somewhere in the Vec<u8> ha
+                            crate::server::ColumnType::Boolean => 1,
+                            crate::server::ColumnType::Date => 2, // TODO: confirm
+                            crate::server::ColumnType::DateTime => 4, // TODO: confirm
+                        };
+
+                        // TODO: will probably need name back too (though maybe not from here -
+                        // after all, the name is the same for all rows, we can probs do it based on pos)
+
+                        (column_size, col.position, col.data_type)
+                    })
+                    .collect();
+
+                // TODO: use struct/enum instead of tuple so it's not such jank syntax
+                target_table_columns.sort_by(|a, b| a.1.cmp(&b.1));
+
+                // Step 8.
+                // Create a pager and read all data from the target table.
+                // This is more complex than before, as we can't rely on deku to parse the
+                // Vec<u8> into a target type - we don't know the type!
+                let target_table_iter =
+                    pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
+
+                let target_table_data: Vec<Vec<Vec<u8>>> = target_table_iter
+                    .map(|item| {
+                        let mut cursor: u16 = 0;
+                        let mut cols: Vec<Vec<u8>> = Vec::new();
+
+                        log::debug!("Processing row {:?}", item);
+                        for (col_length, _col_pos, col_type) in &target_table_columns {
+                            log::debug!("  > Reading col {:?}", _col_pos);
+                            let col_bytes = item[cursor.into()..(*col_length).into()].to_vec();
+                            cols.push(col_bytes);
+                            cursor = cursor + col_length;
+                        }
+
+                        cols
+                    })
+                    .collect();
+
+                log::debug!("{:?}", target_table_data);
 
                 // TODO: Group By, Order By, Where
 

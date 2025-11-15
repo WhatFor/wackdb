@@ -113,7 +113,7 @@ impl fmt::Debug for SelectItemList {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct SelectItem {
     pub expr: Expr,
     pub alias: Option<Identifier>,
@@ -274,7 +274,7 @@ impl fmt::Debug for GroupByClause {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Expr {
     IsTrue(Box<Expr>),
     IsNotTrue(Box<Expr>),
@@ -418,14 +418,14 @@ impl fmt::Debug for BinaryOperator {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum QuoteType {
     None,
     Single,
     Double,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Value {
     Number(String),
     String(String, QuoteType),
@@ -488,7 +488,7 @@ impl fmt::Debug for OrderDirection {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Identifier {
     pub value: String,
 }

@@ -244,7 +244,7 @@ impl Column {
     }
 }
 
-#[derive(DekuRead, DekuWrite)]
+#[derive(DekuRead, DekuWrite, PartialEq, Eq)]
 #[deku(
     id_type = "u8",
     endian = "endian",
