@@ -9,8 +9,8 @@ use crate::{
     btree::BTree,
     db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::CURRENT_DATABASE_VERSION,
-    fm::{FileId, FileManager, IdMapKey},
-    page::{PageDecoder, PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
+    fm::{FileManager, IdMapKey},
+    page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
     page_cache::PageBytes,
     persistence,
     util::{self, now_bytes},
@@ -280,16 +280,34 @@ pub struct Index {
     #[deku(bytes = 2)]
     pub created_date: u16,
 }
+
+impl Index {
+    pub fn new(
+        id: DatabaseId,
+        table_id: DatabaseId,
+        name: String,
+        index_type: IndexType,
+        is_unique: bool,
+        root_page_id: PageId,
+    ) -> Self {
+        Index {
+            id,
+            table_id,
+            name_len: name.len() as u8,
+            name: name.to_string().into_bytes(),
+            index_type,
+            is_unique,
+            root_page_id,
+            created_date: now_bytes(),
+        }
+    }
+}
+
 #[derive(Debug, From, Error)]
 pub enum SchemaCreationError {
     #[error("Failed to open file.")]
     FailedToOpenFile,
 }
-
-const DATABASES_TABLE: &str = "databases";
-const TABLES_TABLE: &str = "tables";
-const COLUMNS_TABLE: &str = "columns";
-const INDEXES_TABLE: &str = "indexes";
 
 fn initialise_databases_table() -> Result<PageBytes> {
     let database = Database::new(MASTER_DB_ID, MASTER_NAME.into());
@@ -301,6 +319,7 @@ fn initialise_databases_table() -> Result<PageBytes> {
     let header = PageHeader::new(PageType::Index);
     let mut page = PageEncoder::new(header);
 
+    // TODO: this is duplicated a lot
     match databases_index.root {
         crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
         crate::btree::NodeType::Leaf(leaf) => {
@@ -313,12 +332,26 @@ fn initialise_databases_table() -> Result<PageBytes> {
     Ok(page.collect())
 }
 
+const DATABASES_TABLE: &str = "databases";
+const TABLES_TABLE: &str = "tables";
+const COLUMNS_TABLE: &str = "columns";
+const INDEXES_TABLE: &str = "indexes";
+
+const DATABASES_TABLE_ID: DatabaseId = 1;
+const TABLES_TABLE_ID: DatabaseId = 2;
+const COLUMNS_TABLE_ID: DatabaseId = 3;
+const INDEXES_TABLE_ID: DatabaseId = 4;
+
 fn initialise_tables_table() -> Result<PageBytes> {
     let tables = [
-        Table::new(0, MASTER_DB_ID, DATABASES_TABLE.to_string()),
-        Table::new(0, MASTER_DB_ID, TABLES_TABLE.to_string()),
-        Table::new(0, MASTER_DB_ID, COLUMNS_TABLE.to_string()),
-        Table::new(0, MASTER_DB_ID, INDEXES_TABLE.to_string()),
+        Table::new(
+            DATABASES_TABLE_ID,
+            MASTER_DB_ID,
+            DATABASES_TABLE.to_string(),
+        ),
+        Table::new(TABLES_TABLE_ID, MASTER_DB_ID, TABLES_TABLE.to_string()),
+        Table::new(COLUMNS_TABLE_ID, MASTER_DB_ID, COLUMNS_TABLE.to_string()),
+        Table::new(INDEXES_TABLE_ID, MASTER_DB_ID, INDEXES_TABLE.to_string()),
     ];
 
     let mut index = BTree::new();
@@ -331,6 +364,398 @@ fn initialise_tables_table() -> Result<PageBytes> {
     let header = PageHeader::new(PageType::Index);
     let mut page = PageEncoder::new(header);
 
+    // TODO: this is duplicated a lot
+    match index.root {
+        crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
+        crate::btree::NodeType::Leaf(leaf) => {
+            for key in leaf {
+                page.add_slot_bytes(key.value)?;
+            }
+        }
+    }
+
+    Ok(page.collect())
+}
+
+fn initialise_columns_table() -> Result<PageBytes> {
+    let database_table_columns = [
+        Column::new(
+            1,
+            DATABASES_TABLE_ID,
+            "id".to_string(),
+            0,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            2,
+            DATABASES_TABLE_ID,
+            "name".to_string(),
+            1,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            3,
+            DATABASES_TABLE_ID,
+            "database_version".to_string(),
+            2,
+            false,
+            None,
+            ColumnType::Byte,
+            None,
+            None,
+        ),
+        Column::new(
+            4,
+            DATABASES_TABLE_ID,
+            "created_date".to_string(),
+            3,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+    ];
+
+    let tables_table_columns = [
+        Column::new(
+            1,
+            TABLES_TABLE_ID,
+            "id".to_string(),
+            0,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            2,
+            TABLES_TABLE_ID,
+            "database_id".to_string(),
+            1,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            3,
+            TABLES_TABLE_ID,
+            "name".to_string(),
+            2,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            4,
+            TABLES_TABLE_ID,
+            "created_date".to_string(),
+            3,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+    ];
+
+    let columns_table_columns = [
+        Column::new(
+            1,
+            COLUMNS_TABLE_ID,
+            "id".to_string(),
+            0,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            2,
+            COLUMNS_TABLE_ID,
+            "table_id".to_string(),
+            1,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            3,
+            COLUMNS_TABLE_ID,
+            "name".to_string(),
+            2,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            4,
+            COLUMNS_TABLE_ID,
+            "position".to_string(),
+            3,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            5,
+            COLUMNS_TABLE_ID,
+            "is_nullable".to_string(),
+            4,
+            false,
+            None,
+            ColumnType::Boolean,
+            None,
+            None,
+        ),
+        Column::new(
+            6,
+            COLUMNS_TABLE_ID,
+            "default_value".to_string(),
+            5,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            7,
+            COLUMNS_TABLE_ID,
+            "data_type".to_string(),
+            6,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            8,
+            COLUMNS_TABLE_ID,
+            "max_str_length".to_string(),
+            7,
+            false,
+            Some(i32::MAX.to_string()),
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            9,
+            COLUMNS_TABLE_ID,
+            "num_precision".to_string(),
+            8,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            10,
+            COLUMNS_TABLE_ID,
+            "created_date".to_string(),
+            9,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+    ];
+
+    let indexes_table_columns = [
+        Column::new(
+            1,
+            INDEXES_TABLE_ID,
+            "id".to_string(),
+            0,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            2,
+            INDEXES_TABLE_ID,
+            "table_id".to_string(),
+            1,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            3,
+            INDEXES_TABLE_ID,
+            "name".to_string(),
+            2,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+        Column::new(
+            4,
+            INDEXES_TABLE_ID,
+            "type".to_string(),
+            3,
+            false,
+            None,
+            ColumnType::Byte,
+            None,
+            None,
+        ),
+        Column::new(
+            5,
+            INDEXES_TABLE_ID,
+            "is_unique".to_string(),
+            4,
+            false,
+            Some(String::from("false")),
+            ColumnType::Boolean,
+            None,
+            None,
+        ),
+        Column::new(
+            6,
+            INDEXES_TABLE_ID,
+            "root_page_id".to_string(),
+            5,
+            false,
+            None,
+            ColumnType::Int,
+            None,
+            None,
+        ),
+        Column::new(
+            6,
+            INDEXES_TABLE_ID,
+            "created_date".to_string(),
+            6,
+            false,
+            None,
+            ColumnType::String,
+            None,
+            None,
+        ),
+    ];
+
+    let mut index = BTree::new();
+
+    for col in database_table_columns {
+        let col_bytes = col.to_bytes()?;
+        index.add(col.id.into(), col_bytes);
+    }
+
+    for col in tables_table_columns {
+        let col_bytes = col.to_bytes()?;
+        index.add(col.id.into(), col_bytes);
+    }
+
+    for col in columns_table_columns {
+        let col_bytes = col.to_bytes()?;
+        index.add(col.id.into(), col_bytes);
+    }
+
+    for col in indexes_table_columns {
+        let col_bytes = col.to_bytes()?;
+        index.add(col.id.into(), col_bytes);
+    }
+
+    let header = PageHeader::new(PageType::Index);
+    let mut page = PageEncoder::new(header);
+
+    // TODO: this is duplicated a lot
+    match index.root {
+        crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
+        crate::btree::NodeType::Leaf(leaf) => {
+            for key in leaf {
+                page.add_slot_bytes(key.value)?;
+            }
+        }
+    }
+
+    Ok(page.collect())
+}
+
+fn initialise_indexes_table(
+    databases_root_id: PageId,
+    tables_root_id: PageId,
+    columns_root_id: PageId,
+    indexes_root_id: PageId,
+) -> Result<PageBytes> {
+    // TODO
+    let indexes = [
+        Index::new(
+            1,
+            DATABASES_TABLE_ID,
+            String::from("PK_Databases"),
+            IndexType::PK,
+            true,
+            databases_root_id,
+        ),
+        Index::new(
+            2,
+            TABLES_TABLE_ID,
+            String::from("PK_Tables"),
+            IndexType::PK,
+            true,
+            tables_root_id,
+        ),
+        Index::new(
+            3,
+            COLUMNS_TABLE_ID,
+            String::from("PK_Columns"),
+            IndexType::PK,
+            true,
+            columns_root_id,
+        ),
+        Index::new(
+            4,
+            INDEXES_TABLE_ID,
+            String::from("PK_Indexes"),
+            IndexType::PK,
+            true,
+            indexes_root_id,
+        ),
+    ];
+
+    let mut index = BTree::new();
+
+    for index_record in indexes {
+        let bytes = index_record.to_bytes()?;
+        index.add(index_record.id.into(), bytes);
+    }
+
+    let header = PageHeader::new(PageType::Index);
+    let mut page = PageEncoder::new(header);
+
+    // TODO: this is duplicated a lot
     match index.root {
         crate::btree::NodeType::Interior(_) => todo!(), // this needs to make new pages for each interior. probably recursive.
         crate::btree::NodeType::Leaf(leaf) => {
@@ -356,35 +781,66 @@ pub fn ensure_master_tables_exist(mut file_manager: RefMut<FileManager>) -> Resu
     }
 
     // Write DB page
-    let databases_page_bytes = initialise_databases_table()?;
-
-    let db_page_id = file_manager
+    let databases_page_id = file_manager
         .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
         .unwrap();
 
-    file_manager.write_page(master_id, &databases_page_bytes, db_page_id);
+    let databases_page_bytes = initialise_databases_table()?;
 
-    log::debug!("Wrote Databases index to pageID {}", db_page_id);
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &databases_page_bytes, databases_page_id);
+
+    log::debug!("Wrote Databases index to pageID {}", databases_page_id);
 
     // Write Tables pages
-    let tables_page_bytes = initialise_tables_table()?;
-
     let tables_page_id = file_manager
         .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
         .unwrap();
 
-    file_manager.write_page(master_id, &tables_page_bytes, tables_page_id);
+    let tables_page_bytes = initialise_tables_table()?;
+
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &tables_page_bytes, tables_page_id);
 
     log::debug!("Wrote Tables index to pageID {}", tables_page_id);
 
-    schema.databases_root_page_id = db_page_id.to_owned();
+    // Write Columns pages
+    let columns_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    let columns_page_bytes = initialise_columns_table()?;
+
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &columns_page_bytes, columns_page_id);
+
+    log::debug!("Wrote Columns index to pageID {}", columns_page_id);
+
+    // Write Indexes pages
+    // TODO: this function needs to know about the databases, tables, columns and itself indexes...
+    let indexes_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    let indexes_page_bytes = initialise_indexes_table(
+        databases_page_id,
+        tables_page_id,
+        columns_page_id,
+        indexes_page_id,
+    )?;
+
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &indexes_page_bytes, indexes_page_id);
+
+    log::debug!("Wrote Indexes index to pageID {}", indexes_page_id);
+
+    schema.databases_root_page_id = databases_page_id.to_owned();
     schema.tables_root_page_id = tables_page_id.to_owned();
-    // TODO: fill in when populated
-    schema.columns_root_page_id = 99;
-    schema.indexes_root_page_id = 98;
+    schema.columns_root_page_id = columns_page_id.to_owned();
+    schema.indexes_root_page_id = indexes_page_id.to_owned();
 
     // write schema info back
-    // TODO: this is building a whole new page to write a single number... how do I want to do this better?
+    // TODO: this is building a whole new page to write a few numbers... how do I want to do this better?
     let schema_header = PageHeader::new(PageType::SchemaInfo);
     let mut schema_page = PageEncoder::new(schema_header);
     let schema_info_bytes = schema.to_bytes()?;
@@ -392,315 +848,6 @@ pub fn ensure_master_tables_exist(mut file_manager: RefMut<FileManager>) -> Resu
     let schema_page_bytes = schema_page.collect();
 
     file_manager.write_page(master_id, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
-
-    let database_table_columns = [
-        Column::new(
-            0,
-            0,
-            "id".to_string(),
-            0,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "name".to_string(),
-            1,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "database_version".to_string(),
-            2,
-            false,
-            None,
-            ColumnType::Byte,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "created_date".to_string(),
-            3,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-    ];
-
-    let tables_table_columns = [
-        Column::new(
-            0,
-            0,
-            "id".to_string(),
-            0,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "database_id".to_string(),
-            1,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "name".to_string(),
-            2,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "created_date".to_string(),
-            3,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-    ];
-
-    let columns_table_columns = [
-        Column::new(
-            0,
-            0,
-            "id".to_string(),
-            0,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "table_id".to_string(),
-            1,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "name".to_string(),
-            2,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "position".to_string(),
-            3,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "is_nullable".to_string(),
-            4,
-            false,
-            None,
-            ColumnType::Boolean,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "default_value".to_string(),
-            5,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "data_type".to_string(),
-            6,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "max_str_length".to_string(),
-            7,
-            false,
-            Some(i32::MAX.to_string()),
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "num_precision".to_string(),
-            8,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "created_date".to_string(),
-            9,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-    ];
-
-    let indexes_table_columns = [
-        Column::new(
-            0,
-            0,
-            "id".to_string(),
-            0,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "table_id".to_string(),
-            1,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "name".to_string(),
-            2,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "type".to_string(),
-            3,
-            false,
-            None,
-            ColumnType::Byte,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "is_unique".to_string(),
-            4,
-            false,
-            Some(String::from("false")),
-            ColumnType::Boolean,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "root_page_id".to_string(),
-            5,
-            false,
-            None,
-            ColumnType::Int,
-            None,
-            None,
-        ),
-        Column::new(
-            0,
-            0,
-            "created_date".to_string(),
-            6,
-            false,
-            None,
-            ColumnType::String,
-            None,
-            None,
-        ),
-    ];
-
-    let mut columns_index = BTree::new();
-
-    for col in database_table_columns {
-        let col_bytes = col.to_bytes()?;
-        columns_index.add(col.id.into(), col_bytes);
-    }
-
-    for col in tables_table_columns {
-        let col_bytes = col.to_bytes()?;
-        columns_index.add(col.id.into(), col_bytes);
-    }
-
-    for col in columns_table_columns {
-        let col_bytes = col.to_bytes()?;
-        columns_index.add(col.id.into(), col_bytes);
-    }
-
-    for col in indexes_table_columns {
-        let col_bytes = col.to_bytes()?;
-        columns_index.add(col.id.into(), col_bytes);
-    }
 
     Ok(())
 }

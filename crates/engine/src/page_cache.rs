@@ -1,4 +1,4 @@
-use crate::{db::FileType, fm::FileManager, lru::LRUCache, persistence};
+use crate::{db::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
 use std::{cell::RefCell, rc::Rc};
 
 pub type PageBytes = [u8; 8192];
@@ -10,7 +10,7 @@ pub struct FilePageId {
 }
 
 impl FilePageId {
-    pub fn new(db_id: u16, page_index: u32) -> Self {
+    pub fn new(db_id: u16, page_index: PageId) -> Self {
         FilePageId { db_id, page_index }
     }
 }

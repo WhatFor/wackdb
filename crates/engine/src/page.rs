@@ -345,7 +345,7 @@ impl<'a> PageDecoder<'a> {
             let slot_start = if i == 0 {
                 PAGE_HEADER_SIZE_BYTES as usize
             } else {
-                read_pointer(i + 1, bytes)
+                read_pointer(i - 1, bytes)
             };
 
             let range = slot_start..slot_end;
@@ -443,7 +443,7 @@ mod page_encoder_tests {
         let mut encoder = PageEncoder::new(header);
 
         let slot1 = vec![1, 2];
-        let slot2 = vec![1, 2];
+        let slot2 = vec![3, 4];
 
         // Expect allocated a header (32 bytes) and 2 pages each of length 2.
         let expected_len = PAGE_HEADER_SIZE_BYTES + 2 + 2;
