@@ -284,19 +284,19 @@ impl VirtualMachine {
                     schema_info.columns_root_page_id,
                 ));
 
-                let mut columns = columns_page_iter.map(|item| {
+                let columns = columns_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
                     let mut reader = deku::reader::Reader::new(&mut cursor);
 
-                    return Column::from_reader_with_ctx(&mut reader, ());
+                    // TODO: unwrap
+                    Column::from_reader_with_ctx(&mut reader, ()).unwrap()
                 });
 
-                let mut columns_of_target_table =
-                    columns.filter(|c| c.as_ref().is_ok_and(|f| f.table_id == target_table_id));
+                let columns_of_target_table: Vec<Column> =
+                    columns.filter(|c| c.table_id == target_table_id).collect();
 
                 // Step 6.5.
                 // Validate that the requested columns exist.
-                // TODO: Handle all types of SelectItem expressions.
                 if !is_select_wildcard {
                     let missing_columns: Vec<SelectItem> = statement
                         .select_item_list
@@ -304,9 +304,12 @@ impl VirtualMachine {
                         .iter()
                         .cloned()
                         .filter(|i| match &i.expr {
-                            Expr::Identifier(ident) => columns_of_target_table.any(|c| {
-                                String::from_utf8(c.unwrap().name).unwrap() == ident.value
-                            }),
+                            // TODO: Handle all types of SelectItem expressions.
+                            // TODO: I hate that we've turned this iter into a vec and now back into an iter
+                            Expr::Identifier(ident) => columns_of_target_table
+                                .iter()
+                                // TODO: clone is a bit shit
+                                .any(|c| String::from_utf8(c.name.clone()).unwrap() == ident.value),
                             _ => true,
                         })
                         .collect();
@@ -319,54 +322,119 @@ impl VirtualMachine {
                 // Step 7.
                 // Because deku wont work to deserialise a type it knows nothing about,
                 // we need to use our column schema info to decide how to read the incoming row bytes.
-                let mut target_table_columns: Vec<(u16, u8, ColumnType)> = columns_of_target_table
-                    .map(|c| {
-                        let col = c.unwrap();
-                        let column_size = match col.data_type {
-                            crate::server::ColumnType::Bit => 1,
-                            crate::server::ColumnType::Byte => 1,
-                            crate::server::ColumnType::Int => 2,
-                            crate::server::ColumnType::String => 0, // TODO: I have no idea how to know this... There's a len byte somewhere in the Vec<u8> ha
-                            crate::server::ColumnType::Boolean => 1,
-                            crate::server::ColumnType::Date => 2, // TODO: confirm
-                            crate::server::ColumnType::DateTime => 4, // TODO: confirm
-                        };
 
-                        // TODO: will probably need name back too (though maybe not from here -
-                        // after all, the name is the same for all rows, we can probs do it based on pos)
+                // Notes for self, 2025-11-16
+                // I think I need to throw all the following code out. The use of iters is causing trouble.
+                // I'm stuck needing to know the length of a string value in the iter, where the length of the
+                // string is stored in another col (_len).
+                // I think as long as I lay out the convention that _len always precedes the string col,
+                // it should be easy. I also think I may need to add a new internal column type to declare
+                // that 'this Int column is actually a length indicator' so I can make this clearer.
+                // At the moment it's all running on vibes.
 
-                        (column_size, col.position, col.data_type)
-                    })
-                    .collect();
-
-                // TODO: use struct/enum instead of tuple so it's not such jank syntax
-                target_table_columns.sort_by(|a, b| a.1.cmp(&b.1));
-
-                // Step 8.
-                // Create a pager and read all data from the target table.
-                // This is more complex than before, as we can't rely on deku to parse the
-                // Vec<u8> into a target type - we don't know the type!
                 let target_table_iter =
                     pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
 
-                let target_table_data: Vec<Vec<Vec<u8>>> = target_table_iter
-                    .map(|item| {
-                        let mut cursor: u16 = 0;
-                        let mut cols: Vec<Vec<u8>> = Vec::new();
+                let col_offsets =
+                    statement
+                        .select_item_list
+                        .item_list
+                        .iter()
+                        .cloned()
+                        .map(|item| {
+                            // TODO: check that the requested item exists
+                            // TODO: handle all type of expr
+                            match item.expr {
+                                Expr::Identifier(identifier) => {
+                                    // e.g. id in 'SELECT id FROM'
+                                    //
+                                }
+                                Expr::Wildcard => todo!(),
+                                _ => todo!(),
+                            }
+                        });
 
-                        log::debug!("Processing row {:?}", item);
-                        for (col_length, _col_pos, col_type) in &target_table_columns {
-                            log::debug!("  > Reading col {:?}", _col_pos);
-                            let col_bytes = item[cursor.into()..(*col_length).into()].to_vec();
-                            cols.push(col_bytes);
-                            cursor = cursor + col_length;
-                        }
+                // old method
+                // enum ColumnSize<'a> {
+                //     Raw(u16),
+                //     Col(&'a Column),
+                // }
 
-                        cols
-                    })
-                    .collect();
+                // let mut target_table_columns: Vec<(ColumnSize, u8, &ColumnType)> =
+                //     columns_of_target_table
+                //         .iter()
+                //         .map(|col| {
+                //             let col_size = match col.data_type {
+                //                 crate::server::ColumnType::Bit => ColumnSize::Raw(1),
+                //                 crate::server::ColumnType::Byte => ColumnSize::Raw(1),
+                //                 crate::server::ColumnType::Int => ColumnSize::Raw(2),
+                //                 crate::server::ColumnType::Boolean => ColumnSize::Raw(1),
+                //                 crate::server::ColumnType::Date => ColumnSize::Raw(2),
+                //                 crate::server::ColumnType::DateTime => ColumnSize::Raw(4), // TODO: confirm
+                //                 crate::server::ColumnType::String => {
+                //                     let len_col = columns_of_target_table
+                //                         .iter()
+                //                         .find(|c| {
+                //                             String::from_utf8(c.name).unwrap()
+                //                                 == String::from_utf8(col.name).unwrap() + "_len"
+                //                         })
+                //                         .unwrap();
 
-                log::debug!("{:?}", target_table_data);
+                //                     ColumnSize::Col(len_col)
+                //                 }
+                //             };
+
+                //             // TODO: will probably need name back too (though maybe not from here -
+                //             // after all, the name is the same for all rows, we can probs do it based on pos)
+                //             (col_size, col.position, &col.data_type)
+                //         })
+                //         .collect();
+
+                // // TODO: use struct/enum instead of tuple so it's not such jank syntax
+                // target_table_columns.sort_by(|a, b| a.1.cmp(&b.1));
+
+                // // Step 8.
+                // // Create a pager and read all data from the target table.
+                // // This is more complex than before, as we can't rely on deku to parse the
+                // // Vec<u8> into a target type - we don't know the type!
+                // let target_table_iter =
+                //     pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
+
+                // let target_table_data: Vec<Vec<Vec<u8>>> = target_table_iter
+                //     .map(|item| {
+                //         // Item is all the bytes of a single row from the target table.
+                //         // The bytes are stored in the order according to position in the columns schema (or should be if they're not?).
+                //         // At this step, we're parsing EVERY column, and can filter them down to the selected columns later.
+                //         let mut cursor: u16 = 0;
+                //         let mut cols: Vec<Vec<u8>> = Vec::new();
+
+                //         log::debug!("Processing row {:?}", item);
+
+                //         for (col_length, _col_pos, col_type) in &target_table_columns {
+                //             log::debug!("  > Reading col {:?}", _col_pos);
+
+                //             let length: u16 = match col_length {
+                //                 ColumnSize::Raw(len) => *len,
+                //                 ColumnSize::Col(column) => {
+                //                     // Need to get the value of the _len column...
+                //                     // which, as we're in an iterator atm, is kinda tough.
+                //                     0
+                //                 }
+                //             };
+
+                //             let col_bytes = item[cursor.into()..(length).into()].to_vec();
+
+                //             log::debug!("  > col bytes: '{:?}'", col_bytes);
+
+                //             cols.push(col_bytes);
+                //             cursor = cursor + length;
+                //         }
+
+                //         cols
+                //     })
+                //     .collect();
+
+                // log::debug!("{:?}", target_table_data);
 
                 // TODO: Group By, Order By, Where
 

@@ -260,14 +260,14 @@ impl<'a> PageDecoder<'a> {
         let mut reader = deku::reader::Reader::new(&mut cursor);
         let header = PageHeader::from_reader_with_ctx(&mut reader, ()).unwrap();
 
-        log::trace!("Loaded page from bytes.");
-        log::trace!("|        Page Type: {:?}", header.page_type);
-        log::trace!("|          Page ID: {:?}", header.page_id);
-        log::trace!("|   Header version: {:?}", header.header_version);
-        log::trace!("|       Free space: {:?} bytes", header.free_space);
-        log::trace!("|            Flags: {:?}", header.flags);
-        log::trace!("|         Checksum: {:?}", header.checksum);
-        log::trace!("|     Alloc. slots: {:?}", header.allocated_slot_count);
+        // log::trace!("Loaded page from bytes.");
+        // log::trace!("|        Page Type: {:?}", header.page_type);
+        // log::trace!("|          Page ID: {:?}", header.page_id);
+        // log::trace!("|   Header version: {:?}", header.header_version);
+        // log::trace!("|       Free space: {:?} bytes", header.free_space);
+        // log::trace!("|            Flags: {:?}", header.flags);
+        // log::trace!("|         Checksum: {:?}", header.checksum);
+        // log::trace!("|     Alloc. slots: {:?}", header.allocated_slot_count);
 
         let slot_count = header.allocated_slot_count;
 
@@ -350,10 +350,10 @@ impl<'a> PageDecoder<'a> {
 
             let range = slot_start..slot_end;
 
-            log::trace!("Reading slot from page.");
-            log::trace!("|   Slot Index: {:?}", i);
-            log::trace!("|        Range: {:?}", range);
-            log::trace!("|         Size: {:?}", range.len());
+            // log::trace!("Reading slot from page.");
+            // log::trace!("|   Slot Index: {:?}", i);
+            // log::trace!("|        Range: {:?}", range);
+            // log::trace!("|         Size: {:?}", range.len());
 
             let slot_bytes = &bytes[range];
             slots.push(slot_bytes);

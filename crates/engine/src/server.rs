@@ -152,7 +152,7 @@ impl Table {
     }
 }
 
-#[derive(DekuRead, DekuWrite)]
+#[derive(DekuRead, DekuWrite, PartialEq, Eq)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -194,13 +194,13 @@ pub struct Column {
     #[deku(bytes = 1)]
     pub default_value_len: u8,
     #[deku(bytes = 128, count = "default_value_len")]
-    pub default_value: Option<Vec<u8>>,
+    pub default_value: Vec<u8>,
     #[deku]
     pub data_type: ColumnType,
     #[deku(bytes = 2)]
-    pub max_str_length: Option<u16>,
+    pub max_str_length: u16,
     #[deku(bytes = 1)]
-    pub num_precision: Option<u8>,
+    pub num_precision: u8,
     #[deku(bytes = 2)]
     pub created_date: u16,
 }
@@ -217,16 +217,6 @@ impl Column {
         max_str_length: Option<u16>,
         num_precision: Option<u8>,
     ) -> Self {
-        let default_value_len = match default_value {
-            None => 0,
-            Some(ref x) => x.len() as u8,
-        };
-
-        let default_value_v = match default_value {
-            None => None,
-            Some(ref s) => Some(s.to_string().into_bytes()),
-        };
-
         Column {
             id,
             table_id,
@@ -234,11 +224,24 @@ impl Column {
             name: name.to_string().into_bytes(),
             position,
             is_nullable,
-            default_value_len,
-            default_value: default_value_v,
+            default_value_len: match default_value {
+                None => 0,
+                Some(ref x) => x.len() as u8,
+            },
+            default_value: match default_value {
+                None => Vec::new(),
+                Some(ref s) => s.to_string().into_bytes(),
+            },
             data_type,
-            max_str_length,
-            num_precision,
+            max_str_length: match max_str_length {
+                Some(v) => v,
+                // TODO: this sucks
+                None => 128,
+            },
+            num_precision: match num_precision {
+                Some(v) => v,
+                None => 0,
+            },
             created_date: now_bytes(),
         }
     }
@@ -427,7 +430,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
 
     let tables_table_columns = [
         Column::new(
-            1,
+            5,
             TABLES_TABLE_ID,
             "id".to_string(),
             0,
@@ -438,7 +441,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            2,
+            6,
             TABLES_TABLE_ID,
             "database_id".to_string(),
             1,
@@ -449,7 +452,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            3,
+            7,
             TABLES_TABLE_ID,
             "name".to_string(),
             2,
@@ -460,7 +463,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            4,
+            8,
             TABLES_TABLE_ID,
             "created_date".to_string(),
             3,
@@ -474,7 +477,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
 
     let columns_table_columns = [
         Column::new(
-            1,
+            9,
             COLUMNS_TABLE_ID,
             "id".to_string(),
             0,
@@ -485,7 +488,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            2,
+            10,
             COLUMNS_TABLE_ID,
             "table_id".to_string(),
             1,
@@ -496,7 +499,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            3,
+            11,
             COLUMNS_TABLE_ID,
             "name".to_string(),
             2,
@@ -507,7 +510,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            4,
+            12,
             COLUMNS_TABLE_ID,
             "position".to_string(),
             3,
@@ -518,7 +521,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            5,
+            13,
             COLUMNS_TABLE_ID,
             "is_nullable".to_string(),
             4,
@@ -529,7 +532,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            6,
+            14,
             COLUMNS_TABLE_ID,
             "default_value".to_string(),
             5,
@@ -540,7 +543,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            7,
+            15,
             COLUMNS_TABLE_ID,
             "data_type".to_string(),
             6,
@@ -551,7 +554,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            8,
+            16,
             COLUMNS_TABLE_ID,
             "max_str_length".to_string(),
             7,
@@ -562,7 +565,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            9,
+            17,
             COLUMNS_TABLE_ID,
             "num_precision".to_string(),
             8,
@@ -573,7 +576,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            10,
+            18,
             COLUMNS_TABLE_ID,
             "created_date".to_string(),
             9,
@@ -587,7 +590,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
 
     let indexes_table_columns = [
         Column::new(
-            1,
+            19,
             INDEXES_TABLE_ID,
             "id".to_string(),
             0,
@@ -598,7 +601,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            2,
+            20,
             INDEXES_TABLE_ID,
             "table_id".to_string(),
             1,
@@ -609,7 +612,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            3,
+            21,
             INDEXES_TABLE_ID,
             "name".to_string(),
             2,
@@ -620,7 +623,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            4,
+            22,
             INDEXES_TABLE_ID,
             "type".to_string(),
             3,
@@ -631,7 +634,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            5,
+            23,
             INDEXES_TABLE_ID,
             "is_unique".to_string(),
             4,
@@ -642,7 +645,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            6,
+            24,
             INDEXES_TABLE_ID,
             "root_page_id".to_string(),
             5,
@@ -653,7 +656,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             None,
         ),
         Column::new(
-            6,
+            25,
             INDEXES_TABLE_ID,
             "created_date".to_string(),
             6,
@@ -817,7 +820,6 @@ pub fn ensure_master_tables_exist(mut file_manager: RefMut<FileManager>) -> Resu
     log::debug!("Wrote Columns index to pageID {}", columns_page_id);
 
     // Write Indexes pages
-    // TODO: this function needs to know about the databases, tables, columns and itself indexes...
     let indexes_page_id = file_manager
         .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
         .unwrap();
