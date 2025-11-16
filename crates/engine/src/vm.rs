@@ -116,12 +116,13 @@ impl VirtualMachine {
                     .enumerate()
                     .map(|(index, item)| ColumnResult {
                         name: self.evaluate_column_name(&item.alias, index),
-                        value: self.evaluate_constant_expr(&item.expr),
+                        //value: self.evaluate_constant_expr(&item.expr), TODO
                     })
                     .collect();
 
                 Ok(StatementResult {
-                    result_set: ResultSet { columns },
+                    // TODO
+                    result_set: ResultSet { columns, rows: vec![] },
                 })
             }
             UserStatement::Update => todo!(),
@@ -302,7 +303,6 @@ impl VirtualMachine {
                         .select_item_list
                         .item_list
                         .iter()
-                        .cloned()
                         .filter(|i| match &i.expr {
                             // TODO: Handle all types of SelectItem expressions.
                             // TODO: I hate that we've turned this iter into a vec and now back into an iter
@@ -312,9 +312,10 @@ impl VirtualMachine {
                                 .any(|c| String::from_utf8(c.name.clone()).unwrap() == ident.value),
                             _ => true,
                         })
+                        .cloned()
                         .collect();
 
-                    if missing_columns.len() > 0 {
+                    if !missing_columns.is_empty() {
                         return Err(StatementError::ColumnsDoNotExist(missing_columns).into());
                     }
                 }
@@ -322,125 +323,102 @@ impl VirtualMachine {
                 // Step 7.
                 // Because deku wont work to deserialise a type it knows nothing about,
                 // we need to use our column schema info to decide how to read the incoming row bytes.
-
-                // Notes for self, 2025-11-16
-                // I think I need to throw all the following code out. The use of iters is causing trouble.
-                // I'm stuck needing to know the length of a string value in the iter, where the length of the
-                // string is stored in another col (_len).
-                // I think as long as I lay out the convention that _len always precedes the string col,
-                // it should be easy. I also think I may need to add a new internal column type to declare
-                // that 'this Int column is actually a length indicator' so I can make this clearer.
-                // At the moment it's all running on vibes.
-
                 let target_table_iter =
                     pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
 
-                let col_offsets =
-                    statement
-                        .select_item_list
-                        .item_list
-                        .iter()
-                        .cloned()
-                        .map(|item| {
-                            // TODO: check that the requested item exists
-                            // TODO: handle all type of expr
-                            match item.expr {
-                                Expr::Identifier(identifier) => {
-                                    // e.g. id in 'SELECT id FROM'
-                                    //
+                let results: Vec<Vec<Vec<u8>>> =
+                    target_table_iter
+                        .map(|row| {
+                            let mut col_cursor = 0;
+                            let mut byte_cursor = 0;
+                            let mut results = Vec::new();
+
+                            while byte_cursor < row.len() {
+                                let current_col = columns_of_target_table
+                                    .iter()
+                                    .find(|col| col.position == col_cursor);
+
+                                if current_col.is_none() {
+                                    panic!("shouldn't happen.");
                                 }
-                                Expr::Wildcard => todo!(),
-                                _ => todo!(),
+
+                                let col_name =
+                                    String::from_utf8(current_col.unwrap().name.clone()).unwrap();
+
+                                let is_in_output =
+                                    statement.select_item_list.item_list.iter().any(|item| {
+                                        match &item.expr {
+                                            Expr::IsTrue(expr) => todo!(),
+                                            Expr::IsNotTrue(expr) => todo!(),
+                                            Expr::IsFalse(expr) => todo!(),
+                                            Expr::IsNotFalse(expr) => todo!(),
+                                            Expr::IsNull(expr) => todo!(),
+                                            Expr::IsNotNull(expr) => todo!(),
+                                            Expr::IsIn { expr, list } => todo!(),
+                                            Expr::IsNotIn { expr, list } => todo!(),
+                                            Expr::Between {
+                                                expr,
+                                                lower,
+                                                higher,
+                                            } => todo!(),
+                                            Expr::NotBetween {
+                                                expr,
+                                                lower,
+                                                higher,
+                                            } => todo!(),
+                                            Expr::Like { expr, pattern } => todo!(),
+                                            Expr::NotLike { expr, pattern } => todo!(),
+                                            Expr::BinaryOperator { left, op, right } => todo!(),
+                                            Expr::Value(_) => false,
+                                            Expr::Identifier(identifier) => {
+                                                identifier.value == col_name
+                                            }
+                                            Expr::QualifiedIdentifier(identifiers) => {
+                                                identifiers.iter().any(|i| i.value == col_name)
+                                            }
+                                            Expr::Wildcard => true,
+                                        }
+                                    });
+
+                                let col_len = match current_col.unwrap().data_type {
+                                    ColumnType::Bit => 1,
+                                    ColumnType::Byte => 1,
+                                    ColumnType::Int => 2,
+                                    ColumnType::String => {
+                                        // If we hit a string column, we expect a length followed by the value of that length.
+                                        // TODO: update the length to not be 1 byte. this is terrible.
+                                        let len = row[byte_cursor] as usize;
+                                        byte_cursor += 1;
+                                        len
+                                    }
+                                    ColumnType::Boolean => 1,
+                                    ColumnType::Date => 2,
+                                    ColumnType::DateTime => 4,
+                                };
+
+                                if is_in_output {
+                                    let col_bytes =
+                                        Vec::from(&row[byte_cursor..(byte_cursor + col_len)]);
+                                    results.push(col_bytes);
+                                }
+
+                                col_cursor += 1;
+                                byte_cursor += col_len;
                             }
-                        });
 
-                // old method
-                // enum ColumnSize<'a> {
-                //     Raw(u16),
-                //     Col(&'a Column),
-                // }
+                            log::trace!("Parsed row columns: {:?}", results);
 
-                // let mut target_table_columns: Vec<(ColumnSize, u8, &ColumnType)> =
-                //     columns_of_target_table
-                //         .iter()
-                //         .map(|col| {
-                //             let col_size = match col.data_type {
-                //                 crate::server::ColumnType::Bit => ColumnSize::Raw(1),
-                //                 crate::server::ColumnType::Byte => ColumnSize::Raw(1),
-                //                 crate::server::ColumnType::Int => ColumnSize::Raw(2),
-                //                 crate::server::ColumnType::Boolean => ColumnSize::Raw(1),
-                //                 crate::server::ColumnType::Date => ColumnSize::Raw(2),
-                //                 crate::server::ColumnType::DateTime => ColumnSize::Raw(4), // TODO: confirm
-                //                 crate::server::ColumnType::String => {
-                //                     let len_col = columns_of_target_table
-                //                         .iter()
-                //                         .find(|c| {
-                //                             String::from_utf8(c.name).unwrap()
-                //                                 == String::from_utf8(col.name).unwrap() + "_len"
-                //                         })
-                //                         .unwrap();
-
-                //                     ColumnSize::Col(len_col)
-                //                 }
-                //             };
-
-                //             // TODO: will probably need name back too (though maybe not from here -
-                //             // after all, the name is the same for all rows, we can probs do it based on pos)
-                //             (col_size, col.position, &col.data_type)
-                //         })
-                //         .collect();
-
-                // // TODO: use struct/enum instead of tuple so it's not such jank syntax
-                // target_table_columns.sort_by(|a, b| a.1.cmp(&b.1));
-
-                // // Step 8.
-                // // Create a pager and read all data from the target table.
-                // // This is more complex than before, as we can't rely on deku to parse the
-                // // Vec<u8> into a target type - we don't know the type!
-                // let target_table_iter =
-                //     pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
-
-                // let target_table_data: Vec<Vec<Vec<u8>>> = target_table_iter
-                //     .map(|item| {
-                //         // Item is all the bytes of a single row from the target table.
-                //         // The bytes are stored in the order according to position in the columns schema (or should be if they're not?).
-                //         // At this step, we're parsing EVERY column, and can filter them down to the selected columns later.
-                //         let mut cursor: u16 = 0;
-                //         let mut cols: Vec<Vec<u8>> = Vec::new();
-
-                //         log::debug!("Processing row {:?}", item);
-
-                //         for (col_length, _col_pos, col_type) in &target_table_columns {
-                //             log::debug!("  > Reading col {:?}", _col_pos);
-
-                //             let length: u16 = match col_length {
-                //                 ColumnSize::Raw(len) => *len,
-                //                 ColumnSize::Col(column) => {
-                //                     // Need to get the value of the _len column...
-                //                     // which, as we're in an iterator atm, is kinda tough.
-                //                     0
-                //                 }
-                //             };
-
-                //             let col_bytes = item[cursor.into()..(length).into()].to_vec();
-
-                //             log::debug!("  > col bytes: '{:?}'", col_bytes);
-
-                //             cols.push(col_bytes);
-                //             cursor = cursor + length;
-                //         }
-
-                //         cols
-                //     })
-                //     .collect();
-
-                // log::debug!("{:?}", target_table_data);
+                            results
+                        })
+                        .collect();
 
                 // TODO: Group By, Order By, Where
+                let result_set = ResultSet {
+                    columns: vec![],
+                    rows: vec![],
+                };
 
-                Ok(StatementResult {
-                    result_set: ResultSet { columns: vec![] },
-                })
+                Ok(StatementResult { result_set })
             }
             None => Err(SelectStatementError::NonConstantExprNoFrom.into()),
         }

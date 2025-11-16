@@ -132,7 +132,7 @@ pub struct Table {
     pub id: DatabaseId,
     #[deku(bytes = 2)]
     pub database_id: DatabaseId,
-    #[deku(bytes = 2)]
+    #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
     pub name: Vec<u8>,
@@ -422,7 +422,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             3,
             false,
             None,
-            ColumnType::String,
+            ColumnType::Date,
             None,
             None,
         ),
@@ -469,7 +469,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             3,
             false,
             None,
-            ColumnType::String,
+            ColumnType::Date,
             None,
             None,
         ),
@@ -582,7 +582,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             9,
             false,
             None,
-            ColumnType::String,
+            ColumnType::Date,
             None,
             None,
         ),
@@ -662,7 +662,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             6,
             false,
             None,
-            ColumnType::String,
+            ColumnType::Date,
             None,
             None,
         ),
