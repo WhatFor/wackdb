@@ -50,7 +50,10 @@ pub struct StatementResult {
 impl Default for StatementResult {
     fn default() -> Self {
         StatementResult {
-            result_set: ResultSet { columns: vec![], rows: vec![] },
+            result_set: ResultSet {
+                columns: vec![],
+                rows: vec![],
+            },
         }
     }
 }
@@ -58,7 +61,7 @@ impl Default for StatementResult {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ResultSet {
     pub columns: Vec<ColumnResult>,
-    pub rows: Vec<ExprResult>
+    pub rows: Vec<Vec<ExprResult>>,
 }
 
 #[derive(Debug, PartialEq, Clone, Tabled)]

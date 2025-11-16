@@ -122,7 +122,10 @@ impl VirtualMachine {
 
                 Ok(StatementResult {
                     // TODO
-                    result_set: ResultSet { columns, rows: vec![] },
+                    result_set: ResultSet {
+                        columns,
+                        rows: vec![],
+                    },
                 })
             }
             UserStatement::Update => todo!(),
@@ -296,6 +299,56 @@ impl VirtualMachine {
                 let columns_of_target_table: Vec<Column> =
                     columns.filter(|c| c.table_id == target_table_id).collect();
 
+                let selected_columns = if is_select_wildcard {
+                    // TODO: these need to be sorted by position
+                    columns_of_target_table
+                        .iter()
+                        .map(|col| {
+                            let name = String::from_utf8(col.name.clone()).unwrap();
+                            ColumnResult { name }
+                        })
+                        .collect()
+                } else {
+                    statement
+                        .select_item_list
+                        .item_list
+                        .iter()
+                        .map(|col| {
+                            let name = match &col.expr {
+                                Expr::IsTrue(expr) => todo!(),
+                                Expr::IsNotTrue(expr) => todo!(),
+                                Expr::IsFalse(expr) => todo!(),
+                                Expr::IsNotFalse(expr) => todo!(),
+                                Expr::IsNull(expr) => todo!(),
+                                Expr::IsNotNull(expr) => todo!(),
+                                Expr::IsIn { expr, list } => todo!(),
+                                Expr::IsNotIn { expr, list } => todo!(),
+                                Expr::Between {
+                                    expr,
+                                    lower,
+                                    higher,
+                                } => todo!(),
+                                Expr::NotBetween {
+                                    expr,
+                                    lower,
+                                    higher,
+                                } => todo!(),
+                                Expr::Like { expr, pattern } => todo!(),
+                                Expr::NotLike { expr, pattern } => todo!(),
+                                Expr::BinaryOperator { left, op, right } => todo!(),
+                                Expr::Value(value) => todo!(),
+                                Expr::Identifier(identifier) => identifier.value.clone(),
+                                Expr::QualifiedIdentifier(identifiers) => {
+                                    identifiers.last().unwrap().value.clone()
+                                }
+                                Expr::Wildcard => unreachable!(),
+                            };
+
+                            ColumnResult { name }
+                        })
+                        .collect()
+                };
+
                 // Step 6.5.
                 // Validate that the requested columns exist.
                 if !is_select_wildcard {
@@ -326,7 +379,8 @@ impl VirtualMachine {
                 let target_table_iter =
                     pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
 
-                let results: Vec<Vec<Vec<u8>>> =
+                // TODO: these need to be sorted by the order specified in statement
+                let results: Vec<Vec<ExprResult>> =
                     target_table_iter
                         .map(|row| {
                             let mut col_cursor = 0;
@@ -399,7 +453,19 @@ impl VirtualMachine {
                                 if is_in_output {
                                     let col_bytes =
                                         Vec::from(&row[byte_cursor..(byte_cursor + col_len)]);
-                                    results.push(col_bytes);
+
+                                    // TODO: format ExprResults
+                                    let expr = match current_col.unwrap().data_type {
+                                        ColumnType::Int => todo!(),
+                                        ColumnType::Bit => todo!(),
+                                        ColumnType::Byte => todo!(),
+                                        ColumnType::String => todo!(),
+                                        ColumnType::Boolean => todo!(),
+                                        ColumnType::Date => todo!(),
+                                        ColumnType::DateTime => todo!(),
+                                    };
+
+                                    results.push(expr);
                                 }
 
                                 col_cursor += 1;
@@ -414,8 +480,8 @@ impl VirtualMachine {
 
                 // TODO: Group By, Order By, Where
                 let result_set = ResultSet {
-                    columns: vec![],
-                    rows: vec![],
+                    columns: selected_columns,
+                    rows: results,
                 };
 
                 Ok(StatementResult { result_set })
