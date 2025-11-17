@@ -71,7 +71,7 @@ pub struct ColumnResult {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprResult {
-    Int(u32),
+    Int(i32),
     Byte(u8),
     Bool(bool),
     String(String),

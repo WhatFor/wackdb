@@ -14,6 +14,8 @@ use crate::{
     page_cache::FilePageId,
     persistence,
     server::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
+    types::DbLong,
+    util::into_time,
 };
 
 pub struct VirtualMachine {
@@ -276,7 +278,7 @@ impl VirtualMachine {
                     .unwrap()
                     .unwrap();
 
-                let target_table_index_root_id: PageId = pk_index_for_target_table.root_page_id;
+                let target_table_index_root_id: DbLong = pk_index_for_target_table.root_page_id;
 
                 log::debug!("Found PK index for table {}.", &table_name);
 
@@ -376,8 +378,10 @@ impl VirtualMachine {
                 // Step 7.
                 // Because deku wont work to deserialise a type it knows nothing about,
                 // we need to use our column schema info to decide how to read the incoming row bytes.
-                let target_table_iter =
-                    pager.create_pager(FilePageId::new(MASTER_DB_ID, target_table_index_root_id));
+                let target_table_iter = pager.create_pager(FilePageId::new(
+                    MASTER_DB_ID,
+                    target_table_index_root_id.try_into().unwrap(),
+                ));
 
                 // TODO: these need to be sorted by the order specified in statement
                 let results: Vec<Vec<ExprResult>> =
@@ -437,7 +441,7 @@ impl VirtualMachine {
                                 let col_len = match current_col.unwrap().data_type {
                                     ColumnType::Bit => 1,
                                     ColumnType::Byte => 1,
-                                    ColumnType::Int => 2,
+                                    ColumnType::Int => 4,
                                     ColumnType::String => {
                                         // If we hit a string column, we expect a length followed by the value of that length.
                                         // TODO: update the length to not be 1 byte. this is terrible.
@@ -451,17 +455,20 @@ impl VirtualMachine {
                                 };
 
                                 if is_in_output {
-                                    let col_bytes =
-                                        Vec::from(&row[byte_cursor..(byte_cursor + col_len)]);
+                                    let col_bytes = &row[byte_cursor..(byte_cursor + col_len)];
 
                                     // TODO: format ExprResults
                                     let expr = match current_col.unwrap().data_type {
-                                        ColumnType::Int => todo!(),
+                                        ColumnType::Int => ExprResult::Int(i32::from_be_bytes(
+                                            col_bytes.try_into().unwrap(),
+                                        )),
                                         ColumnType::Bit => todo!(),
-                                        ColumnType::Byte => todo!(),
-                                        ColumnType::String => todo!(),
+                                        ColumnType::Byte => ExprResult::Byte(col_bytes[0]), // should only be 1 byte in the slice
+                                        ColumnType::String => ExprResult::String(
+                                            String::from_utf8_lossy(col_bytes).to_string(),
+                                        ),
                                         ColumnType::Boolean => todo!(),
-                                        ColumnType::Date => todo!(),
+                                        ColumnType::Date => ExprResult::String(String::from("")), // TODO ExprResult::String(into_time(col_bytes)),
                                         ColumnType::DateTime => todo!(),
                                     };
 

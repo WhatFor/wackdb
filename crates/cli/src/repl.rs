@@ -70,19 +70,42 @@ impl Repl {
                             CommandResult::Ok(results) => {
                                 for result in results {
                                     if result.result_set.columns.is_empty() {
-                                        println!("No results");
+                                        println!("No columns selected/found");
                                         continue;
                                     }
 
-                                    let repl_output = tabled::Table::new(result.result_set.columns)
-                                        .with(tabled::settings::Disable::row(
-                                            tabled::settings::object::Rows::first(),
-                                        ))
-                                        .with(tabled::settings::Rotate::Top)
-                                        .with(tabled::settings::Rotate::Right)
-                                        .to_string();
+                                    if result.result_set.rows.is_empty() {
+                                        println!("No results found");
+                                        continue;
+                                    }
 
-                                    println!("{repl_output}");
+                                    // TODO: tabled assumes a certain format of input. Maybe I don't want to use it.
+                                    // let repl_output = tabled::Table::new(result.result_set.rows)
+                                    //     .with(tabled::settings::Disable::row(
+                                    //         tabled::settings::object::Rows::first(),
+                                    //     ))
+                                    //     .with(tabled::settings::Rotate::Top)
+                                    //     .with(tabled::settings::Rotate::Right)
+                                    //     .to_string();
+                                    // println!("{repl_output}");
+                                    //
+                                    print!("|");
+
+                                    for header in result.result_set.columns {
+                                        print!(" {} |", header.name);
+                                    }
+
+                                    println!();
+
+                                    for row in result.result_set.rows {
+                                        println!(
+                                            "| {} |",
+                                            row.iter()
+                                                .map(|r| r.to_string())
+                                                .collect::<Vec<String>>()
+                                                .join(" | ")
+                                        );
+                                    }
                                 }
                             }
                         },

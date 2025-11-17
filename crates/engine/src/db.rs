@@ -91,6 +91,8 @@ impl FileInfo {
     }
 }
 
+/// An ID for an individual database file.
+/// Note: Not an 'id to be used in a DB table' or otherwise.
 pub type DatabaseId = u16;
 
 /// Information describing a database.

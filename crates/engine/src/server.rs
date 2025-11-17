@@ -13,6 +13,7 @@ use crate::{
     page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
     page_cache::PageBytes,
     persistence,
+    types::{DbByte, DbDate, DbInt, DbLong},
     util::{self, now_bytes},
 };
 
@@ -101,8 +102,8 @@ pub fn create_database(
 #[derive(Debug, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Database {
-    #[deku(bytes = 2)]
-    pub id: DatabaseId,
+    #[deku(bytes = 4)]
+    pub id: DbInt,
     #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
@@ -110,13 +111,13 @@ pub struct Database {
     #[deku(bytes = 1)]
     pub database_version: u8,
     #[deku(bytes = 2)]
-    pub created_date: u16,
+    pub created_date: DbDate,
 }
 
 impl Database {
     pub fn new(id: DatabaseId, name: String) -> Self {
         Database {
-            id,
+            id: id.into(),
             name: name.to_string().into_bytes(),
             name_len: name.len() as u8,
             database_version: CURRENT_DATABASE_VERSION,
@@ -128,23 +129,23 @@ impl Database {
 #[derive(DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Table {
-    #[deku(bytes = 2)]
-    pub id: DatabaseId,
-    #[deku(bytes = 2)]
-    pub database_id: DatabaseId,
+    #[deku(bytes = 4)]
+    pub id: DbInt,
+    #[deku(bytes = 4)]
+    pub database_id: DbInt,
     #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
     pub name: Vec<u8>,
     #[deku(bytes = 2)]
-    pub created_date: u16,
+    pub created_date: DbDate,
 }
 
 impl Table {
-    pub fn new(id: DatabaseId, database_id: DatabaseId, name: String) -> Self {
+    pub fn new(id: DbInt, database_id: DatabaseId, name: String) -> Self {
         Table {
             id,
-            database_id,
+            database_id: database_id.into(),
             name: name.clone().into_bytes(),
             name_len: name.len() as u8,
             created_date: now_bytes(),
@@ -179,16 +180,16 @@ pub enum ColumnType {
 #[derive(DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Column {
-    #[deku(bytes = 2)]
-    pub id: DatabaseId,
-    #[deku(bytes = 2)]
-    pub table_id: DatabaseId,
+    #[deku(bytes = 4)]
+    pub id: DbInt,
+    #[deku(bytes = 4)]
+    pub table_id: DbInt,
     #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
     pub name: Vec<u8>,
     #[deku(bytes = 1)]
-    pub position: u8,
+    pub position: DbByte,
     #[deku(bytes = 1)]
     pub is_nullable: bool,
     #[deku(bytes = 1)]
@@ -200,15 +201,15 @@ pub struct Column {
     #[deku(bytes = 2)]
     pub max_str_length: u16,
     #[deku(bytes = 1)]
-    pub num_precision: u8,
+    pub num_precision: DbByte,
     #[deku(bytes = 2)]
-    pub created_date: u16,
+    pub created_date: DbDate,
 }
 
 impl Column {
     pub fn new(
-        id: DatabaseId,
-        table_id: DatabaseId,
+        id: DbInt,
+        table_id: DbInt,
         name: String,
         position: u8,
         is_nullable: bool,
@@ -266,10 +267,10 @@ pub enum IndexType {
 #[derive(DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Index {
-    #[deku(bytes = 2)]
-    pub id: DatabaseId,
-    #[deku(bytes = 2)]
-    pub table_id: DatabaseId,
+    #[deku(bytes = 4)]
+    pub id: DbInt,
+    #[deku(bytes = 4)]
+    pub table_id: DbInt,
     #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
@@ -278,16 +279,16 @@ pub struct Index {
     pub index_type: IndexType,
     #[deku(bytes = 1)]
     pub is_unique: bool,
-    #[deku(bytes = 4)]
-    pub root_page_id: PageId,
+    #[deku(bytes = 8)]
+    pub root_page_id: DbLong,
     #[deku(bytes = 2)]
-    pub created_date: u16,
+    pub created_date: DbDate,
 }
 
 impl Index {
     pub fn new(
-        id: DatabaseId,
-        table_id: DatabaseId,
+        id: DbInt,
+        table_id: DbInt,
         name: String,
         index_type: IndexType,
         is_unique: bool,
@@ -300,7 +301,7 @@ impl Index {
             name: name.to_string().into_bytes(),
             index_type,
             is_unique,
-            root_page_id,
+            root_page_id: root_page_id.into(),
             created_date: now_bytes(),
         }
     }
@@ -340,10 +341,10 @@ const TABLES_TABLE: &str = "tables";
 const COLUMNS_TABLE: &str = "columns";
 const INDEXES_TABLE: &str = "indexes";
 
-const DATABASES_TABLE_ID: DatabaseId = 1;
-const TABLES_TABLE_ID: DatabaseId = 2;
-const COLUMNS_TABLE_ID: DatabaseId = 3;
-const INDEXES_TABLE_ID: DatabaseId = 4;
+const DATABASES_TABLE_ID: DbInt = 1;
+const TABLES_TABLE_ID: DbInt = 2;
+const COLUMNS_TABLE_ID: DbInt = 3;
+const INDEXES_TABLE_ID: DbInt = 4;
 
 fn initialise_tables_table() -> Result<PageBytes> {
     let tables = [

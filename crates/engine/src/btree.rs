@@ -1,3 +1,5 @@
+use crate::types::DbInt;
+
 /// B-Tree implementation
 ///
 /// A B-tree is a data structure that stores sorted data that is quick to search (O(log n)).
@@ -13,7 +15,7 @@ pub struct KeyValuePair<K, V> {
     pub value: V,
 }
 
-type Key = u32;
+type Key = DbInt;
 type Value = Vec<u8>;
 
 type InteriorItem = KeyValuePair<Key, NodeType>;
