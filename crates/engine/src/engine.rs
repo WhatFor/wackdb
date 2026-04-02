@@ -72,6 +72,7 @@ pub struct ColumnResult {
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprResult {
     Int(i32),
+    Long(i64),
     Byte(u8),
     Bool(bool),
     String(String),
@@ -81,6 +82,7 @@ pub enum ExprResult {
 impl Display for ExprResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ExprResult::Long(x) => write!(f, "{}", x),
             ExprResult::Int(x) => write!(f, "{}", x),
             ExprResult::Byte(x) => write!(f, "{}", x),
             ExprResult::Bool(x) => write!(f, "{}", x),

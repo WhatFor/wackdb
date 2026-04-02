@@ -391,13 +391,18 @@ impl VirtualMachine {
                             let mut byte_cursor = 0;
                             let mut results = Vec::new();
 
+                            // While there are still bytes left to read in the row Vec<u8>
                             while byte_cursor < row.len() {
+
+                                // Read the next column at the specified index (col_cursor)
                                 let current_col = columns_of_target_table
                                     .iter()
                                     .find(|col| col.position == col_cursor);
 
                                 if current_col.is_none() {
-                                    panic!("shouldn't happen.");
+                                    let row_count = columns_of_target_table.len();
+                                    let row_len = row.len();
+                                    panic!("ERROR: Shouldn't happen. Trying to read column {} of {} column row. Currently on byte {} of {}. See: {:?}", col_cursor, row_count, byte_cursor, row_len, columns_of_target_table);
                                 }
 
                                 let col_name =
@@ -442,6 +447,7 @@ impl VirtualMachine {
                                     ColumnType::Bit => 1,
                                     ColumnType::Byte => 1,
                                     ColumnType::Int => 4,
+                                    ColumnType::Long => 8,
                                     ColumnType::String => {
                                         // If we hit a string column, we expect a length followed by the value of that length.
                                         // TODO: update the length to not be 1 byte. this is terrible.
@@ -459,18 +465,23 @@ impl VirtualMachine {
 
                                     // TODO: format ExprResults
                                     let expr = match current_col.unwrap().data_type {
+                                        ColumnType::Bit => todo!(),
+                                        ColumnType::Byte => ExprResult::Byte(col_bytes[0]), // should only be 1 byte in the slice
                                         ColumnType::Int => ExprResult::Int(i32::from_be_bytes(
                                             col_bytes.try_into().unwrap(),
                                         )),
-                                        ColumnType::Bit => todo!(),
-                                        ColumnType::Byte => ExprResult::Byte(col_bytes[0]), // should only be 1 byte in the slice
+                                        ColumnType::Long => ExprResult::Long(i64::from_be_bytes(
+                                            col_bytes.try_into().unwrap(),
+                                        )),
                                         ColumnType::String => ExprResult::String(
                                             String::from_utf8_lossy(col_bytes).to_string(),
                                         ),
-                                        ColumnType::Boolean => todo!(),
+                                        ColumnType::Boolean => ExprResult::Bool(col_bytes[0] == 0x1),
                                         ColumnType::Date => ExprResult::String(String::from("")), // TODO ExprResult::String(into_time(col_bytes)),
                                         ColumnType::DateTime => todo!(),
                                     };
+
+                                    log::trace!("Parsed value: {:?} = {:?} starting at byte pos {} with len {}", col_name, expr, byte_cursor, col_len);
 
                                     results.push(expr);
                                 }

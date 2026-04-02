@@ -153,7 +153,7 @@ impl Table {
     }
 }
 
-#[derive(DekuRead, DekuWrite, PartialEq, Eq)]
+#[derive(DekuRead, DekuWrite, PartialEq, Eq, Debug)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -168,16 +168,18 @@ pub enum ColumnType {
     #[deku(id = 2)]
     Int,
     #[deku(id = 3)]
-    String,
+    Long,
     #[deku(id = 4)]
-    Boolean,
+    String,
     #[deku(id = 5)]
-    Date,
+    Boolean,
     #[deku(id = 6)]
+    Date,
+    #[deku(id = 7)]
     DateTime,
 }
 
-#[derive(DekuRead, DekuWrite)]
+#[derive(DekuRead, DekuWrite, Debug)]
 #[deku(endian = "big")]
 pub struct Column {
     #[deku(bytes = 4)]
@@ -652,7 +654,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             5,
             false,
             None,
-            ColumnType::Int,
+            ColumnType::Long,
             None,
             None,
         ),
