@@ -387,6 +387,8 @@ impl VirtualMachine {
                 let results: Vec<Vec<ExprResult>> =
                     target_table_iter
                         .map(|row| {
+                            log::trace!("Row: {:?}. Length: {}", row, row.len());
+
                             let mut col_cursor = 0;
                             let mut byte_cursor = 0;
                             let mut results = Vec::new();
@@ -446,6 +448,7 @@ impl VirtualMachine {
                                 let col_len = match current_col.unwrap().data_type {
                                     ColumnType::Bit => 1,
                                     ColumnType::Byte => 1,
+                                    ColumnType::Short => 2,
                                     ColumnType::Int => 4,
                                     ColumnType::Long => 8,
                                     ColumnType::String => {
@@ -461,12 +464,17 @@ impl VirtualMachine {
                                 };
 
                                 if is_in_output {
+                                    log::trace!("Reading column {:?}, starting at byte pos {} with len {}", col_name, byte_cursor, col_len);
+
                                     let col_bytes = &row[byte_cursor..(byte_cursor + col_len)];
 
                                     // TODO: format ExprResults
                                     let expr = match current_col.unwrap().data_type {
                                         ColumnType::Bit => todo!(),
                                         ColumnType::Byte => ExprResult::Byte(col_bytes[0]), // should only be 1 byte in the slice
+                                        ColumnType::Short => ExprResult::Short(u16::from_be_bytes(
+                                            col_bytes.try_into().unwrap(),
+                                        )),
                                         ColumnType::Int => ExprResult::Int(i32::from_be_bytes(
                                             col_bytes.try_into().unwrap(),
                                         )),
@@ -476,12 +484,12 @@ impl VirtualMachine {
                                         ColumnType::String => ExprResult::String(
                                             String::from_utf8_lossy(col_bytes).to_string(),
                                         ),
-                                        ColumnType::Boolean => ExprResult::Bool(col_bytes[0] == 0x1),
+                                        ColumnType::Boolean => ExprResult::Bool(col_bytes[0] == 0x1), // TODO: Not sure if this is correct
                                         ColumnType::Date => ExprResult::String(String::from("")), // TODO ExprResult::String(into_time(col_bytes)),
                                         ColumnType::DateTime => todo!(),
                                     };
 
-                                    log::trace!("Parsed value: {:?} = {:?} starting at byte pos {} with len {}", col_name, expr, byte_cursor, col_len);
+                                    log::trace!("Parsed value: {:?} = {:?}", col_name, expr);
 
                                     results.push(expr);
                                 }

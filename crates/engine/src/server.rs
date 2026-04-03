@@ -7,13 +7,13 @@ use thiserror::Error;
 
 use crate::{
     btree::BTree,
-    db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    db::{self, DatabaseId, FileType, SCHEMA_INFO_PAGE_INDEX, SchemaInfo},
     engine::CURRENT_DATABASE_VERSION,
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
     page_cache::PageBytes,
     persistence,
-    types::{DbByte, DbDate, DbInt, DbLong},
+    types::{DbByte, DbDate, DbInt, DbLong, DbShort},
     util::{self, now_bytes},
 };
 
@@ -166,16 +166,18 @@ pub enum ColumnType {
     #[deku(id = 1)]
     Byte,
     #[deku(id = 2)]
-    Int,
+    Short,
     #[deku(id = 3)]
-    Long,
+    Int,
     #[deku(id = 4)]
-    String,
+    Long,
     #[deku(id = 5)]
-    Boolean,
+    String,
     #[deku(id = 6)]
-    Date,
+    Boolean,
     #[deku(id = 7)]
+    Date,
+    #[deku(id = 8)]
     DateTime,
 }
 
@@ -201,7 +203,7 @@ pub struct Column {
     #[deku]
     pub data_type: ColumnType,
     #[deku(bytes = 2)]
-    pub max_str_length: u16,
+    pub max_str_length: DbShort,
     #[deku(bytes = 1)]
     pub num_precision: DbByte,
     #[deku(bytes = 2)]
@@ -519,7 +521,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             3,
             false,
             None,
-            ColumnType::Int,
+            ColumnType::Byte,
             None,
             None,
         ),
@@ -552,7 +554,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             6,
             false,
             None,
-            ColumnType::String,
+            ColumnType::Byte,
             None,
             None,
         ),
@@ -562,8 +564,8 @@ fn initialise_columns_table() -> Result<PageBytes> {
             "max_str_length".to_string(),
             7,
             false,
-            Some(i32::MAX.to_string()),
-            ColumnType::Int,
+            Some(u16::MAX.to_string()),
+            ColumnType::Short,
             None,
             None,
         ),
@@ -574,7 +576,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
             8,
             false,
             None,
-            ColumnType::Int,
+            ColumnType::Byte,
             None,
             None,
         ),
