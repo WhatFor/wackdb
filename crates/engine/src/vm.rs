@@ -376,18 +376,15 @@ impl VirtualMachine {
                         .filter(|i| match &i.expr {
                             // TODO: Handle all types of SelectItem expressions.
                             // TODO: I hate that we've turned this iter into a vec and now back into an iter
-                            Expr::Identifier(ident) => {
-                                log::trace!("[EVAL SELECT] Is {:?} missing?", ident.value);
+                            Expr::Identifier(ident) =>
                                 columns_of_target_table
                                 .iter()
                                 // TODO: clone is a bit shit
-                                .any(|c| {
-                                    let target_name = String::from_utf8(c.name.clone()).unwrap();
-                                    log::trace!("[EVAL SELECT] Maybe it matches {:?}?", table_name);
-                                    target_name == ident.value
-                                })
+                                .all(|c| String::from_utf8(c.name.clone()).unwrap() != ident.value),
+                            _ => {
+                                log::trace!("[EVAL SELECT] Expression {:?} defaulted to 'missing'.", i.expr);
+                                true
                             },
-                            _ => true,
                         })
                         .cloned()
                         .collect();
