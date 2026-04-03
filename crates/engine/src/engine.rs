@@ -11,7 +11,6 @@ use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
 use std::fmt::Display;
 use std::{cell::RefCell, fs::File, rc::Rc};
-use tabled::Tabled;
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = "wak";
@@ -64,9 +63,10 @@ pub struct ResultSet {
     pub rows: Vec<Vec<ExprResult>>,
 }
 
-#[derive(Debug, PartialEq, Clone, Tabled)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ColumnResult {
     pub name: String,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

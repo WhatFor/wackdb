@@ -127,9 +127,17 @@ impl VirtualMachine {
                     .item_list
                     .iter()
                     .enumerate()
-                    .map(|(index, item)| ColumnResult {
-                        name: self.evaluate_column_name(&item.alias, index),
-                        //value: self.evaluate_constant_expr(&item.expr), TODO
+                    .map(|(index, item)| {
+                        let alias = match &item.alias {
+                            // TODO: clone
+                            Some(ident) => Some(ident.value.clone()),
+                            None => None,
+                        };
+
+                        ColumnResult {
+                            name: self.evaluate_column_name(&item.alias, index),
+                            alias,
+                        }
                     })
                     .collect();
 
@@ -312,15 +320,13 @@ impl VirtualMachine {
                 let columns_of_target_table: Vec<Column> =
                     columns.filter(|c| c.table_id == target_table_id).collect();
 
-                log::trace!("[EVAL SELECT] Columns of target table '{}' are: {:?}", table_name, columns_of_target_table);
-
                 let selected_columns = if is_select_wildcard {
                     // TODO: these need to be sorted by position
                     columns_of_target_table
                         .iter()
                         .map(|col| {
                             let name = String::from_utf8(col.name.clone()).unwrap();
-                            ColumnResult { name }
+                            ColumnResult { name, alias: None }
                         })
                         .collect()
                 } else {
@@ -359,7 +365,13 @@ impl VirtualMachine {
                                 Expr::Wildcard => unreachable!(),
                             };
 
-                            ColumnResult { name }
+                            let alias = match &col.alias {
+                                // TODO: clone
+                                Some(ident) => Some(ident.value.clone()),
+                                None => None,
+                            };
+
+                            ColumnResult { name, alias }
                         })
                         .collect()
                 };
@@ -389,9 +401,8 @@ impl VirtualMachine {
                         .cloned()
                         .collect();
 
-                    log::trace!("[EVAL SELECT] Missing columns: {:?}", missing_columns);
-
                     if !missing_columns.is_empty() {
+                        log::trace!("[EVAL SELECT] Missing columns: {:?}", missing_columns);
                         return Err(StatementError::ColumnsDoNotExist(missing_columns).into());
                     }
                 }
@@ -408,8 +419,6 @@ impl VirtualMachine {
                 let results: Vec<Vec<ExprResult>> =
                     target_table_iter
                         .map(|row| {
-                            log::trace!("Row: {:?}. Length: {}", row, row.len());
-
                             let mut col_cursor = 0;
                             let mut byte_cursor = 0;
                             let mut results = Vec::new();

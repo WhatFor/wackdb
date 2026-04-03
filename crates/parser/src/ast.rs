@@ -170,8 +170,7 @@ impl SelectItem {
 
     pub fn aliased_identifier(identifier: &str, alias: Identifier) -> Self {
         SelectItem {
-            // todo: change to identifier
-            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            expr: Expr::Identifier(Identifier::from(identifier.to_string())),
             alias: Some(alias),
         }
     }

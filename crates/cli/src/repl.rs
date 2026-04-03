@@ -92,7 +92,7 @@ impl Repl {
                                     print!("|");
 
                                     for header in result.result_set.columns {
-                                        print!(" {} |", header.name);
+                                        print!(" {} |", header.alias.unwrap_or(header.name));
                                     }
 
                                     println!();
