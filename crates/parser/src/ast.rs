@@ -149,14 +149,12 @@ impl SelectItem {
         }
     }
 
-    pub fn qualified_identifier(identifiers: Vec<&str>) -> Self {
-        let idents = identifiers
-            .iter()
-            .map(|i| Identifier::from(i.to_string()))
-            .collect();
-
+    pub fn qualified_identifier(qualifier: &str, identifier: &str) -> Self {
         SelectItem {
-            expr: Expr::QualifiedIdentifier(idents),
+            expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
+                qualifier: Identifier::from(qualifier.to_string()),
+                identifier: Identifier::from(identifier.to_string())
+            }),
             alias: None,
         }
     }
@@ -175,14 +173,13 @@ impl SelectItem {
         }
     }
 
-    pub fn aliased_qualified_identifier(identifiers: Vec<&str>, alias: Identifier) -> Self {
-        let idents = identifiers
-            .iter()
-            .map(|i| Identifier::from(i.to_string()))
-            .collect();
+    pub fn aliased_qualified_identifier(qualifier: &str, identifier: &str, alias: Identifier) -> Self {
 
         SelectItem {
-            expr: Expr::QualifiedIdentifier(idents),
+            expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
+                qualifier: Identifier::from(qualifier.to_string()),
+                identifier: Identifier::from(identifier.to_string())
+            }),
             alias: Some(alias),
         }
     }
@@ -272,6 +269,12 @@ impl fmt::Debug for GroupByClause {
     }
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub struct QualifiedIdentifier {
+    pub qualifier: Identifier,
+    pub identifier: Identifier,
+}
+
 #[derive(PartialEq, Clone)]
 pub enum Expr {
     IsTrue(Box<Expr>),
@@ -313,7 +316,7 @@ pub enum Expr {
     },
     Value(Value),
     Identifier(Identifier),
-    QualifiedIdentifier(Vec<Identifier>),
+    QualifiedIdentifier(QualifiedIdentifier),
     Wildcard,
 }
 
@@ -344,13 +347,10 @@ impl fmt::Display for Expr {
             Expr::Value(v) => write!(f, "{v:?} (dbg: VALUE)"),
             Expr::Identifier(i) => write!(f, "{i:?} (dbg: IDENT)"),
             Expr::QualifiedIdentifier(i) => {
-                let joined = i
-                    .iter()
-                    .map(|x| x.value.to_string())
-                    .collect::<Vec<String>>()
-                    .join(".");
-
-                write!(f, "{joined:?} (dbg: QIDENT)")
+                let mut val = i.qualifier.value.clone();
+                val.push_str(".");
+                val.push_str(&i.identifier.value);
+                write!(f, "{val:?} (dbg: QIDENT)")
             }
             Expr::Wildcard => write!(f, "*"),
         }

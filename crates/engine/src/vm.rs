@@ -359,9 +359,7 @@ impl VirtualMachine {
                                 Expr::BinaryOperator { left, op, right } => todo!(),
                                 Expr::Value(value) => todo!(),
                                 Expr::Identifier(identifier) => identifier.value.clone(),
-                                Expr::QualifiedIdentifier(identifiers) => {
-                                    identifiers.last().unwrap().value.clone()
-                                }
+                                Expr::QualifiedIdentifier(identifiers) => identifiers.identifier.value.clone(),
                                 Expr::Wildcard => unreachable!(),
                             };
 
@@ -388,6 +386,11 @@ impl VirtualMachine {
                         .filter(|i| match &i.expr {
                             // TODO: Handle all types of SelectItem expressions.
                             // TODO: I hate that we've turned this iter into a vec and now back into an iter
+                            Expr::QualifiedIdentifier(ident) =>
+                                columns_of_target_table
+                                .iter()
+                                // TODO: clone is a bit shit
+                                .all(|c| String::from_utf8(c.name.clone()).unwrap() != ident.identifier.value),
                             Expr::Identifier(ident) =>
                                 columns_of_target_table
                                 .iter()
@@ -465,12 +468,8 @@ impl VirtualMachine {
                                             Expr::NotLike { expr, pattern } => todo!(),
                                             Expr::BinaryOperator { left, op, right } => todo!(),
                                             Expr::Value(_) => false,
-                                            Expr::Identifier(identifier) => {
-                                                identifier.value == col_name
-                                            }
-                                            Expr::QualifiedIdentifier(identifiers) => {
-                                                identifiers.iter().any(|i| i.value == col_name)
-                                            }
+                                            Expr::Identifier(identifier) => identifier.value == col_name,
+                                            Expr::QualifiedIdentifier(ident) => ident.identifier.value == col_name,
                                             Expr::Wildcard => true,
                                         }
                                     });

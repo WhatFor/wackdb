@@ -212,20 +212,22 @@ impl<'a> Parser<'a> {
         }
         .unwrap();
 
+        // This might be either a full ident, or a qualifier before an ident
         let identifier_str = String::from(self.resolve_slice(slice));
         self.eat();
-
         let qualified_identifier = self.parse_qualified_identifier();
+
         let alias = self.pase_identifier_alias();
 
         match qualified_identifier {
-            Some(qualified) => {
+            Some(ident) => {
                 let qualified_select_item = match alias {
                     Some(alias) => SelectItem::aliased_qualified_identifier(
-                        vec![&identifier_str, &qualified],
+                        &identifier_str,
+                        &ident,
                         alias,
                     ),
-                    None => SelectItem::qualified_identifier(vec![&identifier_str, &qualified]),
+                    None => SelectItem::qualified_identifier(&identifier_str, &ident),
                 };
 
                 Some(qualified_select_item)
@@ -1015,9 +1017,7 @@ mod parser_tests {
 
         let expected = Ok(Program::Statements(vec![Statement::User(
             UserStatement::Select(SelectExpressionBody {
-                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(
-                    vec!["a", "b"],
-                )]),
+                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier("a", "b")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
@@ -1050,7 +1050,8 @@ mod parser_tests {
             UserStatement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![
                     SelectItem::aliased_qualified_identifier(
-                        vec!["a", "b"],
+                        "a",
+                        "b",
                         Identifier {
                             value: "c".to_string(),
                         },
@@ -1123,9 +1124,7 @@ mod parser_tests {
 
         let expected = Ok(Program::Statements(vec![Statement::User(
             UserStatement::Select(SelectExpressionBody {
-                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(
-                    vec!["u", "Name"],
-                )]),
+                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier("u", "Name")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
                         value: String::from("Users"),
