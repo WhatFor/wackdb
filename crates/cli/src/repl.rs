@@ -142,11 +142,15 @@ impl Repl {
         let lexer = Lexer::new(&input_str);
         let lex_result = lexer.lex();
 
+        log::trace!("Lexing complete. Tokens: {:?}", lex_result.tokens);
+
         let mut parser = Parser::new(lex_result.tokens, &input_str);
         let parse_result = parser.parse();
 
         match parse_result {
             Ok(ast) => {
+
+                log::trace!("Parsing complete. Tokens: {:?}", ast);
                 let execute_result = self.engine.execute(&ast);
 
                 match execute_result {

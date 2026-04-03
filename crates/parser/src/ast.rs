@@ -144,8 +144,7 @@ impl SelectItem {
 
     pub fn simple_identifier(identifier: &str) -> Self {
         SelectItem {
-            // todo: change to identifier
-            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            expr: Expr::Identifier(Identifier::from(identifier.to_string())),
             alias: None,
         }
     }
@@ -343,8 +342,8 @@ impl fmt::Display for Expr {
             Expr::Like { expr, pattern } => write!(f, "{expr} LIKE {pattern}"),
             Expr::NotLike { expr, pattern } => write!(f, "{expr} NOT LIKE {pattern}"),
             Expr::BinaryOperator { left, op, right } => write!(f, "({left} {op} {right})"),
-            Expr::Value(v) => write!(f, "{v:?}"),
-            Expr::Identifier(i) => write!(f, "{i:?}"),
+            Expr::Value(v) => write!(f, "{v:?} (dbg: VALUE)"),
+            Expr::Identifier(i) => write!(f, "{i:?} (dbg: IDENT)"),
             Expr::QualifiedIdentifier(i) => {
                 let joined = i
                     .iter()
@@ -352,7 +351,7 @@ impl fmt::Display for Expr {
                     .collect::<Vec<String>>()
                     .join(".");
 
-                write!(f, "{joined:?}")
+                write!(f, "{joined:?} (dbg: QIDENT)")
             }
             Expr::Wildcard => write!(f, "*"),
         }

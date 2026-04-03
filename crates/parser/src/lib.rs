@@ -1143,6 +1143,39 @@ mod parser_tests {
     }
 
     #[test]
+    fn test_table_select_statement() {
+        let query = String::from("select Name from Users");
+        let tokens = vec![
+            Token::Keyword(Keyword::Select),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(7, 11))),
+            Token::Space,
+            Token::Keyword(Keyword::From),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(17, 22))),
+            Token::EOF,
+        ];
+
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Statements(vec![Statement::User(
+            UserStatement::Select(SelectExpressionBody {
+                select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
+                from_clause: Some(FromClause {
+                    identifier: Identifier::from(String::from("Users")),
+                    qualifier: None,
+                    alias: None,
+                }),
+                where_clause: None,
+                order_by_clause: None,
+                group_by_clause: None,
+            }),
+        )]));
+
+        assert_eq!(lexer, expected);
+    }
+
+    #[test]
     fn test_qualified_table_select_statement() {
         let query = String::from("select Name from master.Users");
         let tokens = vec![

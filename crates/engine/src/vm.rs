@@ -70,7 +70,8 @@ impl VirtualMachine {
     // todo: type?
     fn is_constant_statement(&self, statement: &UserStatement) -> bool {
         match statement {
-            UserStatement::Select(select_expression_body) => select_expression_body
+            UserStatement::Select(select_expression_body) =>
+                select_expression_body
                 .select_item_list
                 .item_list
                 .iter()
@@ -89,6 +90,11 @@ impl VirtualMachine {
                 lower,
                 higher,
             } => self.is_const_exp(expr) && self.is_const_exp(lower) && self.is_const_exp(higher),
+            Expr::NotBetween {
+                expr,
+                lower,
+                higher,
+            } => self.is_const_exp(expr) && self.is_const_exp(lower) && self.is_const_exp(higher),
             Expr::BinaryOperator { left, right, .. } => {
                 self.is_const_exp(left) && self.is_const_exp(right)
             }
@@ -97,14 +103,19 @@ impl VirtualMachine {
             Expr::IsNull(expr) => self.is_const_exp(expr),
             Expr::IsNotNull(expr) => self.is_const_exp(expr),
             Expr::Like { expr, pattern } => self.is_const_exp(expr) && self.is_const_exp(pattern),
+            Expr::NotLike { expr, pattern } => self.is_const_exp(expr) && self.is_const_exp(pattern),
             Expr::IsIn { expr, list } => {
+                self.is_const_exp(expr) && list.iter().all(|e| self.is_const_exp(e))
+            }
+            Expr::IsNotIn { expr, list } => {
                 self.is_const_exp(expr) && list.iter().all(|e| self.is_const_exp(e))
             }
             Expr::IsNotFalse(expr) => self.is_const_exp(expr),
             Expr::IsNotTrue(expr) => self.is_const_exp(expr),
             Expr::Value(_) => true,
+            Expr::QualifiedIdentifier(_) => false,
             Expr::Identifier(_) => false,
-            _ => false,
+            Expr::Wildcard => false,
         }
     }
 
@@ -301,6 +312,8 @@ impl VirtualMachine {
                 let columns_of_target_table: Vec<Column> =
                     columns.filter(|c| c.table_id == target_table_id).collect();
 
+                log::trace!("[EVAL SELECT] Columns of target table '{}' are: {:?}", table_name, columns_of_target_table);
+
                 let selected_columns = if is_select_wildcard {
                     // TODO: these need to be sorted by position
                     columns_of_target_table
@@ -351,6 +364,8 @@ impl VirtualMachine {
                         .collect()
                 };
 
+                log::trace!("[EVAL SELECT] Selected columns: {:?}", selected_columns);
+
                 // Step 6.5.
                 // Validate that the requested columns exist.
                 if !is_select_wildcard {
@@ -361,14 +376,23 @@ impl VirtualMachine {
                         .filter(|i| match &i.expr {
                             // TODO: Handle all types of SelectItem expressions.
                             // TODO: I hate that we've turned this iter into a vec and now back into an iter
-                            Expr::Identifier(ident) => columns_of_target_table
+                            Expr::Identifier(ident) => {
+                                log::trace!("[EVAL SELECT] Is {:?} missing?", ident.value);
+                                columns_of_target_table
                                 .iter()
                                 // TODO: clone is a bit shit
-                                .any(|c| String::from_utf8(c.name.clone()).unwrap() == ident.value),
+                                .any(|c| {
+                                    let target_name = String::from_utf8(c.name.clone()).unwrap();
+                                    log::trace!("[EVAL SELECT] Maybe it matches {:?}?", table_name);
+                                    target_name == ident.value
+                                })
+                            },
                             _ => true,
                         })
                         .cloned()
                         .collect();
+
+                    log::trace!("[EVAL SELECT] Missing columns: {:?}", missing_columns);
 
                     if !missing_columns.is_empty() {
                         return Err(StatementError::ColumnsDoNotExist(missing_columns).into());
