@@ -317,11 +317,12 @@ impl VirtualMachine {
                     Column::from_reader_with_ctx(&mut reader, ()).unwrap()
                 });
 
-                let columns_of_target_table: Vec<Column> =
+                let mut columns_of_target_table: Vec<Column> =
                     columns.filter(|c| c.table_id == target_table_id).collect();
 
+                columns_of_target_table.sort_by(|a, b| a.position.cmp(&b.position));
+
                 let selected_columns = if is_select_wildcard {
-                    // TODO: these need to be sorted by position
                     columns_of_target_table
                         .iter()
                         .map(|col| {

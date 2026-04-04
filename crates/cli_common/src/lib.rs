@@ -12,6 +12,7 @@ pub enum ParseErrorKind {
     ExpectedValue,
     ExpectedStatemnt,
     ExpectedIdentifier,
+    ExpectedQualifier(String),
     ExpectedDataType,
     ExpectedParentheses(String),
     ExpressionNotClosed,

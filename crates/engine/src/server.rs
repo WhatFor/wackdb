@@ -153,7 +153,7 @@ impl Table {
     }
 }
 
-#[derive(DekuRead, DekuWrite, PartialEq, Eq, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -181,7 +181,7 @@ pub enum ColumnType {
     DateTime,
 }
 
-#[derive(DekuRead, DekuWrite, Debug)]
+#[derive(DekuRead, DekuWrite, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[deku(endian = "big")]
 pub struct Column {
     #[deku(bytes = 4)]

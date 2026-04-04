@@ -24,7 +24,7 @@ pub struct Parser<'a> {
 const MAX_DEPTH: usize = 50;
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<LocatableToken>, buf: &'a str) -> Parser {
+    pub fn new(tokens: Vec<LocatableToken>, buf: &'_ str) -> Parser<'_> {
         Parser {
             tokens,
             buf,
@@ -145,6 +145,27 @@ impl<'a> Parser<'a> {
         let where_clause = self.parse_where_clause_optional();
         let group_by_clause = self.parse_group_by_clause_optional();
         let order_by_clause = self.parse_order_by_clause_optional();
+
+        let qualified_select_items: Vec<&Identifier> = select_item_list.item_list.iter().filter_map(|i| match &i.expr {
+            Expr::QualifiedIdentifier(expr) => Some(&expr.qualifier),
+            _ => None,
+        }).collect();
+
+        let qualified_from_item = match &from_clause {
+            Some(from) => match &from.alias {
+                Some(v) => Some(&v.value),
+                None => None,
+            }
+            None => None,
+        };
+
+        if qualified_select_items.len() > 0 && qualified_from_item.is_some() {
+            let aliases_valid = qualified_select_items.iter().all(|i| &i.value == qualified_from_item.unwrap());
+
+            if aliases_valid == false {
+                self.push_error(ParseErrorKind::ExpectedQualifier(qualified_select_items.first().unwrap().value.clone()));
+            }
+        }
 
         Some(SelectExpressionBody {
             select_item_list,
