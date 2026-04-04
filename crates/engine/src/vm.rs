@@ -10,12 +10,11 @@ use crate::{
     engine::{ColumnResult, ExprResult, ResultSet, StatementResult},
     fm::FileManager,
     index_pager::IndexPager,
-    page::{PageDecoder, PageId},
+    page::PageDecoder,
     page_cache::FilePageId,
     persistence,
     server::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
     types::DbLong,
-    util::into_time,
 };
 
 pub struct VirtualMachine {
@@ -37,6 +36,18 @@ enum StatementError {
 enum SelectStatementError {
     #[error("Non-constant query contains no 'FROM' expression.")]
     NonConstantExprNoFrom,
+}
+
+#[derive(Debug)]
+struct ExprResultWithPosition {
+    pub pos: u8,
+    pub expr: ExprResult,
+}
+
+#[derive(Debug)]
+struct ColumnResultWithPosition {
+    pub pos: u8,
+    pub col: ColumnResult,
 }
 
 impl VirtualMachine {
@@ -322,12 +333,15 @@ impl VirtualMachine {
 
                 columns_of_target_table.sort_by(|a, b| a.position.cmp(&b.position));
 
-                let selected_columns = if is_select_wildcard {
+                // Find the columns we need to process in the query.
+                //      If wildcard, will be all columns sorted by the position property from master.columns,
+                //      else will be sorted in the order in which the columns appeared in the query.
+                let selected_columns: Vec<ColumnResultWithPosition> = if is_select_wildcard {
                     columns_of_target_table
                         .iter()
                         .map(|col| {
                             let name = String::from_utf8(col.name.clone()).unwrap();
-                            ColumnResult { name, alias: None }
+                            ColumnResultWithPosition { col: ColumnResult { name, alias: None }, pos: 0 }
                         })
                         .collect()
                 } else {
@@ -370,7 +384,7 @@ impl VirtualMachine {
                                 None => None,
                             };
 
-                            ColumnResult { name, alias }
+                            ColumnResultWithPosition { col: ColumnResult { name, alias }, pos: 0 }
                         })
                         .collect()
                 };
@@ -420,7 +434,7 @@ impl VirtualMachine {
                 ));
 
                 // TODO: these need to be sorted by the order specified in statement
-                let results: Vec<Vec<ExprResult>> =
+                let mut results_with_positions: Vec<Vec<ExprResultWithPosition>> =
                     target_table_iter
                         .map(|row| {
                             let mut col_cursor = 0;
@@ -444,6 +458,12 @@ impl VirtualMachine {
                                 let col_name =
                                     String::from_utf8(current_col.unwrap().name.clone()).unwrap();
 
+                                let col_position_in_item_list = match selected_columns.iter().position(|c| c.col.name == col_name) {
+                                    Some(pos) => pos,
+                                    None => 0,
+                                } as u8;
+
+                                // Check if the column we're currently parsing is actually in the query select_items
                                 let is_in_output =
                                     statement.select_item_list.item_list.iter().any(|item| {
                                         match &item.expr {
@@ -521,7 +541,7 @@ impl VirtualMachine {
 
                                     log::trace!("Parsed value: {:?} = {:?}", col_name, expr);
 
-                                    results.push(expr);
+                                    results.push(ExprResultWithPosition { pos: col_position_in_item_list, expr });
                                 }
 
                                 col_cursor += 1;
@@ -534,10 +554,21 @@ impl VirtualMachine {
                         })
                         .collect();
 
+                let sorted_rows = results_with_positions.iter_mut().map(|r| {
+                    r.sort_by(|a, b| a.pos.cmp(&b.pos));
+
+                    // TODO: clone
+                    r.into_iter().map(|e| e.expr.clone()).collect()
+                }).collect();
+
+                // TODO: clone
+                let sorted_columns = selected_columns.iter().map(|c| c.col.clone()).collect();
+
                 // TODO: Group By, Order By, Where
+
                 let result_set = ResultSet {
-                    columns: selected_columns,
-                    rows: results,
+                    columns: sorted_columns,
+                    rows: sorted_rows,
                 };
 
                 Ok(StatementResult { result_set })
