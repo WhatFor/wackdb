@@ -1,13 +1,22 @@
 {
   description = "WackDB";
-  inputs = { nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable"; };
-  outputs = { self, nixpkgs }:
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+  };
+  outputs =
+    { self, nixpkgs }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-    in {
+    in
+    {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.rustc pkgs.cargo pkgs.rust-analyzer ];
+        packages = [
+          pkgs.rustc
+          pkgs.cargo
+          pkgs.rust-analyzer
+          pkgs.rustfmt
+        ];
       };
       packages.${system}.default = pkgs.rustPlatform.buildRustPackage {
         pname = "wackdb";

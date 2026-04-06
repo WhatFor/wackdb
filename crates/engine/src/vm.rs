@@ -45,9 +45,10 @@ struct ExprResultWithPosition {
 }
 
 #[derive(Debug)]
-struct ColumnResultWithPosition {
+struct ColumnResultWithMetadata {
     pub pos: u8,
     pub col: ColumnResult,
+    pub const_value: Option<ExprResult>,
 }
 
 impl VirtualMachine {
@@ -133,7 +134,7 @@ impl VirtualMachine {
     fn evaluate_constant_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
         match statement {
             UserStatement::Select(select_expression_body) => {
-                let columns = select_expression_body
+                let (columns, values) = select_expression_body
                     .select_item_list
                     .item_list
                     .iter()
@@ -145,18 +146,24 @@ impl VirtualMachine {
                             None => None,
                         };
 
-                        ColumnResult {
+                        let column = ColumnResult {
                             name: self.evaluate_column_name(&item.alias, index),
                             alias,
-                        }
+                        };
+
+                        let value = self.evaluate_constant_expr(&item.expr);
+
+                        (column, value)
                     })
                     .collect();
+
+                //let values = columns.into_iter().map(|c| self.evaluate_constant_expr(&c.));
 
                 Ok(StatementResult {
                     // TODO
                     result_set: ResultSet {
                         columns,
-                        rows: vec![],
+                        rows: vec![values],
                     },
                 })
             }
@@ -175,9 +182,8 @@ impl VirtualMachine {
         log::debug!("SELECT:");
         match &statement.from_clause {
             Some(from) => {
-                // TODO: this check if very simple (not fully correct)
                 let is_select_wildcard =
-                    statement.select_item_list.item_list[0] == SelectItem::new(Expr::Wildcard);
+                    statement.select_item_list.item_list.iter().any(|i| *i == SelectItem::new(Expr::Wildcard));
 
                 log::debug!("   ITEMS: {:?}", statement.select_item_list.item_list);
 
@@ -336,12 +342,20 @@ impl VirtualMachine {
                 // Find the columns we need to process in the query.
                 //      If wildcard, will be all columns sorted by the position property from master.columns,
                 //      else will be sorted in the order in which the columns appeared in the query.
-                let selected_columns: Vec<ColumnResultWithPosition> = if is_select_wildcard {
+                let selected_columns: Vec<ColumnResultWithMetadata> = if is_select_wildcard {
+
+                    // TODO: This needs work. It just dumps all columns as our selected, but doesn't account for const columns.
+                    // Test: SELECT *, 'Hello' from Tables
                     columns_of_target_table
                         .iter()
                         .map(|col| {
                             let name = String::from_utf8(col.name.clone()).unwrap();
-                            ColumnResultWithPosition { col: ColumnResult { name, alias: None }, pos: 0 }
+
+                            ColumnResultWithMetadata {
+                                col: ColumnResult { name, alias: None },
+                                pos: col.position,
+                                const_value: None,
+                            }
                         })
                         .collect()
                 } else {
@@ -349,7 +363,8 @@ impl VirtualMachine {
                         .select_item_list
                         .item_list
                         .iter()
-                        .map(|col| {
+                        .enumerate()
+                        .map(|(index, col)| {
                             let name = match &col.expr {
                                 Expr::IsTrue(expr) => todo!(),
                                 Expr::IsNotTrue(expr) => todo!(),
@@ -372,7 +387,7 @@ impl VirtualMachine {
                                 Expr::Like { expr, pattern } => todo!(),
                                 Expr::NotLike { expr, pattern } => todo!(),
                                 Expr::BinaryOperator { left, op, right } => todo!(),
-                                Expr::Value(value) => todo!(),
+                                Expr::Value(_) => String::from(""),
                                 Expr::Identifier(identifier) => identifier.value.clone(),
                                 Expr::QualifiedIdentifier(identifiers) => identifiers.identifier.value.clone(),
                                 Expr::Wildcard => unreachable!(),
@@ -384,7 +399,18 @@ impl VirtualMachine {
                                 None => None,
                             };
 
-                            ColumnResultWithPosition { col: ColumnResult { name, alias }, pos: 0 }
+                            let const_value = if self.is_const_exp(&col.expr) {
+                                Some(self.evaluate_constant_expr(&col.expr))
+                            } else {
+                                None
+                            };
+
+                            // TODO: pos may not be needed. sorting already works, even if all set to 0. Investigate that.
+                            ColumnResultWithMetadata {
+                                col: ColumnResult { name, alias },
+                                pos: index as u8,
+                                const_value,
+                            }
                         })
                         .collect()
                 };
@@ -411,6 +437,7 @@ impl VirtualMachine {
                                 .iter()
                                 // TODO: clone is a bit shit
                                 .all(|c| String::from_utf8(c.name.clone()).unwrap() != ident.value),
+                            Expr::Value(_) => false,
                             _ => {
                                 log::trace!("[EVAL SELECT] Expression {:?} defaulted to 'missing'.", i.expr);
                                 true
@@ -433,7 +460,12 @@ impl VirtualMachine {
                     target_table_index_root_id.try_into().unwrap(),
                 ));
 
-                // TODO: these need to be sorted by the order specified in statement
+                // The following loops through all rows in the target index, stepping through the cols given the columns_of_target_table (from the columns table).
+                // if I have a const expr in the select list, we only really need to evaluate it once - it's const.
+                // Step 1. Identify if a column is const. That can be done sooner. DONE.
+                // Step 2. Evaluate all const columns. DONE.
+                // Step 3. Ensure all const columns are provided in the response. I don't know how to do this yet.
+
                 let mut results_with_positions: Vec<Vec<ExprResultWithPosition>> =
                     target_table_iter
                         .map(|row| {
@@ -443,6 +475,16 @@ impl VirtualMachine {
 
                             // While there are still bytes left to read in the row Vec<u8>
                             while byte_cursor < row.len() {
+
+                                // Before we process the row of data from the table, just check if there's a const expr in the output.
+                                // This is kinda a hack, because we're formatting the output results while enumerating the underlying table
+                                // it makes it hard to select columns in a different order, or select columns that are const.
+                                // I have a feeling this will need to be refactored when I get to joins, but for now this will work.
+                                if let Some(col_at_pos) = selected_columns.iter().find(|c| c.pos == col_cursor) {
+                                    if let Some(const_val) = &col_at_pos.const_value {
+                                        results.push(ExprResultWithPosition { pos: 0, expr: const_val.clone() }); // TODO: pos needed? TODO: clone
+                                    }
+                                }
 
                                 // Read the next column at the specified index (col_cursor)
                                 let current_col = columns_of_target_table
