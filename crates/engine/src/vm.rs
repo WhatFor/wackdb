@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use deku::DekuReader;
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::Add, rc::Rc};
 use thiserror::Error;
 
 use crate::{
@@ -387,7 +387,12 @@ impl VirtualMachine {
                                 Expr::Like { expr, pattern } => todo!(),
                                 Expr::NotLike { expr, pattern } => todo!(),
                                 Expr::BinaryOperator { left, op, right } => todo!(),
-                                Expr::Value(_) => String::from(""),
+                                Expr::Value(_) => {
+                                    let mut name = String::from("Column ");
+                                    name.push_str(&index.to_string());
+
+                                    name
+                                },
                                 Expr::Identifier(identifier) => identifier.value.clone(),
                                 Expr::QualifiedIdentifier(identifiers) => identifiers.identifier.value.clone(),
                                 Expr::Wildcard => unreachable!(),
@@ -460,12 +465,6 @@ impl VirtualMachine {
                     target_table_index_root_id.try_into().unwrap(),
                 ));
 
-                // The following loops through all rows in the target index, stepping through the cols given the columns_of_target_table (from the columns table).
-                // if I have a const expr in the select list, we only really need to evaluate it once - it's const.
-                // Step 1. Identify if a column is const. That can be done sooner. DONE.
-                // Step 2. Evaluate all const columns. DONE.
-                // Step 3. Ensure all const columns are provided in the response. I don't know how to do this yet.
-
                 let mut results_with_positions: Vec<Vec<ExprResultWithPosition>> =
                     target_table_iter
                         .map(|row| {
@@ -480,6 +479,7 @@ impl VirtualMachine {
                                 // This is kinda a hack, because we're formatting the output results while enumerating the underlying table
                                 // it makes it hard to select columns in a different order, or select columns that are const.
                                 // I have a feeling this will need to be refactored when I get to joins, but for now this will work.
+                                // TODO: There's a bug here where the order can be incorrect when the query includes const columns.
                                 if let Some(col_at_pos) = selected_columns.iter().find(|c| c.pos == col_cursor) {
                                     if let Some(const_val) = &col_at_pos.const_value {
                                         results.push(ExprResultWithPosition { pos: 0, expr: const_val.clone() }); // TODO: pos needed? TODO: clone
