@@ -11,12 +11,15 @@ use thiserror::Error;
 
 use crate::{
     db::FileType,
-    engine::{DATA_FILE_EXT, LOG_FILE_EXT, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE, WACK_DIRECTORY},
-    page::PageId,
+    page::{PageId, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE},
     page_cache::PageBytes,
     server::MASTER_NAME,
     util,
 };
+
+pub const DATA_FILE_EXT: &str = "wak";
+pub const LOG_FILE_EXT: &str = "wal";
+pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 #[derive(Debug, From, Error)]
 pub enum PersistenceError {
@@ -154,9 +157,8 @@ fn open_db_of_type(database_name: &str, file_type: FileType) -> File {
 
 #[cfg(test)]
 mod persistence_tests {
-    use crate::*;
+    use crate::{page::PAGE_SIZE_BYTES, *};
 
-    use engine::PAGE_SIZE_BYTES;
     use persistence::{read_page, write_page};
     use std::{
         env::temp_dir,

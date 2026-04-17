@@ -2,6 +2,9 @@ use crate::{db::FileType, fm::FileManager, lru::LRUCache, page::PageId, persiste
 
 pub type PageBytes = [u8; 8192];
 
+//pub const PAGE_CACHE_CAPACITY: usize = 131_072; // 1GB
+pub const PAGE_CACHE_CAPACITY: usize = 10; // Test
+
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FilePageId {
     pub db_id: u16,
@@ -18,6 +21,12 @@ pub type FilePageCache = LRUCache<FilePageId, PageBytes>;
 
 pub struct PageCache {
     lru_cache: FilePageCache,
+}
+
+impl Default for PageCache {
+    fn default() -> Self {
+        Self::new(PAGE_CACHE_CAPACITY)
+    }
 }
 
 impl PageCache {

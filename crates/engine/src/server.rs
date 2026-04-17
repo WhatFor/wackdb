@@ -7,8 +7,9 @@ use thiserror::Error;
 
 use crate::{
     btree::BTree,
-    db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    engine::CURRENT_DATABASE_VERSION,
+    db::{
+        self, DatabaseId, FileType, SchemaInfo, CURRENT_DATABASE_VERSION, SCHEMA_INFO_PAGE_INDEX,
+    },
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
     page_cache::PageBytes,
@@ -309,12 +310,6 @@ impl Index {
             created_date: now_bytes(),
         }
     }
-}
-
-#[derive(Debug, From, Error)]
-pub enum SchemaCreationError {
-    #[error("Failed to open file.")]
-    FailedToOpenFile,
 }
 
 fn initialise_databases_table() -> Result<PageBytes> {

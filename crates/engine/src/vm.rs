@@ -1,4 +1,5 @@
 use anyhow::{Error, Result};
+use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
 use deku::DekuReader;
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
@@ -6,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    engine::{ColumnResult, ExprResult, ResultSet, StatementResult, Storage},
+    engine::Storage,
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,

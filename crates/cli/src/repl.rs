@@ -4,8 +4,8 @@ use std::{
 };
 
 use anyhow::Error;
-use cli_common::ParseError;
-use engine::engine::{Engine, StatementResult};
+use cli_common::{ParseError, StatementResult};
+use engine::engine::Engine;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -34,7 +34,7 @@ pub enum CommandResult {
 
 impl Repl {
     pub fn new() -> Self {
-        let mut engine = Engine::new();
+        let mut engine = Engine::default();
         engine.init();
 
         Repl { engine }

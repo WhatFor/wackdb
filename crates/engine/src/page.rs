@@ -3,7 +3,6 @@ use deku::ctx::Endian;
 use deku::prelude::*;
 use thiserror::Error;
 
-use crate::engine::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE};
 use crate::page_cache::PageBytes;
 
 /// The max, current version number for the Page Header record
@@ -12,8 +11,13 @@ pub const CURRENT_HEADER_VERSION: u8 = 1;
 /// The amount of bytes needed to store a slot pointer in the page.
 pub const SLOT_POINTER_SIZE: u16 = 2;
 
-pub type SlotPointer = u16;
+pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
+pub const PAGE_SIZE_BYTES_USIZE: usize = 8192; // 2^13
 
+pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
+pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
+
+pub type SlotPointer = u16;
 pub type PageId = u32;
 
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
@@ -365,9 +369,11 @@ impl<'a> PageDecoder<'a> {
 
 #[cfg(test)]
 mod page_encoder_tests {
-    use crate::*;
+    use crate::{
+        page::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES},
+        *,
+    };
     use deku::prelude::*;
-    use engine::{PAGE_HEADER_SIZE_BYTES, PAGE_SIZE_BYTES};
     use page::{PageEncoder, PageEncoderError, PageHeader};
 
     #[test]

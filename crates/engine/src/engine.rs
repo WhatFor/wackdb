@@ -7,25 +7,9 @@ use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID, MASTER_NAME};
 use crate::vm::VirtualMachine;
 
 use anyhow::Result;
+use cli_common::{ExecuteResult, StatementResult};
 use parser::ast::{Program, ServerStatement, UserStatement};
-use std::fmt::Display;
 use std::fs::File;
-
-/// System wide Consts
-pub const DATA_FILE_EXT: &str = "wak";
-pub const LOG_FILE_EXT: &str = "wal";
-pub const CURRENT_DATABASE_VERSION: u8 = 1;
-
-//pub const PAGE_CACHE_CAPACITY: usize = 131_072; // 1GB
-pub const PAGE_CACHE_CAPACITY: usize = 10; // Test
-
-pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
-pub const PAGE_SIZE_BYTES_USIZE: usize = 8192; // 2^13
-
-pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
-pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
-
-pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 pub struct Engine {
     vm: VirtualMachine,
@@ -37,80 +21,10 @@ pub struct Storage {
     pub file_manager: FileManager,
 }
 
-#[derive(Debug)]
-pub struct ExecuteResult {
-    pub results: Vec<StatementResult>,
-    pub errors: Vec<anyhow::Error>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct StatementResult {
-    pub result_set: ResultSet,
-}
-
-impl Default for StatementResult {
-    fn default() -> Self {
-        StatementResult {
-            result_set: ResultSet {
-                columns: vec![],
-                rows: vec![],
-            },
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ResultSet {
-    pub columns: Vec<ColumnResult>,
-    pub rows: Vec<Vec<ExprResult>>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct ColumnResult {
-    pub name: String,
-    pub alias: Option<String>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum ExprResult {
-    Short(u16),
-    Int(i32),
-    Long(i64),
-    Byte(u8),
-    Bool(bool),
-    String(String),
-    Null,
-}
-
-impl Display for ExprResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExprResult::Long(x) => write!(f, "{}", x),
-            ExprResult::Short(x) => write!(f, "{}", x),
-            ExprResult::Int(x) => write!(f, "{}", x),
-            ExprResult::Byte(x) => write!(f, "{}", x),
-            ExprResult::Bool(x) => write!(f, "{}", x),
-            ExprResult::String(x) => write!(f, "{}", x),
-            ExprResult::Null => write!(f, "NULL"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum OpenDatabaseError {
-    Err(),
-}
-
 impl Default for Engine {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Engine {
-    pub fn new() -> Self {
         let vm = VirtualMachine::default();
-        let page_cache = PageCache::new(PAGE_CACHE_CAPACITY);
+        let page_cache = PageCache::default();
         let file_manager = FileManager::default();
 
         Engine {
@@ -121,7 +35,9 @@ impl Engine {
             },
         }
     }
+}
 
+impl Engine {
     pub fn init(&mut self) {
         let master_db_result = server::open_or_create_master_db();
 

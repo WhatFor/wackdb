@@ -7,13 +7,14 @@ use derive_more::derive::From;
 use std::{fs::File, time::SystemTime};
 use thiserror::Error;
 
-use crate::engine::CURRENT_DATABASE_VERSION;
 use crate::page::PageId;
 use crate::util::time_bytes;
 use crate::{
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
     persistence,
 };
+
+pub const CURRENT_DATABASE_VERSION: u8 = 1;
 
 #[derive(Debug, From, Error)]
 pub enum DbError {

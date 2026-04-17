@@ -103,7 +103,7 @@ impl FileManager {
         self.handles.get(file_id)
     }
 
-    pub fn get_all(&self) -> Box<dyn Iterator<Item = IdentifiedFile> + '_> {
+    pub fn get_all<'a>(&'a self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
         Box::new(
             self.handles
                 .iter()

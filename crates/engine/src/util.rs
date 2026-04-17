@@ -19,11 +19,6 @@ pub fn time_bytes(time: std::time::SystemTime) -> u16 {
         .as_secs() as u16
 }
 
-pub fn into_time(bytes: &[u8]) -> std::time::SystemTime {
-    std::time::UNIX_EPOCH
-        + std::time::Duration::from_secs(u64::from_be_bytes(bytes.try_into().unwrap()))
-}
-
 pub fn file_exists(path: &Path) -> Result<bool> {
     Ok(Path::try_exists(path)?)
 }
