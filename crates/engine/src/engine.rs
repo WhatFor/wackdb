@@ -45,13 +45,13 @@ impl Engine {
             Ok(x) => {
                 self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Primary),
-                    x.files.dat,
+                    Box::new(x.files.dat),
                     x.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Log),
-                    x.files.log,
+                    Box::new(x.files.log),
                     0,
                 );
             }
@@ -77,13 +77,13 @@ impl Engine {
 
                     self.storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.clone().into(), FileType::Primary),
-                        user_db.files.dat,
+                        Box::new(user_db.files.dat),
                         user_db.allocated_page_count,
                     );
 
                     self.storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.into(), FileType::Log),
-                        user_db.files.log,
+                        Box::new(user_db.files.log),
                         0,
                     );
                 }
@@ -153,13 +153,13 @@ impl Engine {
 
                 self.storage.file_manager.add(
                     FileId::new(result.id, result.name.clone(), FileType::Primary),
-                    result.files.dat,
+                    Box::new(result.files.dat),
                     result.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
                     FileId::new(result.id, result.name, FileType::Log),
-                    result.files.log,
+                    Box::new(result.files.log),
                     0,
                 );
 

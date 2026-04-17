@@ -8,6 +8,7 @@ use crate::{
     catalog::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
+    file::DatabaseStorage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageHeader, PageId, PageType},

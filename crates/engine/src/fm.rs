@@ -5,7 +5,7 @@ use std::{collections::HashMap, hash::Hash};
 use thiserror::Error;
 
 use crate::{
-    file::{DatabaseFile, DatabaseFileId},
+    file::{DatabaseFileId, DatabaseStorage},
     file_format::FileType,
     page::{PageDecoder, PageId},
     page_cache::PageBytes,
@@ -50,14 +50,14 @@ impl IdMapKey {
 
 pub struct IdentifiedFile<'a> {
     pub id: &'a FileId,
-    pub file: &'a mut DatabaseFile,
+    pub file: &'a mut dyn DatabaseStorage,
 }
 
 #[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
-    handles: HashMap<FileId, DatabaseFile>,
+    handles: HashMap<FileId, Box<dyn DatabaseStorage>>,
     allocated_page_count: HashMap<FileId, PageId>,
 }
 
@@ -71,7 +71,7 @@ impl FileManager {
         }
     }
 
-    pub fn add(&mut self, id: FileId, file: DatabaseFile, page_count: PageId) {
+    pub fn add(&mut self, id: FileId, file: Box<dyn DatabaseStorage>, page_count: PageId) {
         // Insert entries into the ID and Name maps to facilitate finding Files by either property
         self.id_map.insert(
             IdMapKey {
@@ -93,22 +93,29 @@ impl FileManager {
         self.allocated_page_count.insert(id.clone(), page_count);
     }
 
-    pub fn get_from_id(&mut self, id: DatabaseFileId, ty: FileType) -> Option<&mut DatabaseFile> {
+    pub fn get_from_id(
+        &mut self,
+        id: DatabaseFileId,
+        ty: FileType,
+    ) -> Option<&mut Box<dyn DatabaseStorage>> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
         self.handles.get_mut(file_id)
     }
 
-    pub fn get_from_name(&mut self, name: String, ty: FileType) -> Option<&mut DatabaseFile> {
+    pub fn get_from_name(
+        &mut self,
+        name: String,
+        ty: FileType,
+    ) -> Option<&mut Box<dyn DatabaseStorage>> {
         let file_id = self.name_map.get(&NameMapKey { name, ty })?;
         self.handles.get_mut(file_id)
     }
 
     pub fn get_all<'a>(&'a mut self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
-        Box::new(
-            self.handles
-                .iter_mut()
-                .map(|(id, file)| IdentifiedFile { id, file }),
-        )
+        Box::new(self.handles.iter_mut().map(|(id, file)| IdentifiedFile {
+            id,
+            file: file.as_mut(),
+        }))
     }
 
     pub fn next_page_id_by_id(&self, id: DatabaseFileId, ty: FileType) -> Option<PageId> {

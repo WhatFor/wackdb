@@ -9,7 +9,7 @@ use derive_more::derive::From;
 use thiserror::Error;
 
 use crate::{
-    file::{DatabaseFile, DatabaseFileId},
+    file::{DatabaseFileId, DatabaseStorage, DiskFile},
     file_format::FileType,
     page::PageId,
     util,
@@ -74,8 +74,8 @@ pub struct OpenDatabaseResult {
 }
 
 pub struct DatabaseFilePair {
-    pub dat: DatabaseFile,
-    pub log: DatabaseFile,
+    pub dat: DiskFile,
+    pub log: DiskFile,
 }
 
 pub fn create_database(
@@ -104,11 +104,7 @@ pub fn create_database(
     })
 }
 
-fn create_db_data_file(
-    db_name: &str,
-    db_id: DatabaseFileId,
-    is_master: bool,
-) -> Result<DatabaseFile> {
+fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<DiskFile> {
     let mut file = create_empty_db_file(db_name, FileType::Primary)?;
 
     file.write_file_info()?;
@@ -121,7 +117,7 @@ fn create_db_data_file(
     Ok(file)
 }
 
-fn create_db_log_file(db_name: &str) -> Result<DatabaseFile> {
+fn create_db_log_file(db_name: &str) -> Result<DiskFile> {
     create_empty_db_file(db_name, FileType::Log)
 }
 
@@ -130,12 +126,12 @@ pub fn db_exists(db_name: &str, file_type: FileType) -> Result<bool> {
     util::file_exists(&path)
 }
 
-pub fn create_empty_db_file(db_name: &str, file_type: FileType) -> Result<DatabaseFile> {
+pub fn create_empty_db_file(db_name: &str, file_type: FileType) -> Result<DiskFile> {
     let master_path = get_db_path(db_name, file_type);
 
     util::file_exists(&master_path)?;
     util::ensure_path_exists(&master_path)?;
-    util::create_file(&master_path).map(|f| DatabaseFile::new(f))
+    util::create_file(&master_path).map(|f| DiskFile::new(f))
 }
 
 // Get a PathBuf to a file with the given name and extension
@@ -163,105 +159,12 @@ pub fn open_db(database_name: &str) -> DatabaseFilePair {
     let log = open_db_of_type(database_name, FileType::Log);
 
     DatabaseFilePair {
-        dat: DatabaseFile::new(dat),
-        log: DatabaseFile::new(log),
+        dat: DiskFile::new(dat),
+        log: DiskFile::new(log),
     }
 }
 
 fn open_db_of_type(database_name: &str, file_type: FileType) -> File {
     let path = get_db_path(database_name, file_type);
     util::open_file(&path).expect("Failed to open database.")
-}
-
-#[cfg(test)]
-mod persistence_tests {
-    use crate::{file::DatabaseFile, page::PAGE_SIZE_BYTES};
-
-    use std::{env::temp_dir, fs::OpenOptions, path::PathBuf};
-    use uuid::Uuid;
-
-    fn temp_dir_path() -> std::path::PathBuf {
-        let mut dir = temp_dir();
-        let id = Uuid::new_v4().to_string();
-        dir.push(id + ".tmp");
-
-        dir
-    }
-
-    fn get_temp_file() -> (DatabaseFile, PathBuf) {
-        let path = temp_dir_path();
-
-        let file = OpenOptions::new()
-            .write(true)
-            .read(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)
-            .expect("Failed to create temp file");
-
-        (DatabaseFile::new(file), path)
-    }
-
-    #[test]
-    fn test_write_page() {
-        let (mut temp_file, temp_path) = get_temp_file();
-        let data = vec![1, 2, 0];
-
-        let result = temp_file.write_page(&data, 0);
-
-        assert!(result.is_ok());
-
-        // Clean down
-        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
-    }
-
-    #[test]
-    fn test_read_page() {
-        let (mut temp_file, temp_path) = get_temp_file();
-
-        // Create a page-sized buffer
-        let mut buffer = vec![0; PAGE_SIZE_BYTES as usize];
-        buffer[0] = 1;
-
-        // Act
-        let _ = temp_file.write_page(&buffer, 0);
-
-        // Read
-        let result = temp_file.read_page(0);
-        let read_bytes = result.unwrap();
-
-        // Assert
-        assert_eq!(read_bytes[0], 1);
-        assert_eq!(read_bytes[1], 0);
-
-        // Clean down
-        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
-    }
-
-    #[test]
-    fn test_page_seek() {
-        let (mut temp_file, temp_path) = get_temp_file();
-
-        // Create 2 page-sized buffers
-        let buffer1 = vec![0; PAGE_SIZE_BYTES as usize];
-        let mut buffer2 = vec![0; PAGE_SIZE_BYTES as usize];
-
-        // Write a byte at the start of the 2nd page
-        buffer2[0] = 1;
-
-        // Act
-        let _ = temp_file.write_page(&buffer1, 0);
-        let _ = temp_file.write_page(&buffer2, 1);
-
-        // Read
-        let result = temp_file.read_page(1);
-        let read_bytes = result.unwrap();
-
-        // Assert
-        assert_eq!(read_bytes[0], 1);
-        assert_eq!(read_bytes[1], 0);
-
-        // Clean down
-        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
-    }
 }
