@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use deku::ctx::Endian;
 use deku::prelude::{DekuRead, DekuWrite};
 
-use crate::fm::DatabaseFileId;
+use crate::file::DatabaseFileId;
 use crate::page::PageId;
 use crate::util::time_bytes;
 

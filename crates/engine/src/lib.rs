@@ -2,6 +2,7 @@ mod bootstrap;
 pub mod btree;
 mod catalog;
 pub mod engine;
+mod file;
 mod file_format;
 mod fm;
 mod index_pager;

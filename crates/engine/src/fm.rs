@@ -1,19 +1,15 @@
 use anyhow::Result;
 use deku::DekuContainerRead;
 use derive_more::derive::From;
-use std::{collections::HashMap, fs::File, hash::Hash};
+use std::{collections::HashMap, hash::Hash};
 use thiserror::Error;
 
 use crate::{
+    file::{DatabaseFile, DatabaseFileId},
     file_format::FileType,
     page::{PageDecoder, PageId},
     page_cache::PageBytes,
-    persistence,
 };
-
-/// An ID for an individual database file.
-/// Note: Not an 'id to be used in a DB table' or otherwise.
-pub type DatabaseFileId = u16;
 
 #[derive(Debug, From, Error)]
 enum FileError {
@@ -54,14 +50,14 @@ impl IdMapKey {
 
 pub struct IdentifiedFile<'a> {
     pub id: &'a FileId,
-    pub file: &'a File,
+    pub file: &'a mut DatabaseFile,
 }
 
 #[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
-    handles: HashMap<FileId, File>,
+    handles: HashMap<FileId, DatabaseFile>,
     allocated_page_count: HashMap<FileId, PageId>,
 }
 
@@ -75,7 +71,7 @@ impl FileManager {
         }
     }
 
-    pub fn add(&mut self, id: FileId, file: File, page_count: PageId) {
+    pub fn add(&mut self, id: FileId, file: DatabaseFile, page_count: PageId) {
         // Insert entries into the ID and Name maps to facilitate finding Files by either property
         self.id_map.insert(
             IdMapKey {
@@ -97,20 +93,20 @@ impl FileManager {
         self.allocated_page_count.insert(id.clone(), page_count);
     }
 
-    pub fn get_from_id(&self, id: DatabaseFileId, ty: FileType) -> Option<&File> {
+    pub fn get_from_id(&mut self, id: DatabaseFileId, ty: FileType) -> Option<&mut DatabaseFile> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
-        self.handles.get(file_id)
+        self.handles.get_mut(file_id)
     }
 
-    pub fn get_from_name(&self, name: String, ty: FileType) -> Option<&File> {
+    pub fn get_from_name(&mut self, name: String, ty: FileType) -> Option<&mut DatabaseFile> {
         let file_id = self.name_map.get(&NameMapKey { name, ty })?;
-        self.handles.get(file_id)
+        self.handles.get_mut(file_id)
     }
 
-    pub fn get_all<'a>(&'a self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
+    pub fn get_all<'a>(&'a mut self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
         Box::new(
             self.handles
-                .iter()
+                .iter_mut()
                 .map(|(id, file)| IdentifiedFile { id, file }),
         )
     }
@@ -120,7 +116,7 @@ impl FileManager {
         self.allocated_page_count.get(file_id).copied()
     }
 
-    pub fn read_page_as<'a, T>(&self, file_id: &IdMapKey, page_index: PageId) -> Result<T>
+    pub fn read_page_as<'a, T>(&mut self, file_id: &IdMapKey, page_index: PageId) -> Result<T>
     where
         T: DekuContainerRead<'a> + std::fmt::Debug,
     {
@@ -132,10 +128,10 @@ impl FileManager {
         Ok(bytes)
     }
 
-    pub fn read_page(&self, file_id: &IdMapKey, page_index: PageId) -> Result<PageBytes> {
+    pub fn read_page(&mut self, file_id: &IdMapKey, page_index: PageId) -> Result<PageBytes> {
         match self.id_map.get(file_id) {
-            Some(id) => match self.handles.get(id) {
-                Some(file) => persistence::read_page(file, page_index),
+            Some(id) => match self.handles.get_mut(id) {
+                Some(file) => file.read_page(page_index),
                 None => Err(FileError::FileIdNotMatched.into()),
             },
             None => Err(FileError::FileIdNotMatched.into()),
@@ -144,9 +140,9 @@ impl FileManager {
 
     pub fn write_page(&mut self, file_id: &IdMapKey, data: &[u8], page_index: u32) -> Result<()> {
         match self.id_map.get(file_id) {
-            Some(id) => match self.handles.get(id) {
+            Some(id) => match self.handles.get_mut(id) {
                 Some(file) => {
-                    persistence::write_page(file, data, page_index)?;
+                    file.write_page(data, page_index)?;
 
                     let current_offset = self.allocated_page_count.get(id).unwrap();
 

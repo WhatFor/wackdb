@@ -13,7 +13,6 @@ use crate::{
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,
-    persistence,
 };
 
 #[derive(Default)]
@@ -220,8 +219,9 @@ impl VirtualMachine {
                 // Read the `master` SCHEMA_INFO page. This is going to tell us
                 // where in the `master` DB to find info on the databases, tables, columns
                 // and indexes that exist.
-                let schema_page_bytes =
-                    persistence::read_page(master_data_file.unwrap(), SCHEMA_INFO_PAGE_INDEX)?;
+                let schema_page_bytes = master_data_file
+                    .unwrap()
+                    .read_page(SCHEMA_INFO_PAGE_INDEX)?;
 
                 let schema_page = PageDecoder::from_bytes(&schema_page_bytes);
                 let schema_info = schema_page.try_read::<SchemaInfo>(0)?;

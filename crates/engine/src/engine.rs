@@ -1,6 +1,6 @@
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
 use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
-use crate::fm::{FileId, FileManager, IdentifiedFile};
+use crate::fm::{FileId, FileManager};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::persistence::ValidationError;
@@ -39,19 +39,19 @@ impl Default for Engine {
 
 impl Engine {
     pub fn init(&mut self) {
-        let master_db_result = persistence::open_or_create_master_db();
+        let master_db_result = bootstrap::open_or_create_master_db();
 
         match master_db_result {
             Ok(x) => {
                 self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Primary),
-                    x.dat,
+                    x.files.dat,
                     x.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Log),
-                    x.log,
+                    x.files.log,
                     0,
                 );
             }
@@ -66,7 +66,7 @@ impl Engine {
             return;
         }
 
-        match persistence::open_user_dbs() {
+        match bootstrap::open_user_dbs() {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     log::info!(
@@ -77,13 +77,13 @@ impl Engine {
 
                     self.storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.clone().into(), FileType::Primary),
-                        user_db.dat,
+                        user_db.files.dat,
                         user_db.allocated_page_count,
                     );
 
                     self.storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.into(), FileType::Log),
-                        user_db.log,
+                        user_db.files.log,
                         0,
                     );
                 }
@@ -153,13 +153,13 @@ impl Engine {
 
                 self.storage.file_manager.add(
                     FileId::new(result.id, result.name.clone(), FileType::Primary),
-                    result.dat,
+                    result.files.dat,
                     result.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
                     FileId::new(result.id, result.name, FileType::Log),
-                    result.log,
+                    result.files.log,
                     0,
                 );
 
@@ -173,24 +173,22 @@ impl Engine {
         }
     }
 
-    fn validate_all_data_files(&self) -> Result<()> {
+    fn validate_all_data_files(&mut self) -> Result<()> {
         self.storage
             .file_manager
             .get_all()
             .filter(|file| file.id.ty != FileType::Log)
-            .map(|file| self.validate_data_file(file))
+            .map(|file| {
+                let file_info_page = file.file.read_page(FILE_INFO_PAGE_INDEX)?;
+
+                let page = PageDecoder::from_bytes(&file_info_page);
+                let checksum_pass = page.check();
+
+                match checksum_pass.pass {
+                    true => Ok(()),
+                    false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
+                }
+            })
             .collect()
-    }
-
-    fn validate_data_file(&self, identifiable_file: IdentifiedFile) -> Result<()> {
-        let file_info_page = persistence::read_page(identifiable_file.file, FILE_INFO_PAGE_INDEX)?;
-
-        let page = PageDecoder::from_bytes(&file_info_page);
-        let checksum_pass = page.check();
-
-        match checksum_pass.pass {
-            true => Ok(()),
-            false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
-        }
     }
 }

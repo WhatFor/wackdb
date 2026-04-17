@@ -1,15 +1,108 @@
+use std::path::Path;
+
 use anyhow::Result;
 use deku::DekuContainerWrite;
 
 use crate::{
     btree::BTree,
-    catalog::DbInt,
-    catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME},
+    catalog::{
+        Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
+    },
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageHeader, PageId, PageType},
     page_cache::PageBytes,
+    persistence::{self, OpenDatabaseResult, WACK_DIRECTORY},
+    util,
 };
+
+pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
+    let exists = persistence::db_exists(MASTER_NAME, FileType::Primary)?;
+
+    if exists {
+        let db = persistence::open_db(MASTER_NAME);
+        let allocated_page_count = db.dat.allocated_page_count()?;
+
+        log::info!(
+            "Opened existing master DB, containing {} pages.",
+            allocated_page_count
+        );
+
+        return Ok(OpenDatabaseResult {
+            id: MASTER_DB_ID,
+            name: MASTER_NAME.into(),
+            files: persistence::DatabaseFilePair {
+                dat: db.dat,
+                log: db.log,
+            },
+            allocated_page_count,
+        });
+    }
+
+    persistence::create_database(MASTER_NAME, MASTER_DB_ID, true)
+}
+
+pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
+    let dbs = find_user_databases()?;
+
+    let results = dbs
+        .map(|db| {
+            let mut user_db = persistence::open_db(&db);
+            let allocated_page_count = user_db.dat.allocated_page_count()?;
+            let id = user_db.dat.db_id();
+
+            if id.is_err() {
+                panic!("I have no idea");
+            }
+
+            log::info!("Opening user DB: {:?}", db);
+
+            Ok(OpenDatabaseResult {
+                id: id.unwrap(),
+                name: db,
+                files: persistence::DatabaseFilePair {
+                    dat: user_db.dat,
+                    log: user_db.log,
+                },
+                allocated_page_count,
+            })
+        })
+        .collect();
+
+    results
+}
+
+pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
+    let base_path = util::get_base_path();
+    let data_path = Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));
+
+    let files = std::fs::read_dir(data_path);
+
+    let unique_file_names = files?.filter_map(|entry| {
+        let entry = entry.ok()?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            return None;
+        }
+
+        if let Some(filename) = path.file_stem() {
+            if filename == MASTER_NAME {
+                return None;
+            }
+        }
+
+        path.extension()
+            .filter(|e| persistence::is_wack_file(e))
+            .and_then(|_| {
+                path.file_stem()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .map(str::to_owned)
+            })
+    });
+
+    Ok(Box::new(unique_file_names))
+}
 
 pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
     let master_id = &IdMapKey::new(MASTER_DB_ID, FileType::Primary);

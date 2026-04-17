@@ -1,4 +1,4 @@
-use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
+use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId};
 
 pub type PageBytes = [u8; 8192];
 
@@ -36,7 +36,11 @@ impl PageCache {
         PageCache { lru_cache }
     }
 
-    pub fn get_page(&mut self, id: &FilePageId, file_manager: &FileManager) -> Option<PageBytes> {
+    pub fn get_page(
+        &mut self,
+        id: &FilePageId,
+        file_manager: &mut FileManager,
+    ) -> Option<PageBytes> {
         if let Some(page) = self.lru_cache.get(id) {
             return Some(*page);
         }
@@ -45,7 +49,7 @@ impl PageCache {
 
         match file {
             Some(file_handle) => {
-                let disk_page = persistence::read_page(file_handle, id.page_index);
+                let disk_page = file_handle.read_page(id.page_index);
 
                 match disk_page {
                     Ok(disk_page_ok) => {
@@ -77,7 +81,7 @@ mod page_cache_tests {
 
     #[test]
     fn test_put_and_get() {
-        let fm = FileManager::new();
+        let mut fm = FileManager::new();
         let mut page_cache = PageCache::new(3);
 
         let mut page: PageBytes = [0; 8192];
@@ -85,14 +89,14 @@ mod page_cache_tests {
 
         let ix = FilePageId::new(0, 1);
         page_cache.put_page(&ix, page);
-        let read_value = page_cache.get_page(&ix, &fm);
+        let read_value = page_cache.get_page(&ix, &mut fm);
 
         assert_eq!(read_value.unwrap(), page);
     }
 
     #[test]
     fn test_capacity() {
-        let fm = FileManager::new();
+        let mut fm = FileManager::new();
         let mut page_cache = PageCache::new(3);
 
         let page: PageBytes = [0; 8192];
@@ -102,10 +106,10 @@ mod page_cache_tests {
         page_cache.put_page(&FilePageId::new(0, 3), page);
         page_cache.put_page(&FilePageId::new(0, 4), page);
 
-        let read_value_evicted = page_cache.get_page(&FilePageId::new(0, 1), &fm);
+        let read_value_evicted = page_cache.get_page(&FilePageId::new(0, 1), &mut fm);
         assert_eq!(read_value_evicted, None);
 
-        let read_value_exists = page_cache.get_page(&FilePageId::new(0, 2), &fm);
+        let read_value_exists = page_cache.get_page(&FilePageId::new(0, 2), &mut fm);
         assert_eq!(read_value_exists.unwrap(), page);
     }
 }
