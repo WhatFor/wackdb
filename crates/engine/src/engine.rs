@@ -1,16 +1,15 @@
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
-use crate::file_format::{DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX, FILE_INFO_PAGE_INDEX};
-use crate::fm::{DatabaseFileId, FileId, FileManager, IdentifiedFile};
+use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
+use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::persistence::{OpenDatabaseResult, ValidationError};
+use crate::persistence::ValidationError;
 use crate::vm::VirtualMachine;
 use crate::{bootstrap, persistence};
 
 use anyhow::Result;
 use cli_common::{ExecuteResult, StatementResult};
 use parser::ast::{Program, Statement};
-use std::fs::File;
 
 pub struct Engine {
     vm: VirtualMachine,
@@ -40,7 +39,7 @@ impl Default for Engine {
 
 impl Engine {
     pub fn init(&mut self) {
-        let master_db_result = self.open_or_create_master_db();
+        let master_db_result = persistence::open_or_create_master_db();
 
         match master_db_result {
             Ok(x) => {
@@ -67,7 +66,7 @@ impl Engine {
             return;
         }
 
-        match self.open_user_dbs() {
+        match persistence::open_user_dbs() {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     log::info!(
@@ -95,7 +94,9 @@ impl Engine {
             }
         }
 
-        self.validate_files();
+        if let Err(e) = self.validate_all_data_files() {
+            panic!("Failed to validate file: {:?}", e);
+        }
     }
 
     pub fn execute(&mut self, prog: &Program) -> Result<ExecuteResult> {
@@ -145,7 +146,7 @@ impl Engine {
                 Ok(StatementResult::default())
             }
             Statement::CreateDatabase(s) => {
-                let next_id = self.next_id();
+                let next_id = self.storage.file_manager.next_file_id();
 
                 let db_name = s.database_name.value.as_str();
                 let result = persistence::create_database(db_name, next_id, false)?;
@@ -163,41 +164,26 @@ impl Engine {
                 );
 
                 // Revalidate all files
-                self.validate_files();
+                if let Err(e) = self.validate_all_data_files() {
+                    panic!("Failed to validate file: {:?}", e);
+                };
 
                 Ok(StatementResult::default())
             }
         }
     }
 
-    fn validate_files(&self) {
+    fn validate_all_data_files(&self) -> Result<()> {
         self.storage
             .file_manager
             .get_all()
             .filter(|file| file.id.ty != FileType::Log)
-            .for_each(|file| self.validate_file(file));
+            .map(|file| self.validate_data_file(file))
+            .collect()
     }
 
-    fn validate_file(&self, identifiable_file: IdentifiedFile) {
-        match self.validate_data_file(identifiable_file.file) {
-            Ok(_) => {
-                log::info!(
-                    "Database {}:{:?} validated successfully.",
-                    identifiable_file.id.id,
-                    identifiable_file.id.ty
-                );
-            }
-            Err(err) => log::error!(
-                "Database {}:{:?} failed validation: {:?}",
-                identifiable_file.id.id,
-                identifiable_file.id.ty,
-                err
-            ),
-        };
-    }
-
-    fn validate_data_file(&self, file: &File) -> Result<()> {
-        let file_info_page = persistence::read_page(file, FILE_INFO_PAGE_INDEX)?;
+    fn validate_data_file(&self, identifiable_file: IdentifiedFile) -> Result<()> {
+        let file_info_page = persistence::read_page(identifiable_file.file, FILE_INFO_PAGE_INDEX)?;
 
         let page = PageDecoder::from_bytes(&file_info_page);
         let checksum_pass = page.check();
@@ -206,72 +192,5 @@ impl Engine {
             true => Ok(()),
             false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
         }
-    }
-
-    pub fn open_or_create_master_db(&self) -> Result<OpenDatabaseResult> {
-        let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary)?;
-
-        if exists {
-            let db = persistence::open_db(MASTER_NAME);
-            let allocated_page_count = persistence::get_allocated_page_count(&db.dat);
-
-            log::info!(
-                "Opened existing master DB, containing {} pages.",
-                allocated_page_count
-            );
-
-            return Ok(OpenDatabaseResult {
-                id: MASTER_DB_ID,
-                name: MASTER_NAME.into(),
-                dat: db.dat,
-                log: db.log,
-                allocated_page_count,
-            });
-        }
-
-        persistence::create_database(MASTER_NAME, MASTER_DB_ID, true)
-    }
-
-    pub fn open_user_dbs(&self) -> Result<Vec<OpenDatabaseResult>> {
-        let dbs = persistence::find_user_databases()?;
-
-        let results = dbs
-            .map(|db| {
-                let user_db = persistence::open_db(&db);
-                let allocated_page_count = persistence::get_allocated_page_count(&user_db.dat);
-                let id = self.get_db_id(&user_db.dat);
-
-                if id.is_err() {
-                    panic!("I have no idea");
-                }
-
-                log::info!("Opening user DB: {:?}", db);
-
-                OpenDatabaseResult {
-                    id: id.unwrap(),
-                    name: db,
-                    dat: user_db.dat,
-                    log: user_db.log,
-                    allocated_page_count,
-                }
-            })
-            .collect();
-
-        Ok(results)
-    }
-
-    fn next_id(&self) -> DatabaseFileId {
-        self.storage.file_manager.next_file_id()
-    }
-
-    pub fn get_db_id(&self, file: &File) -> Result<DatabaseFileId> {
-        //Circumvent the page cache - can't use it until we have the db_id
-        let page_bytes = persistence::read_page(file, DATABASE_INFO_PAGE_INDEX)?;
-
-        let page = PageDecoder::from_bytes(&page_bytes);
-
-        let db_info = page.try_read::<DatabaseInfo>(0)?;
-
-        Ok(db_info.database_id)
     }
 }

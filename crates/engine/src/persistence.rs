@@ -11,13 +11,13 @@ use derive_more::derive::From;
 use thiserror::Error;
 
 use crate::{
-    catalog::MASTER_NAME,
+    catalog::{MASTER_DB_ID, MASTER_NAME},
     file_format::{
         DatabaseInfo, FileInfo, FileType, SchemaInfo, CURRENT_DATABASE_VERSION,
         DATABASE_INFO_PAGE_INDEX, FILE_INFO_PAGE_INDEX, SCHEMA_INFO_PAGE_INDEX,
     },
     fm::DatabaseFileId,
-    page::{PageEncoder, PageHeader, PageId, PageType, PAGE_SIZE_BYTES},
+    page::{PageDecoder, PageEncoder, PageHeader, PageId, PageType, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
     util,
 };
@@ -81,6 +81,30 @@ pub struct OpenDatabaseResult {
     pub allocated_page_count: PageId,
 }
 
+pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
+    let exists = check_db_exists(MASTER_NAME, FileType::Primary)?;
+
+    if exists {
+        let db = open_db(MASTER_NAME);
+        let allocated_page_count = get_allocated_page_count(&db.dat);
+
+        log::info!(
+            "Opened existing master DB, containing {} pages.",
+            allocated_page_count
+        );
+
+        return Ok(OpenDatabaseResult {
+            id: MASTER_DB_ID,
+            name: MASTER_NAME.into(),
+            dat: db.dat,
+            log: db.log,
+            allocated_page_count,
+        });
+    }
+
+    create_database(MASTER_NAME, MASTER_DB_ID, true)
+}
+
 pub fn create_database(
     db_name: &str,
     db_id: DatabaseFileId,
@@ -105,7 +129,7 @@ pub fn create_database(
     })
 }
 
-pub fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<File> {
+fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<File> {
     let file = create_db_file_empty(db_name, FileType::Primary)?;
 
     write_file_info(&file)?;
@@ -118,7 +142,7 @@ pub fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool
     Ok(file)
 }
 
-pub fn create_db_log_file(db_name: &str) -> Result<File> {
+fn create_db_log_file(db_name: &str) -> Result<File> {
     create_db_file_empty(db_name, FileType::Log)
 }
 
@@ -237,6 +261,45 @@ pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> 
     } else {
         Err(PersistenceError::PageSeekFailed.into())
     }
+}
+
+pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
+    let dbs = find_user_databases()?;
+
+    let results = dbs
+        .map(|db| {
+            let user_db = open_db(&db);
+            let allocated_page_count = get_allocated_page_count(&user_db.dat);
+            let id = get_db_id(&user_db.dat);
+
+            if id.is_err() {
+                panic!("I have no idea");
+            }
+
+            log::info!("Opening user DB: {:?}", db);
+
+            OpenDatabaseResult {
+                id: id.unwrap(),
+                name: db,
+                dat: user_db.dat,
+                log: user_db.log,
+                allocated_page_count,
+            }
+        })
+        .collect();
+
+    Ok(results)
+}
+
+fn get_db_id(file: &File) -> Result<DatabaseFileId> {
+    //Circumvent the page cache - can't use it until we have the db_id
+    let page_bytes = read_page(file, DATABASE_INFO_PAGE_INDEX)?;
+
+    let page = PageDecoder::from_bytes(&page_bytes);
+
+    let db_info = page.try_read::<DatabaseInfo>(0)?;
+
+    Ok(db_info.database_id)
 }
 
 pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
