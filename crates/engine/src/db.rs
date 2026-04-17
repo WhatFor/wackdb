@@ -10,6 +10,7 @@ use crate::{
         DatabaseInfo, FileInfo, FileType, SchemaInfo, CURRENT_DATABASE_VERSION,
         DATABASE_INFO_PAGE_INDEX, FILE_INFO_PAGE_INDEX, SCHEMA_INFO_PAGE_INDEX,
     },
+    fm::DatabaseFileId,
     page::{PageDecoder, PageEncoder, PageHeader, PageType},
     persistence,
 };
@@ -37,11 +38,7 @@ pub enum ValidationError {
     PersistenceError(persistence::PersistenceError),
 }
 
-/// An ID for an individual database file.
-/// Note: Not an 'id to be used in a DB table' or otherwise.
-pub type DatabaseId = u16;
-
-pub fn create_db_data_file(db_name: &str, db_id: DatabaseId, is_master: bool) -> Result<File> {
+pub fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<File> {
     let file = persistence::create_db_file_empty(db_name, FileType::Primary)?;
 
     write_file_info(&file)?;
@@ -93,7 +90,7 @@ fn write_file_info(file: &std::fs::File) -> Result<()> {
 }
 
 /// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
-fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseId) -> Result<()> {
+fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseFileId) -> Result<()> {
     let header = PageHeader::new(PageType::DatabaseInfo);
     let mut page = PageEncoder::new(header);
 

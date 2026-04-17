@@ -1,7 +1,7 @@
 use deku::{ctx::Endian, DekuRead, DekuWrite};
 
-use crate::db::DatabaseId;
 use crate::file_format::CURRENT_DATABASE_VERSION;
+use crate::fm::DatabaseFileId;
 use crate::page::PageId;
 use crate::types::{DbByte, DbDate, DbInt, DbLong, DbShort};
 use crate::util::now_bytes;
@@ -25,7 +25,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new(id: DatabaseId, name: String) -> Self {
+    pub fn new(id: DatabaseFileId, name: String) -> Self {
         Database {
             id: id.into(),
             name: name.to_string().into_bytes(),
@@ -52,7 +52,7 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(id: DbInt, database_id: DatabaseId, name: String) -> Self {
+    pub fn new(id: DbInt, database_id: DatabaseFileId, name: String) -> Self {
         Table {
             id,
             database_id: database_id.into(),

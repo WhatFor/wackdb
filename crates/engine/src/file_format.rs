@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use deku::ctx::Endian;
 use deku::prelude::{DekuRead, DekuWrite};
 
-use crate::db::DatabaseId;
+use crate::fm::DatabaseFileId;
 use crate::page::PageId;
 use crate::util::time_bytes;
 
@@ -80,11 +80,11 @@ pub struct DatabaseInfo {
     pub database_version: u8,
 
     #[deku(bytes = 2)]
-    pub database_id: DatabaseId,
+    pub database_id: DatabaseFileId,
 }
 
 impl DatabaseInfo {
-    pub fn new(database_name: &str, database_id: DatabaseId, version: u8) -> Self {
+    pub fn new(database_name: &str, database_id: DatabaseFileId, version: u8) -> Self {
         if database_name.len() >= 256 {
             panic!("db name too long");
         }

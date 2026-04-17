@@ -11,8 +11,8 @@ use thiserror::Error;
 
 use crate::{
     catalog::MASTER_NAME,
-    db::DatabaseId,
     file_format::FileType,
+    fm::DatabaseFileId,
     page::{PageId, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
     util,
@@ -47,7 +47,7 @@ pub enum PersistenceError {
 }
 
 pub struct OpenDatabaseResult {
-    pub id: DatabaseId,
+    pub id: DatabaseFileId,
     pub name: String,
     pub dat: File,
     pub log: File,
@@ -56,7 +56,7 @@ pub struct OpenDatabaseResult {
 
 pub fn create_database(
     db_name: &str,
-    db_id: DatabaseId,
+    db_id: DatabaseFileId,
     is_master: bool,
 ) -> Result<OpenDatabaseResult> {
     let data_exists = check_db_exists(db_name, FileType::Primary)?;

@@ -5,12 +5,15 @@ use std::{collections::HashMap, fs::File, hash::Hash};
 use thiserror::Error;
 
 use crate::{
-    db::DatabaseId,
     file_format::FileType,
     page::{PageDecoder, PageId},
     page_cache::PageBytes,
     persistence,
 };
+
+/// An ID for an individual database file.
+/// Note: Not an 'id to be used in a DB table' or otherwise.
+pub type DatabaseFileId = u16;
 
 #[derive(Debug, From, Error)]
 enum FileError {
@@ -20,13 +23,13 @@ enum FileError {
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct FileId {
-    pub id: DatabaseId,
+    pub id: DatabaseFileId,
     pub name: String,
     pub ty: FileType,
 }
 
 impl FileId {
-    pub fn new(id: DatabaseId, name: String, ty: FileType) -> Self {
+    pub fn new(id: DatabaseFileId, name: String, ty: FileType) -> Self {
         FileId { id, name, ty }
     }
 }
@@ -39,12 +42,12 @@ struct NameMapKey {
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct IdMapKey {
-    id: DatabaseId,
+    id: DatabaseFileId,
     ty: FileType,
 }
 
 impl IdMapKey {
-    pub fn new(id: DatabaseId, ty: FileType) -> Self {
+    pub fn new(id: DatabaseFileId, ty: FileType) -> Self {
         IdMapKey { id, ty }
     }
 }
@@ -94,7 +97,7 @@ impl FileManager {
         self.allocated_page_count.insert(id.clone(), page_count);
     }
 
-    pub fn get_from_id(&self, id: DatabaseId, ty: FileType) -> Option<&File> {
+    pub fn get_from_id(&self, id: DatabaseFileId, ty: FileType) -> Option<&File> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
         self.handles.get(file_id)
     }
@@ -112,7 +115,7 @@ impl FileManager {
         )
     }
 
-    pub fn next_page_id_by_id(&self, id: DatabaseId, ty: FileType) -> Option<PageId> {
+    pub fn next_page_id_by_id(&self, id: DatabaseFileId, ty: FileType) -> Option<PageId> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
         self.allocated_page_count.get(file_id).copied()
     }
@@ -157,7 +160,7 @@ impl FileManager {
             None => Err(FileError::FileIdNotMatched.into()),
         }
     }
-    pub fn next_file_id(&self) -> DatabaseId {
+    pub fn next_file_id(&self) -> DatabaseFileId {
         self.handles.keys().map(|id| id.id).max().unwrap_or(0) + 1
     }
 }

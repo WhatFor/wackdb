@@ -1,7 +1,7 @@
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
-use crate::db::{self, DatabaseId};
+use crate::db::{self};
 use crate::file_format::{DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
-use crate::fm::{FileId, FileManager, IdentifiedFile};
+use crate::fm::{DatabaseFileId, FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::persistence::OpenDatabaseResult;
@@ -249,11 +249,11 @@ impl Engine {
         Ok(results)
     }
 
-    fn next_id(&self) -> DatabaseId {
+    fn next_id(&self) -> DatabaseFileId {
         self.storage.file_manager.next_file_id()
     }
 
-    pub fn get_db_id(&self, file: &File) -> Result<DatabaseId> {
+    pub fn get_db_id(&self, file: &File) -> Result<DatabaseFileId> {
         //Circumvent the page cache - can't use it until we have the db_id
         let page_bytes = persistence::read_page(file, DATABASE_INFO_PAGE_INDEX)?;
 
