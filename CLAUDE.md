@@ -23,9 +23,6 @@ cargo test -p engine
 # Run a specific test by name
 cargo test test_simple_select_statement
 
-# Run with output
-cargo test -- --nocapture
-
 # Run the CLI (REPL)
 cargo run --release
 
@@ -34,7 +31,7 @@ cargo bench -p engine --bench page
 cargo bench -p engine --bench btree
 ```
 
-The REPL accepts SQL commands. Run `.init` first to initialize the master database in `./data/`.
+The REPL accepts SQL commands.
 
 ## Workspace Structure
 
@@ -59,12 +56,13 @@ The engine crate (`crates/engine/src/`) is the core of the project:
 
 - **`engine.rs`** — `Engine` struct: entry point for `execute()`. Coordinates all components.
 - **`vm.rs`** — `VirtualMachine`: executes statements.
-- **`server.rs`** — `Server`: manages the master database and user databases. Knows which tables/columns exist.
+- **`bootstrap.rs`** — Master database initialization: creates or opens the master DB and its system tables.
 - **`page.rs`** — Binary page format using `deku` for encoding/decoding. Pages are 8192 bytes; slot-based row storage.
 - **`page_cache.rs`** — LRU cache for in-memory pages (backed by `lru.rs`).
-- **`fm.rs`** — `FileManager`: maps file IDs to open file handles.
+- **`file.rs`** — `DatabaseStorage` trait with `DiskFile` and `InMemoryFile` implementations. Handles page-level read/write.
+- **`fm.rs`** — `FileManager`: maps file IDs to open `DatabaseStorage` handles.
+- **`file_format.rs`** — Binary file format constants and structs: `FileInfo`, `DatabaseInfo`, `SchemaInfo`.
 - **`persistence.rs`** — Low-level file I/O: creating and opening `.wak` database files.
-- **`db.rs`** — `DatabaseInfo` page (page 1) encoding/decoding.
 - **`btree.rs`** — B-tree index implementation.
 
 ## Data Flow
@@ -80,12 +78,12 @@ The engine crate (`crates/engine/src/`) is the core of the project:
 
 - Files stored in `./data/` (hardcoded path)
 - `.wak` = primary data file, `.wal` = write-ahead log
-- Each file: page 0 is `FileInfo`, page 1 is `DatabaseInfo`, subsequent pages hold table data
+- Each file: page 0 is `FileInfo`, page 1 is `DatabaseInfo`, page 2 is `SchemaInfo`, subsequent pages hold table data
 - See `docs/file_layout.md` for binary layout details
 
 ## Master Database
 
-The master database tracks all user databases/tables/columns in internal system tables (`databases`, `tables`, `columns`, `indexes`). `Server` coordinates between the master DB and user DBs. See `docs/databases_and_tables.md`.
+The master database tracks all user databases/tables/columns in internal system tables (`databases`, `tables`, `columns`, `indexes`). `Engine` coordinates via the `bootstrap` module to initialize and manage the master DB. See `docs/databases_and_tables.md`.
 
 ## Tests
 
