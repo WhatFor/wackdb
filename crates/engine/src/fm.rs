@@ -1,21 +1,10 @@
-use anyhow::Result;
-use deku::DekuContainerRead;
-use derive_more::derive::From;
 use std::{collections::HashMap, hash::Hash};
-use thiserror::Error;
 
 use crate::{
     file::{DatabaseFileId, DatabaseStorage},
     file_format::FileType,
-    page::{PageDecoder, PageId},
-    page_cache::PageBytes,
+    page::PageId,
 };
-
-#[derive(Debug, From, Error)]
-enum FileError {
-    #[error("File not found.")]
-    FileIdNotMatched,
-}
 
 #[derive(Eq, PartialEq, Hash, Clone)]
 pub struct FileId {
@@ -40,12 +29,6 @@ struct NameMapKey {
 pub struct IdMapKey {
     id: DatabaseFileId,
     ty: FileType,
-}
-
-impl IdMapKey {
-    pub fn new(id: DatabaseFileId, ty: FileType) -> Self {
-        IdMapKey { id, ty }
-    }
 }
 
 pub struct IdentifiedFile<'a> {
@@ -118,51 +101,6 @@ impl FileManager {
         }))
     }
 
-    pub fn next_page_id_by_id(&self, id: DatabaseFileId, ty: FileType) -> Option<PageId> {
-        let file_id = self.id_map.get(&IdMapKey { id, ty })?;
-        self.allocated_page_count.get(file_id).copied()
-    }
-
-    pub fn read_page_as<'a, T>(&mut self, file_id: &IdMapKey, page_index: PageId) -> Result<T>
-    where
-        T: DekuContainerRead<'a> + std::fmt::Debug,
-    {
-        let page_bytes = self.read_page(file_id, page_index)?;
-
-        let page = PageDecoder::from_bytes(&page_bytes);
-        let bytes = page.try_read::<T>(0)?;
-
-        Ok(bytes)
-    }
-
-    pub fn read_page(&mut self, file_id: &IdMapKey, page_index: PageId) -> Result<PageBytes> {
-        match self.id_map.get(file_id) {
-            Some(id) => match self.handles.get_mut(id) {
-                Some(file) => file.read_page(page_index),
-                None => Err(FileError::FileIdNotMatched.into()),
-            },
-            None => Err(FileError::FileIdNotMatched.into()),
-        }
-    }
-
-    pub fn write_page(&mut self, file_id: &IdMapKey, data: &[u8], page_index: u32) -> Result<()> {
-        match self.id_map.get(file_id) {
-            Some(id) => match self.handles.get_mut(id) {
-                Some(file) => {
-                    file.write_page(data, page_index)?;
-
-                    let current_offset = self.allocated_page_count.get(id).unwrap();
-
-                    self.allocated_page_count
-                        .insert(id.clone(), current_offset + 1);
-
-                    Ok(())
-                }
-                None => Err(FileError::FileIdNotMatched.into()),
-            },
-            None => Err(FileError::FileIdNotMatched.into()),
-        }
-    }
     pub fn next_file_id(&self) -> DatabaseFileId {
         self.handles.keys().map(|id| id.id).max().unwrap_or(0) + 1
     }
@@ -170,9 +108,8 @@ impl FileManager {
 
 #[cfg(test)]
 mod fm_tests {
-    use crate::file::MemoryFile;
-
     use super::*;
+    use crate::file::MemoryFile;
 
     #[test]
     fn fm_can_add_and_get_file_by_id() {
