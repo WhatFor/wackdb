@@ -3,6 +3,7 @@ use std::{
     fs::File,
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use anyhow::Result;
@@ -11,9 +12,12 @@ use thiserror::Error;
 
 use crate::{
     catalog::MASTER_NAME,
-    file_format::FileType,
+    file_format::{
+        DatabaseInfo, FileInfo, FileType, SchemaInfo, CURRENT_DATABASE_VERSION,
+        DATABASE_INFO_PAGE_INDEX, FILE_INFO_PAGE_INDEX, SCHEMA_INFO_PAGE_INDEX,
+    },
     fm::DatabaseFileId,
-    page::{PageId, PAGE_SIZE_BYTES},
+    page::{PageEncoder, PageHeader, PageId, PageType, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
     util,
 };
@@ -21,6 +25,29 @@ use crate::{
 pub const DATA_FILE_EXT: &str = "wak";
 pub const LOG_FILE_EXT: &str = "wal";
 pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
+
+#[derive(Debug, From, Error)]
+pub enum DbError {
+    #[error("Deku Error: {0}")]
+    Deku(deku::error::DekuError),
+    #[error("Persistence Error: {0}")]
+    Persistence(PersistenceError),
+    #[error("Validation Error: {0}")]
+    Validation(ValidationError),
+    #[error("Page Encoder Error: {0}")]
+    PageEncoder(crate::page::PageEncoderError),
+}
+
+#[derive(Debug, From, Error)]
+pub enum ValidationError {
+    #[error("Failed to open file info page.")]
+    #[allow(dead_code)]
+    FailedToOpenFileInfo,
+    #[error("Checksum failed for file info page. Expected: {0:?}")]
+    FileInfoChecksumIncorrect(crate::page::ChecksumResult),
+    #[error("Persistence error: {0}")]
+    PersistenceError(PersistenceError),
+}
 
 #[derive(Debug, From, Error)]
 pub enum CreateDatabaseError {
@@ -33,7 +60,7 @@ pub enum CreateDatabaseError {
     #[error("Unable to create database: {0}")]
     DiskError(PersistenceError),
     #[error("Unable to create database: {0}")]
-    DbError(crate::db::DbError),
+    DbError(DbError),
 }
 
 #[derive(Debug, From, Error)]
@@ -66,8 +93,8 @@ pub fn create_database(
         return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)).into());
     }
 
-    let data_file = crate::db::create_db_data_file(db_name, db_id, is_master)?;
-    let log_file = crate::db::create_db_log_file(db_name)?;
+    let data_file = create_db_data_file(db_name, db_id, is_master)?;
+    let log_file = create_db_log_file(db_name)?;
 
     Ok(OpenDatabaseResult {
         id: db_id,
@@ -76,6 +103,76 @@ pub fn create_database(
         log: log_file,
         allocated_page_count: 3,
     })
+}
+
+pub fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<File> {
+    let file = create_db_file_empty(db_name, FileType::Primary)?;
+
+    write_file_info(&file)?;
+    write_db_info(&file, db_name, db_id)?;
+
+    if is_master {
+        write_schema_info(&file)?;
+    }
+
+    Ok(file)
+}
+
+pub fn create_db_log_file(db_name: &str) -> Result<File> {
+    create_db_file_empty(db_name, FileType::Log)
+}
+
+// TODO: The following 3 functions write pages to files
+//       Next up to do is figure out how this should go through the page cache
+//       Maybe just a .put on the cache, and the cache should have a .flush function
+//       to force the write to disk.
+//       Then, subsequent queries for the data can hit the cache instead of disk.
+//       That does mean the page cache needs to know about files and have access
+//       to the file handles, so now's the time to figure that out.
+
+/// Write a FILE_INFO page to the correct page index, FILE_INFO_PAGE_INDEX.
+fn write_file_info(file: &std::fs::File) -> Result<()> {
+    let header = PageHeader::new(PageType::FileInfo);
+    let mut page = PageEncoder::new(header);
+
+    let created_date = SystemTime::now();
+    let body = FileInfo::new(FileType::Primary, created_date);
+
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    write_page(file, &collected, FILE_INFO_PAGE_INDEX)
+}
+
+/// Write a DATABASE_INFO page to the correct page index, DATABASE_INFO_PAGE_INDEX.
+fn write_db_info(file: &std::fs::File, db_name: &str, db_id: DatabaseFileId) -> Result<()> {
+    let header = PageHeader::new(PageType::DatabaseInfo);
+    let mut page = PageEncoder::new(header);
+
+    let body = DatabaseInfo::new(db_name, db_id, CURRENT_DATABASE_VERSION);
+
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    write_page(file, &collected, DATABASE_INFO_PAGE_INDEX)
+}
+
+/// Write a SCHEMA_INFO page to the correct page index, SCHEMA_INFO_PAGE_INDEX.
+fn write_schema_info(file: &std::fs::File) -> Result<()> {
+    let header = PageHeader::new(PageType::SchemaInfo);
+    let mut page = PageEncoder::new(header);
+
+    let body = SchemaInfo {
+        databases_root_page_id: 0,
+        tables_root_page_id: 0,
+        columns_root_page_id: 0,
+        indexes_root_page_id: 0,
+    };
+
+    page.add_slot(body)?;
+    let collected = page.collect();
+
+    write_page(file, &collected, SCHEMA_INFO_PAGE_INDEX)
 }
 
 // Returns true if the given file exists

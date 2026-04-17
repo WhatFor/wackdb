@@ -1,10 +1,9 @@
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
-use crate::db::{self};
-use crate::file_format::{DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
+use crate::file_format::{DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX, FILE_INFO_PAGE_INDEX};
 use crate::fm::{DatabaseFileId, FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::persistence::OpenDatabaseResult;
+use crate::persistence::{OpenDatabaseResult, ValidationError};
 use crate::vm::VirtualMachine;
 use crate::{bootstrap, persistence};
 
@@ -180,7 +179,7 @@ impl Engine {
     }
 
     fn validate_file(&self, identifiable_file: IdentifiedFile) {
-        match db::validate_data_file(identifiable_file.file) {
+        match self.validate_data_file(identifiable_file.file) {
             Ok(_) => {
                 log::info!(
                     "Database {}:{:?} validated successfully.",
@@ -195,6 +194,18 @@ impl Engine {
                 err
             ),
         };
+    }
+
+    fn validate_data_file(&self, file: &File) -> Result<()> {
+        let file_info_page = persistence::read_page(file, FILE_INFO_PAGE_INDEX)?;
+
+        let page = PageDecoder::from_bytes(&file_info_page);
+        let checksum_pass = page.check();
+
+        match checksum_pass.pass {
+            true => Ok(()),
+            false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
+        }
     }
 
     pub fn open_or_create_master_db(&self) -> Result<OpenDatabaseResult> {

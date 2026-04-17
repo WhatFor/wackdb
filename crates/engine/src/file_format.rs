@@ -117,3 +117,73 @@ pub struct SchemaInfo {
     #[deku(bytes = 4)]
     pub indexes_root_page_id: PageId,
 }
+
+#[cfg(test)]
+mod file_format_tests {
+    use deku::DekuContainerWrite;
+    use std::time::SystemTime;
+    use util::time_bytes;
+
+    use crate::{
+        file_format::{FileInfo, FileType},
+        *,
+    };
+
+    // #[test]
+    // fn test_validate_master_database() {
+    //     let now = SystemTime::now();
+    //     let page = master::write_master_file_info_page_internal(now).expect("Failed");
+    //     let validate = master::validate_master_file_info(&page);
+
+    //     assert_eq!(validate.is_ok(), true);
+    // }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_primary() {
+        // continue writing this test - trying to get deku to serialise FileInfo.
+        let time = SystemTime::now();
+        let file_info = FileInfo::new(FileType::Primary, time);
+        let bytes = file_info.to_bytes().unwrap();
+
+        let time_bytes = time_bytes(time);
+
+        let expected = vec![
+            // Magic string
+            0,
+            1,
+            6,
+            1,
+            // File Type
+            0,
+            0,
+            // Sector Size
+            0,
+            // Date Created
+            (time_bytes >> 8) as u8,
+            (time_bytes & 0xFF) as u8,
+        ];
+
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn test_read_write_binary_fileinfo_of_type_log() {
+        let time = SystemTime::now();
+        let file_info = FileInfo::new(FileType::Log, time);
+        let bytes = file_info.to_bytes().unwrap();
+
+        let time_bytes = time_bytes(time);
+
+        let time_l = (time_bytes >> 8) as u8;
+        let time_h = (time_bytes & 0xFF) as u8;
+
+        let expected = vec![
+            0, 1, 6, 1, // Magic string
+            1, // File Type
+            0, 0, // Sector Size
+            time_l, time_h, // Created
+        ];
+
+        assert_eq!(bytes, expected);
+    }
+}
