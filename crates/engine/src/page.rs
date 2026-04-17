@@ -10,12 +10,8 @@ pub const CURRENT_HEADER_VERSION: u8 = 1;
 
 /// The amount of bytes needed to store a slot pointer in the page.
 pub const SLOT_POINTER_SIZE: u16 = 2;
-
 pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
-pub const PAGE_SIZE_BYTES_USIZE: usize = 8192; // 2^13
-
 pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
-pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
 
 pub type SlotPointer = u16;
 pub type PageId = u32;
@@ -186,7 +182,7 @@ impl PageEncoder {
     }
 
     fn collect_internal(&mut self) -> Option<PageBytes> {
-        let mut full_page_vec = [0; PAGE_SIZE_BYTES_USIZE];
+        let mut full_page_vec = [0; PAGE_SIZE_BYTES as usize];
 
         let header_bytes = self.header.to_bytes();
 

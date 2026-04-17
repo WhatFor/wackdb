@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use crate::{
     db::FileType,
-    page::{PageId, PAGE_SIZE_BYTES, PAGE_SIZE_BYTES_USIZE},
+    page::{PageId, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
     server::MASTER_NAME,
     util,
@@ -76,7 +76,7 @@ pub fn write_page(mut file: &std::fs::File, data: &[u8], page_index: u32) -> Res
 pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes> {
     seek_page_index(file, page_index)?;
 
-    let mut buf = [0; PAGE_SIZE_BYTES_USIZE];
+    let mut buf = [0; PAGE_SIZE_BYTES as usize];
     file.read_exact(&mut buf)?;
 
     Ok(buf)
@@ -84,8 +84,7 @@ pub fn read_page(mut file: &std::fs::File, page_index: u32) -> Result<PageBytes>
 
 /// Seek to a given page index on a given File.
 pub fn seek_page_index(mut file: &std::fs::File, page_index: u32) -> Result<()> {
-    let page_size: u32 = PAGE_SIZE_BYTES.into();
-    let offset: u64 = (page_index * page_size).into();
+    let offset = (page_index * PAGE_SIZE_BYTES as u32) as u64;
     let offset_from_start = std::io::SeekFrom::Start(offset);
     let pos = file.seek(offset_from_start)?;
 
@@ -135,10 +134,9 @@ pub struct OpenDatabaseResult {
 
 pub fn get_allocated_page_count(file: &File) -> PageId {
     let metadata = file.metadata();
-    let page_len: u64 = PAGE_SIZE_BYTES.into();
 
     match metadata {
-        Ok(md) => (md.len() / page_len) as u32,
+        Ok(md) => (md.len() / PAGE_SIZE_BYTES as u64) as u32,
         Err(_) => 0,
     }
 }
@@ -207,7 +205,7 @@ mod persistence_tests {
         let (temp_file, temp_path) = get_temp_file();
 
         // Create a page-sized buffer
-        let mut buffer = vec![0; PAGE_SIZE_BYTES.into()];
+        let mut buffer = vec![0; PAGE_SIZE_BYTES as usize];
         buffer[0] = 1;
 
         // Act
@@ -230,8 +228,8 @@ mod persistence_tests {
         let (temp_file, temp_path) = get_temp_file();
 
         // Create 2 page-sized buffers
-        let buffer1 = vec![0; PAGE_SIZE_BYTES.into()];
-        let mut buffer2 = vec![0; PAGE_SIZE_BYTES.into()];
+        let buffer1 = vec![0; PAGE_SIZE_BYTES as usize];
+        let mut buffer2 = vec![0; PAGE_SIZE_BYTES as usize];
 
         // Write a byte at the start of the 2nd page
         buffer2[0] = 1;
