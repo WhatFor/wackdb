@@ -69,15 +69,43 @@ impl Repl {
                             }
                             CommandResult::Ok(results) => {
                                 for result in results {
-                                    let repl_output = tabled::Table::new(result.result_set.columns)
-                                        .with(tabled::settings::Disable::row(
-                                            tabled::settings::object::Rows::first(),
-                                        ))
-                                        .with(tabled::settings::Rotate::Top)
-                                        .with(tabled::settings::Rotate::Right)
-                                        .to_string();
+                                    if result.result_set.columns.is_empty() {
+                                        println!("No columns selected/found");
+                                        continue;
+                                    }
 
-                                    println!("{repl_output}");
+                                    if result.result_set.rows.is_empty() {
+                                        println!("No results found");
+                                        continue;
+                                    }
+
+                                    // TODO: tabled assumes a certain format of input. Maybe I don't want to use it.
+                                    // let repl_output = tabled::Table::new(result.result_set.rows)
+                                    //     .with(tabled::settings::Disable::row(
+                                    //         tabled::settings::object::Rows::first(),
+                                    //     ))
+                                    //     .with(tabled::settings::Rotate::Top)
+                                    //     .with(tabled::settings::Rotate::Right)
+                                    //     .to_string();
+                                    // println!("{repl_output}");
+                                    //
+                                    print!("|");
+
+                                    for header in result.result_set.columns {
+                                        print!(" {} |", header.alias.unwrap_or(header.name));
+                                    }
+
+                                    println!();
+
+                                    for row in result.result_set.rows {
+                                        println!(
+                                            "| {} |",
+                                            row.iter()
+                                                .map(|r| r.to_string())
+                                                .collect::<Vec<String>>()
+                                                .join(" | ")
+                                        );
+                                    }
                                 }
                             }
                         },
@@ -114,11 +142,15 @@ impl Repl {
         let lexer = Lexer::new(&input_str);
         let lex_result = lexer.lex();
 
+        log::trace!("Lexing complete. Tokens: {:?}", lex_result.tokens);
+
         let mut parser = Parser::new(lex_result.tokens, &input_str);
         let parse_result = parser.parse();
 
         match parse_result {
             Ok(ast) => {
+
+                log::trace!("Parsing complete. Tokens: {:?}", ast);
                 let execute_result = self.engine.execute(&ast);
 
                 match execute_result {
@@ -149,7 +181,7 @@ impl Repl {
     /// short-circuit for a meta command.
     fn handle_repl_command(&self, buf: &str) -> Result {
         let fmt_buf = buf.trim();
-        
+
         if Repl::is_meta_command(fmt_buf) {
             Repl::handle_meta_command(fmt_buf)
         } else {

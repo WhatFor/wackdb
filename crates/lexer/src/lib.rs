@@ -180,7 +180,7 @@ impl<'a> Lexer<'a> {
                 // Alphabetical (can start with _, # or @)
                 c if c.is_alphabetic() || c == '_' || c == '#' || c == '@' => {
                     let end_pos = self.scan_until(curr_offset, |c| {
-                        c == ' ' || c == ',' || c == ';' || c == ')'
+                        c == ' ' || c == ',' || c == ';' || c == ')' || c == '.'
                     });
 
                     let slice = &self.buf[curr_offset..end_pos];
@@ -802,6 +802,17 @@ mod lexer_tests {
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
         let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 13))), Token::EOF];
+
+        assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_identifier_contains_dot() {
+        let str = String::from("a.b");
+        let lexer = Lexer::new(&str).lex();
+        let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 1))), Token::Dot, Token::Identifier(Ident::new(Slice::new(2, 3))), Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
     }

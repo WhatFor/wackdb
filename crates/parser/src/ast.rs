@@ -113,7 +113,7 @@ impl fmt::Debug for SelectItemList {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct SelectItem {
     pub expr: Expr,
     pub alias: Option<Identifier>,
@@ -144,20 +144,17 @@ impl SelectItem {
 
     pub fn simple_identifier(identifier: &str) -> Self {
         SelectItem {
-            // todo: change to identifier
-            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            expr: Expr::Identifier(Identifier::from(identifier.to_string())),
             alias: None,
         }
     }
 
-    pub fn qualified_identifier(identifiers: Vec<&str>) -> Self {
-        let idents = identifiers
-            .iter()
-            .map(|i| Identifier::from(i.to_string()))
-            .collect();
-
+    pub fn qualified_identifier(qualifier: &str, identifier: &str) -> Self {
         SelectItem {
-            expr: Expr::QualifiedIdentifier(idents),
+            expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
+                qualifier: Identifier::from(qualifier.to_string()),
+                identifier: Identifier::from(identifier.to_string())
+            }),
             alias: None,
         }
     }
@@ -171,20 +168,18 @@ impl SelectItem {
 
     pub fn aliased_identifier(identifier: &str, alias: Identifier) -> Self {
         SelectItem {
-            // todo: change to identifier
-            expr: Expr::Value(Value::String(String::from(identifier), QuoteType::None)),
+            expr: Expr::Identifier(Identifier::from(identifier.to_string())),
             alias: Some(alias),
         }
     }
 
-    pub fn aliased_qualified_identifier(identifiers: Vec<&str>, alias: Identifier) -> Self {
-        let idents = identifiers
-            .iter()
-            .map(|i| Identifier::from(i.to_string()))
-            .collect();
+    pub fn aliased_qualified_identifier(qualifier: &str, identifier: &str, alias: Identifier) -> Self {
 
         SelectItem {
-            expr: Expr::QualifiedIdentifier(idents),
+            expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
+                qualifier: Identifier::from(qualifier.to_string()),
+                identifier: Identifier::from(identifier.to_string())
+            }),
             alias: Some(alias),
         }
     }
@@ -193,14 +188,21 @@ impl SelectItem {
 #[derive(PartialEq)]
 pub struct FromClause {
     pub identifier: Identifier,
+    pub qualifier: Option<Identifier>,
     pub alias: Option<Identifier>,
 }
 
 impl fmt::Display for FromClause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.alias {
-            Some(a) => write!(f, "{} AS {}", self.identifier, a),
-            None => write!(f, "{}", self.identifier),
+            Some(a) => match &self.qualifier {
+                Some(q) => write!(f, "{}.{} AS {}", q, self.identifier, a),
+                None => write!(f, "{} AS {}", self.identifier, a),
+            },
+            None => match &self.qualifier {
+                Some(q) => write!(f, "{}.{}", q, self.identifier),
+                None => write!(f, "{}", self.identifier),
+            },
         }
     }
 }
@@ -267,7 +269,13 @@ impl fmt::Debug for GroupByClause {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Debug)]
+pub struct QualifiedIdentifier {
+    pub qualifier: Identifier,
+    pub identifier: Identifier,
+}
+
+#[derive(PartialEq, Clone)]
 pub enum Expr {
     IsTrue(Box<Expr>),
     IsNotTrue(Box<Expr>),
@@ -308,7 +316,7 @@ pub enum Expr {
     },
     Value(Value),
     Identifier(Identifier),
-    QualifiedIdentifier(Vec<Identifier>),
+    QualifiedIdentifier(QualifiedIdentifier),
     Wildcard,
 }
 
@@ -336,16 +344,13 @@ impl fmt::Display for Expr {
             Expr::Like { expr, pattern } => write!(f, "{expr} LIKE {pattern}"),
             Expr::NotLike { expr, pattern } => write!(f, "{expr} NOT LIKE {pattern}"),
             Expr::BinaryOperator { left, op, right } => write!(f, "({left} {op} {right})"),
-            Expr::Value(v) => write!(f, "{v:?}"),
-            Expr::Identifier(i) => write!(f, "{i:?}"),
+            Expr::Value(v) => write!(f, "{v:?} (dbg: VALUE)"),
+            Expr::Identifier(i) => write!(f, "{i:?} (dbg: IDENT)"),
             Expr::QualifiedIdentifier(i) => {
-                let joined = i
-                    .iter()
-                    .map(|x| x.value.to_string())
-                    .collect::<Vec<String>>()
-                    .join(".");
-
-                write!(f, "{joined:?}")
+                let mut val = i.qualifier.value.clone();
+                val.push_str(".");
+                val.push_str(&i.identifier.value);
+                write!(f, "{val:?} (dbg: QIDENT)")
             }
             Expr::Wildcard => write!(f, "*"),
         }
@@ -411,14 +416,14 @@ impl fmt::Debug for BinaryOperator {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum QuoteType {
     None,
     Single,
     Double,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Value {
     Number(String),
     String(String, QuoteType),
@@ -481,7 +486,7 @@ impl fmt::Debug for OrderDirection {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Identifier {
     pub value: String,
 }

@@ -14,6 +14,8 @@ pub const SLOT_POINTER_SIZE: u16 = 2;
 
 pub type SlotPointer = u16;
 
+pub type PageId = u32;
+
 #[derive(DekuRead, DekuWrite, Debug, PartialEq)]
 #[deku(
     id_type = "u8",
@@ -26,6 +28,12 @@ pub enum PageType {
     FileInfo,
     #[deku(id = 1)]
     DatabaseInfo,
+    #[deku(id = 2)]
+    SchemaInfo,
+    #[deku(id = 3)]
+    Data,
+    #[deku(id = 4)]
+    Index,
 }
 
 /// A general purpose Page header.
@@ -34,34 +42,34 @@ pub enum PageType {
 #[deku(endian = "big")]
 pub struct PageHeader {
     #[deku(bytes = 4)]
-    page_id: u32,
+    pub page_id: PageId,
 
     #[deku(bytes = 1)]
-    header_version: u8,
+    pub header_version: u8,
 
     #[deku]
-    page_type: PageType,
+    pub page_type: PageType,
 
     #[deku(bytes = 2)]
-    checksum: u16,
+    pub checksum: u16,
 
     #[deku(bytes = 2)]
-    flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
+    pub flags: u16, // todo: need to add these. Know for sure I want a CAN_COMPACT flag.
 
     #[deku(bytes = 2)]
-    allocated_slot_count: u16,
+    pub allocated_slot_count: u16,
 
     #[deku(bytes = 2)]
-    free_space: u16,
+    pub free_space: u16,
 
     #[deku(bytes = 2)]
-    free_space_start_offset: u16,
+    pub free_space_start_offset: u16,
 
     #[deku(bytes = 2)]
-    free_space_end_offset: u16,
+    pub free_space_end_offset: u16,
 
     #[deku(bytes = 2)]
-    total_allocated_bytes: u16,
+    pub total_allocated_bytes: u16,
 }
 
 impl PageHeader {
@@ -252,14 +260,14 @@ impl<'a> PageDecoder<'a> {
         let mut reader = deku::reader::Reader::new(&mut cursor);
         let header = PageHeader::from_reader_with_ctx(&mut reader, ()).unwrap();
 
-        log::trace!("Loaded page from bytes.");
-        log::trace!("|        Page Type: {:?}", header.page_type);
-        log::trace!("|          Page ID: {:?}", header.page_id);
-        log::trace!("|   Header version: {:?}", header.header_version);
-        log::trace!("|       Free space: {:?} bytes", header.free_space);
-        log::trace!("|            Flags: {:?}", header.flags);
-        log::trace!("|         Checksum: {:?}", header.checksum);
-        log::trace!("|     Alloc. slots: {:?}", header.allocated_slot_count);
+        // log::trace!("Loaded page from bytes.");
+        // log::trace!("|        Page Type: {:?}", header.page_type);
+        // log::trace!("|          Page ID: {:?}", header.page_id);
+        // log::trace!("|   Header version: {:?}", header.header_version);
+        // log::trace!("|       Free space: {:?} bytes", header.free_space);
+        // log::trace!("|            Flags: {:?}", header.flags);
+        // log::trace!("|         Checksum: {:?}", header.checksum);
+        // log::trace!("|     Alloc. slots: {:?}", header.allocated_slot_count);
 
         let slot_count = header.allocated_slot_count;
 
@@ -268,6 +276,10 @@ impl<'a> PageDecoder<'a> {
             bytes,
             slots: Self::read_slots(slot_count, bytes),
         }
+    }
+
+    pub fn header(&self) -> &PageHeader {
+        &self.header
     }
 
     pub fn check(&self) -> ChecksumResult {
@@ -285,15 +297,23 @@ impl<'a> PageDecoder<'a> {
         }
     }
 
-    pub fn try_read<T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
+    pub fn try_read_bytes(&self, slot_index: u16) -> Result<Vec<u8>, PageDecoderError> {
+        if slot_index as usize >= self.slots.len() {
+            return Err(PageDecoderError::SlotOutOfRange);
+        }
+
+        Ok(self.slots[slot_index as usize].to_vec())
+    }
+
+    pub fn try_read<'b, T>(&self, slot_index: u16) -> Result<T, PageDecoderError>
     where
-        T: DekuContainerRead<'a> + std::fmt::Debug,
+        T: DekuContainerRead<'b> + std::fmt::Debug,
     {
         if slot_index as usize >= self.slots.len() {
             return Err(PageDecoderError::SlotOutOfRange);
         }
 
-        let slot = &self.slots[slot_index as usize];
+        let slot = self.slots[slot_index as usize];
         let mut cursor = std::io::Cursor::new(slot);
         let mut reader = deku::reader::Reader::new(&mut cursor);
 
@@ -325,15 +345,15 @@ impl<'a> PageDecoder<'a> {
             let slot_start = if i == 0 {
                 PAGE_HEADER_SIZE_BYTES as usize
             } else {
-                read_pointer(i + 1, bytes)
+                read_pointer(i - 1, bytes)
             };
 
             let range = slot_start..slot_end;
 
-            log::trace!("Reading slot from page.");
-            log::trace!("|   Slot Index: {:?}", i);
-            log::trace!("|        Range: {:?}", range);
-            log::trace!("|         Size: {:?}", range.len());
+            // log::trace!("Reading slot from page.");
+            // log::trace!("|   Slot Index: {:?}", i);
+            // log::trace!("|        Range: {:?}", range);
+            // log::trace!("|         Size: {:?}", range.len());
 
             let slot_bytes = &bytes[range];
             slots.push(slot_bytes);
@@ -423,7 +443,7 @@ mod page_encoder_tests {
         let mut encoder = PageEncoder::new(header);
 
         let slot1 = vec![1, 2];
-        let slot2 = vec![1, 2];
+        let slot2 = vec![3, 4];
 
         // Expect allocated a header (32 bytes) and 2 pages each of length 2.
         let expected_len = PAGE_HEADER_SIZE_BYTES + 2 + 2;

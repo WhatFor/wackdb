@@ -1,21 +1,16 @@
-use crate::{
-    db::FileType,
-    fm::{FileId, FileManager},
-    lru::LRUCache,
-    persistence,
-};
+use crate::{db::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
 use std::{cell::RefCell, rc::Rc};
 
 pub type PageBytes = [u8; 8192];
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FilePageId {
-    db_id: u16,
-    page_index: u32,
+    pub db_id: u16,
+    pub page_index: u32,
 }
 
 impl FilePageId {
-    pub fn new(db_id: u16, page_index: u32) -> Self {
+    pub fn new(db_id: u16, page_index: PageId) -> Self {
         FilePageId { db_id, page_index }
     }
 }
@@ -43,11 +38,7 @@ impl PageCache {
         }
 
         let fm_borrow = self.file_manager.borrow();
-
-        let file = fm_borrow.get(&FileId {
-            id: id.db_id,
-            ty: FileType::Primary,
-        });
+        let file = fm_borrow.get_from_id(id.db_id, FileType::Primary);
 
         match file {
             Some(file_handle) => {
