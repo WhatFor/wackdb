@@ -5,6 +5,9 @@ use crate::page::PageId;
 use crate::types::{DbByte, DbDate, DbInt, DbLong, DbShort};
 use crate::util::now_bytes;
 
+pub const MASTER_NAME: &str = "master";
+pub const MASTER_DB_ID: u16 = 0;
+
 #[derive(Debug, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Database {

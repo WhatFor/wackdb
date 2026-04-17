@@ -6,14 +6,13 @@ use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, Statement,
 use thiserror::Error;
 
 use crate::{
-    catalog::{Column, ColumnType, Database, Index, IndexType, Table},
+    catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
     db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::Storage,
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,
     persistence,
-    server::MASTER_DB_ID,
     types::DbLong,
 };
 

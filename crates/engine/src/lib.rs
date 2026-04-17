@@ -1,3 +1,4 @@
+mod bootstrap;
 pub mod btree;
 mod catalog;
 mod db;
@@ -8,7 +9,6 @@ mod lru;
 pub mod page;
 mod page_cache;
 mod persistence;
-mod server;
 mod types;
 mod util;
 mod vm;

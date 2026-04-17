@@ -1,10 +1,11 @@
+use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
 use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
-use crate::persistence;
-use crate::server::{self, OpenDatabaseResult, MASTER_DB_ID, MASTER_NAME};
+use crate::persistence::OpenDatabaseResult;
 use crate::vm::VirtualMachine;
+use crate::{bootstrap, persistence};
 
 use anyhow::Result;
 use cli_common::{ExecuteResult, StatementResult};
@@ -39,7 +40,7 @@ impl Default for Engine {
 
 impl Engine {
     pub fn init(&mut self) {
-        let master_db_result = server::open_or_create_master_db();
+        let master_db_result = self.open_or_create_master_db();
 
         match master_db_result {
             Ok(x) => {
@@ -61,7 +62,7 @@ impl Engine {
             }
         }
 
-        if let Err(e) = server::ensure_master_tables_exist(&mut self.storage.file_manager) {
+        if let Err(e) = bootstrap::ensure_master_tables_exist(&mut self.storage.file_manager) {
             log::error!("Error initialising master tables: {:?}", e);
             return;
         }
@@ -150,7 +151,8 @@ impl Engine {
             Statement::CreateDatabase(s) => {
                 let next_id = self.next_id();
 
-                let result = server::create_user_database(s, next_id)?;
+                let db_name = s.database_name.value.as_str();
+                let result = persistence::create_database(db_name, next_id, false)?;
 
                 self.storage.file_manager.add(
                     FileId::new(result.id, result.name.clone(), db::FileType::Primary),
@@ -196,6 +198,30 @@ impl Engine {
                 err
             ),
         };
+    }
+
+    pub fn open_or_create_master_db(&self) -> Result<OpenDatabaseResult> {
+        let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary)?;
+
+        if exists {
+            let db = persistence::open_db(MASTER_NAME);
+            let allocated_page_count = persistence::get_allocated_page_count(&db.dat);
+
+            log::info!(
+                "Opened existing master DB, containing {} pages.",
+                allocated_page_count
+            );
+
+            return Ok(OpenDatabaseResult {
+                id: MASTER_DB_ID,
+                name: MASTER_NAME.into(),
+                dat: db.dat,
+                log: db.log,
+                allocated_page_count,
+            });
+        }
+
+        persistence::create_database(MASTER_NAME, MASTER_DB_ID, true)
     }
 
     pub fn open_user_dbs(&self) -> Result<Vec<OpenDatabaseResult>> {

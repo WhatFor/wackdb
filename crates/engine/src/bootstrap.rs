@@ -1,106 +1,97 @@
 use anyhow::Result;
 use deku::DekuContainerWrite;
-use derive_more::derive::From;
-use parser::ast::CreateDatabaseBody;
-use std::fs::File;
-use thiserror::Error;
 
 use crate::{
     btree::BTree,
-    catalog::{Column, ColumnType, Database, Index, IndexType, Table},
-    db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME},
+    db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::{FileManager, IdMapKey},
-    page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
+    page::{PageEncoder, PageHeader, PageId, PageType},
     page_cache::PageBytes,
-    persistence,
     types::DbInt,
-    util::{self},
 };
 
-pub const MASTER_NAME: &str = "master";
-pub const MASTER_DB_ID: u16 = 0;
+pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
+    let master_id = &IdMapKey::new(MASTER_DB_ID, FileType::Primary);
 
-#[derive(Debug, From, Error)]
-pub enum CreateDatabaseError {
-    #[error("Database already exists: {0}")]
-    DatabaseExists(String),
-    #[error("Unable to create database: {0}")]
-    UnableToWrite(PageEncoderError),
-    #[error("Unable to create database: {0}")]
-    UnableToCreateFile(util::Error),
-    #[error("Unable to create database: {0}")]
-    DiskError(persistence::PersistenceError),
-    #[error("Unable to create database: {0}")]
-    DbError(db::DbError),
-}
+    // read out the schema info page
+    // TODO: should use page cache
+    let mut schema = file_manager.read_page_as::<SchemaInfo>(master_id, SCHEMA_INFO_PAGE_INDEX)?;
 
-pub struct OpenDatabaseResult {
-    pub id: DatabaseId,
-    pub name: String,
-    pub dat: File,
-    pub log: File,
-    pub allocated_page_count: PageId,
-}
-
-// this is only used in engine.init; it takes the file result and stores the files in the fm.
-pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
-    let exists = persistence::check_db_exists(MASTER_NAME, FileType::Primary)?;
-
-    if exists {
-        let db = persistence::open_db(MASTER_NAME);
-        let allocated_page_count = persistence::get_allocated_page_count(&db.dat);
-
-        log::info!(
-            "Opened existing master DB, containing {} pages.",
-            allocated_page_count
-        );
-
-        return Ok(OpenDatabaseResult {
-            id: MASTER_DB_ID,
-            name: MASTER_NAME.into(),
-            dat: db.dat,
-            log: db.log,
-            allocated_page_count,
-        });
+    if schema.databases_root_page_id != 0 {
+        log::debug!("SchemaInfo Page exists. Skipping initialisation.");
+        return Ok(());
     }
 
-    create_database(MASTER_NAME, MASTER_DB_ID, true)
-}
+    // Write DB page
+    let databases_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
 
-// this is invoked from engine - should it just live in the VM?
-// it uses the create_database method, which again... should that just be in the VM?
-// probably not, as the VM takes in an AST, which this doesn't. So this feels a bit lower in the architecture.
-pub fn create_user_database(
-    statement: &CreateDatabaseBody,
-    db_id: DatabaseId,
-) -> Result<OpenDatabaseResult> {
-    let db_name = statement.database_name.value.as_str();
+    let databases_page_bytes = initialise_databases_table()?;
 
-    create_database(db_name, db_id, false)
-}
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &databases_page_bytes, databases_page_id);
 
-pub fn create_database(
-    db_name: &str,
-    db_id: DatabaseId,
-    is_master: bool,
-) -> Result<OpenDatabaseResult> {
-    let data_exists = persistence::check_db_exists(db_name, FileType::Primary)?;
-    let log_exists = persistence::check_db_exists(db_name, FileType::Log)?;
+    log::debug!("Wrote Databases index to pageID {}", databases_page_id);
 
-    if data_exists || log_exists {
-        return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)).into());
-    }
+    // Write Tables pages
+    let tables_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
 
-    let data_file = db::create_db_data_file(db_name, db_id, is_master)?;
-    let log_file = db::create_db_log_file(db_name)?;
+    let tables_page_bytes = initialise_tables_table()?;
 
-    Ok(OpenDatabaseResult {
-        id: db_id,
-        name: db_name.into(),
-        dat: data_file,
-        log: log_file,
-        allocated_page_count: 3,
-    })
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &tables_page_bytes, tables_page_id);
+
+    log::debug!("Wrote Tables index to pageID {}", tables_page_id);
+
+    // Write Columns pages
+    let columns_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    let columns_page_bytes = initialise_columns_table()?;
+
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &columns_page_bytes, columns_page_id);
+
+    log::debug!("Wrote Columns index to pageID {}", columns_page_id);
+
+    // Write Indexes pages
+    let indexes_page_id = file_manager
+        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap();
+
+    let indexes_page_bytes = initialise_indexes_table(
+        databases_page_id,
+        tables_page_id,
+        columns_page_id,
+        indexes_page_id,
+    )?;
+
+    // TODO: handle Result
+    let _ = file_manager.write_page(master_id, &indexes_page_bytes, indexes_page_id);
+
+    log::debug!("Wrote Indexes index to pageID {}", indexes_page_id);
+
+    schema.databases_root_page_id = databases_page_id.to_owned();
+    schema.tables_root_page_id = tables_page_id.to_owned();
+    schema.columns_root_page_id = columns_page_id.to_owned();
+    schema.indexes_root_page_id = indexes_page_id.to_owned();
+
+    // write schema info back
+    // TODO: this is building a whole new page to write a few numbers... how do I want to do this better?
+    let schema_header = PageHeader::new(PageType::SchemaInfo);
+    let mut schema_page = PageEncoder::new(schema_header);
+    let schema_info_bytes = schema.to_bytes()?;
+    schema_page.add_slot_bytes(schema_info_bytes)?;
+    let schema_page_bytes = schema_page.collect();
+
+    file_manager.write_page(master_id, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
+
+    Ok(())
 }
 
 fn initialise_databases_table() -> Result<PageBytes> {
@@ -560,87 +551,4 @@ fn initialise_indexes_table(
     }
 
     Ok(page.collect())
-}
-
-pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
-    let master_id = &IdMapKey::new(MASTER_DB_ID, FileType::Primary);
-
-    // read out the schema info page
-    // TODO: should use page cache
-    let mut schema = file_manager.read_page_as::<SchemaInfo>(master_id, SCHEMA_INFO_PAGE_INDEX)?;
-
-    if schema.databases_root_page_id != 0 {
-        log::debug!("SchemaInfo Page exists. Skipping initialisation.");
-        return Ok(());
-    }
-
-    // Write DB page
-    let databases_page_id = file_manager
-        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
-
-    let databases_page_bytes = initialise_databases_table()?;
-
-    // TODO: handle Result
-    let _ = file_manager.write_page(master_id, &databases_page_bytes, databases_page_id);
-
-    log::debug!("Wrote Databases index to pageID {}", databases_page_id);
-
-    // Write Tables pages
-    let tables_page_id = file_manager
-        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
-
-    let tables_page_bytes = initialise_tables_table()?;
-
-    // TODO: handle Result
-    let _ = file_manager.write_page(master_id, &tables_page_bytes, tables_page_id);
-
-    log::debug!("Wrote Tables index to pageID {}", tables_page_id);
-
-    // Write Columns pages
-    let columns_page_id = file_manager
-        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
-
-    let columns_page_bytes = initialise_columns_table()?;
-
-    // TODO: handle Result
-    let _ = file_manager.write_page(master_id, &columns_page_bytes, columns_page_id);
-
-    log::debug!("Wrote Columns index to pageID {}", columns_page_id);
-
-    // Write Indexes pages
-    let indexes_page_id = file_manager
-        .next_page_id_by_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
-
-    let indexes_page_bytes = initialise_indexes_table(
-        databases_page_id,
-        tables_page_id,
-        columns_page_id,
-        indexes_page_id,
-    )?;
-
-    // TODO: handle Result
-    let _ = file_manager.write_page(master_id, &indexes_page_bytes, indexes_page_id);
-
-    log::debug!("Wrote Indexes index to pageID {}", indexes_page_id);
-
-    schema.databases_root_page_id = databases_page_id.to_owned();
-    schema.tables_root_page_id = tables_page_id.to_owned();
-    schema.columns_root_page_id = columns_page_id.to_owned();
-    schema.indexes_root_page_id = indexes_page_id.to_owned();
-
-    // write schema info back
-    // TODO: this is building a whole new page to write a few numbers... how do I want to do this better?
-    let schema_header = PageHeader::new(PageType::SchemaInfo);
-    let mut schema_page = PageEncoder::new(schema_header);
-    let schema_info_bytes = schema.to_bytes()?;
-    schema_page.add_slot_bytes(schema_info_bytes)?;
-    let schema_page_bytes = schema_page.collect();
-
-    file_manager.write_page(master_id, &schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
-
-    Ok(())
 }

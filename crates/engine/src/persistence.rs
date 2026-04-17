@@ -10,16 +10,30 @@ use derive_more::derive::From;
 use thiserror::Error;
 
 use crate::{
-    db::FileType,
+    catalog::MASTER_NAME,
+    db::{DatabaseId, FileType},
     page::{PageId, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
-    server::MASTER_NAME,
     util,
 };
 
 pub const DATA_FILE_EXT: &str = "wak";
 pub const LOG_FILE_EXT: &str = "wal";
 pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
+
+#[derive(Debug, From, Error)]
+pub enum CreateDatabaseError {
+    #[error("Database already exists: {0}")]
+    DatabaseExists(String),
+    #[error("Unable to create database: {0}")]
+    UnableToWrite(crate::page::PageEncoderError),
+    #[error("Unable to create database: {0}")]
+    UnableToCreateFile(util::Error),
+    #[error("Unable to create database: {0}")]
+    DiskError(PersistenceError),
+    #[error("Unable to create database: {0}")]
+    DbError(crate::db::DbError),
+}
 
 #[derive(Debug, From, Error)]
 pub enum PersistenceError {
@@ -29,6 +43,38 @@ pub enum PersistenceError {
     StdIo(std::io::Error),
     #[error("Failed to seek to page index.")]
     PageSeekFailed,
+}
+
+pub struct OpenDatabaseResult {
+    pub id: DatabaseId,
+    pub name: String,
+    pub dat: File,
+    pub log: File,
+    pub allocated_page_count: PageId,
+}
+
+pub fn create_database(
+    db_name: &str,
+    db_id: DatabaseId,
+    is_master: bool,
+) -> Result<OpenDatabaseResult> {
+    let data_exists = check_db_exists(db_name, FileType::Primary)?;
+    let log_exists = check_db_exists(db_name, FileType::Log)?;
+
+    if data_exists || log_exists {
+        return Err(CreateDatabaseError::DatabaseExists(String::from(db_name)).into());
+    }
+
+    let data_file = crate::db::create_db_data_file(db_name, db_id, is_master)?;
+    let log_file = crate::db::create_db_log_file(db_name)?;
+
+    Ok(OpenDatabaseResult {
+        id: db_id,
+        name: db_name.into(),
+        dat: data_file,
+        log: log_file,
+        allocated_page_count: 3,
+    })
 }
 
 // Returns true if the given file exists
@@ -127,7 +173,7 @@ fn is_wack_file(extension: &OsStr) -> bool {
     extension.eq_ignore_ascii_case(DATA_FILE_EXT) || extension.eq_ignore_ascii_case(LOG_FILE_EXT)
 }
 
-pub struct OpenDatabaseResult {
+pub struct OpenDatabaseResultX {
     pub dat: File,
     pub log: File,
 }
@@ -141,11 +187,11 @@ pub fn get_allocated_page_count(file: &File) -> PageId {
     }
 }
 
-pub fn open_db(database_name: &str) -> OpenDatabaseResult {
+pub fn open_db(database_name: &str) -> OpenDatabaseResultX {
     let dat = open_db_of_type(database_name, FileType::Primary);
     let log = open_db_of_type(database_name, FileType::Log);
 
-    OpenDatabaseResult { dat, log }
+    OpenDatabaseResultX { dat, log }
 }
 
 fn open_db_of_type(database_name: &str, file_type: FileType) -> File {
