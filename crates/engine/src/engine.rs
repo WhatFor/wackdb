@@ -8,7 +8,7 @@ use crate::vm::VirtualMachine;
 
 use anyhow::Result;
 use cli_common::{ExecuteResult, StatementResult};
-use parser::ast::{Program, ServerStatement, UserStatement};
+use parser::ast::{Program, Statement};
 use std::fs::File;
 
 pub struct Engine {
@@ -109,16 +109,7 @@ impl Engine {
             Program::Statements(statements) => {
                 // TODO: We're looping through distinct statements, which if we supported transactions would need some care here.
                 for statement in statements {
-                    let result = match statement {
-                        parser::ast::Statement::User(user_statement) => {
-                            self.execute_user_statement(user_statement)
-                        }
-                        parser::ast::Statement::Server(server_statement) => {
-                            self.execute_server_statement(server_statement)
-                        }
-                    };
-
-                    match result {
+                    match self.execute_statement(statement) {
                         Ok(statement_result) => results.push(statement_result),
                         Err(statement_error) => errors.push(statement_error),
                     }
@@ -132,40 +123,31 @@ impl Engine {
         Ok(ExecuteResult { results, errors })
     }
 
-    /// Userland statements. For example, SELECT, INSERT, etc.
-    pub fn execute_user_statement(&mut self, statement: &UserStatement) -> Result<StatementResult> {
+    // TODO: This is weird - we have arms for different status types but then just pass to `vm.execute_statement`.
+    pub fn execute_statement(&mut self, statement: &Statement) -> Result<StatementResult> {
         dbg!(&statement);
         match statement {
-            UserStatement::Select(select_expression_body) => {
+            Statement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                self.vm.execute_user_statement(statement, &mut self.storage)
+                self.vm.execute_statement(statement, &mut self.storage)
             }
-            UserStatement::Update => {
+            Statement::Update => {
                 log::info!("Updating");
                 Ok(StatementResult::default())
             }
-            UserStatement::Insert => {
+            Statement::Insert => {
                 log::info!("Inserting");
                 Ok(StatementResult::default())
             }
-            UserStatement::Delete => {
+            Statement::Delete => {
                 log::info!("Deleting");
                 Ok(StatementResult::default())
             }
-            UserStatement::CreateTable(_create_table_body) => {
+            Statement::CreateTable(_create_table_body) => {
                 log::info!("Creating Table");
                 Ok(StatementResult::default())
             }
-        }
-    }
-
-    /// Serverland statements. For example, CREATE DATABASE.
-    pub fn execute_server_statement(
-        &mut self,
-        statement: &ServerStatement,
-    ) -> Result<StatementResult> {
-        match statement {
-            ServerStatement::CreateDatabase(s) => {
+            Statement::CreateDatabase(s) => {
                 let next_id = self.next_id();
 
                 let result = server::create_user_database(s, next_id)?;

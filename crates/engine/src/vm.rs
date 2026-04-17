@@ -2,17 +2,18 @@ use anyhow::{Error, Result};
 use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
 use deku::DekuReader;
 use derive_more::derive::From;
-use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
+use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, Statement, Value};
 use thiserror::Error;
 
 use crate::{
+    catalog::{Column, ColumnType, Database, Index, IndexType, Table},
     db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::Storage,
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,
     persistence,
-    server::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
+    server::MASTER_DB_ID,
     types::DbLong,
 };
 
@@ -49,9 +50,9 @@ struct ColumnResultWithMetadata {
 }
 
 impl VirtualMachine {
-    pub fn execute_user_statement(
+    pub fn execute_statement(
         &self,
-        statement: &UserStatement,
+        statement: &Statement,
         mut storage: &mut Storage,
     ) -> Result<StatementResult> {
         let is_const_expr = self.is_constant_statement(statement);
@@ -62,26 +63,28 @@ impl VirtualMachine {
         }
 
         match statement {
-            UserStatement::Select(s) => self.evaluate_select_statement(s, &mut storage),
-            UserStatement::Update => todo!(),
-            UserStatement::Insert => todo!(),
-            UserStatement::Delete => todo!(),
-            UserStatement::CreateTable(_) => todo!(),
+            Statement::Select(s) => self.evaluate_select_statement(s, &mut storage),
+            Statement::Update => todo!(),
+            Statement::Insert => todo!(),
+            Statement::Delete => todo!(),
+            Statement::CreateTable(_) => todo!(),
+            Statement::CreateDatabase(_) => todo!(),
         }
     }
 
     // todo: type?
-    fn is_constant_statement(&self, statement: &UserStatement) -> bool {
+    fn is_constant_statement(&self, statement: &Statement) -> bool {
         match statement {
-            UserStatement::Select(select_expression_body) => select_expression_body
+            Statement::Select(select_expression_body) => select_expression_body
                 .select_item_list
                 .item_list
                 .iter()
                 .all(|item| self.is_const_exp(&item.expr)),
-            UserStatement::Update => todo!(),
-            UserStatement::Insert => todo!(),
-            UserStatement::Delete => todo!(),
-            UserStatement::CreateTable(_) => todo!(),
+            Statement::Update => todo!(),
+            Statement::Insert => todo!(),
+            Statement::Delete => todo!(),
+            Statement::CreateTable(_) => todo!(),
+            Statement::CreateDatabase(_) => todo!(),
         }
     }
 
@@ -123,9 +126,9 @@ impl VirtualMachine {
         }
     }
 
-    fn evaluate_constant_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
+    fn evaluate_constant_statement(&self, statement: &Statement) -> Result<StatementResult> {
         match statement {
-            UserStatement::Select(select_expression_body) => {
+            Statement::Select(select_expression_body) => {
                 let (columns, values) = select_expression_body
                     .select_item_list
                     .item_list
@@ -159,10 +162,11 @@ impl VirtualMachine {
                     },
                 })
             }
-            UserStatement::Update => todo!(),
-            UserStatement::Insert => todo!(),
-            UserStatement::Delete => todo!(),
-            UserStatement::CreateTable(_) => todo!(),
+            Statement::Update => todo!(),
+            Statement::Insert => todo!(),
+            Statement::Delete => todo!(),
+            Statement::CreateTable(_) => todo!(),
+            Statement::CreateDatabase(_) => todo!(),
         }
     }
 

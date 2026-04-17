@@ -1,4 +1,5 @@
 pub mod btree;
+mod catalog;
 mod db;
 pub mod engine;
 mod fm;

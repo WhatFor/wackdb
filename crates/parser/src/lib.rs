@@ -130,7 +130,7 @@ impl<'a> Parser<'a> {
             let exp_body = self.parse_select_expression_body()?;
             // optionally parse limitClause?
 
-            Some(Statement::User(UserStatement::Select(exp_body)))
+            Some(Statement::Select(exp_body))
         } else {
             self.push_error(ParseErrorKind::ExpectedKeyword(String::from("Select")));
             None
@@ -146,24 +146,32 @@ impl<'a> Parser<'a> {
         let group_by_clause = self.parse_group_by_clause_optional();
         let order_by_clause = self.parse_order_by_clause_optional();
 
-        let qualified_select_items: Vec<&Identifier> = select_item_list.item_list.iter().filter_map(|i| match &i.expr {
-            Expr::QualifiedIdentifier(expr) => Some(&expr.qualifier),
-            _ => None,
-        }).collect();
+        let qualified_select_items: Vec<&Identifier> = select_item_list
+            .item_list
+            .iter()
+            .filter_map(|i| match &i.expr {
+                Expr::QualifiedIdentifier(expr) => Some(&expr.qualifier),
+                _ => None,
+            })
+            .collect();
 
         let qualified_from_item = match &from_clause {
             Some(from) => match &from.alias {
                 Some(v) => Some(&v.value),
                 None => None,
-            }
+            },
             None => None,
         };
 
         if qualified_select_items.len() > 0 && qualified_from_item.is_some() {
-            let aliases_valid = qualified_select_items.iter().all(|i| &i.value == qualified_from_item.unwrap());
+            let aliases_valid = qualified_select_items
+                .iter()
+                .all(|i| &i.value == qualified_from_item.unwrap());
 
             if aliases_valid == false {
-                self.push_error(ParseErrorKind::ExpectedQualifier(qualified_select_items.first().unwrap().value.clone()));
+                self.push_error(ParseErrorKind::ExpectedQualifier(
+                    qualified_select_items.first().unwrap().value.clone(),
+                ));
             }
         }
 
@@ -243,11 +251,9 @@ impl<'a> Parser<'a> {
         match qualified_identifier {
             Some(ident) => {
                 let qualified_select_item = match alias {
-                    Some(alias) => SelectItem::aliased_qualified_identifier(
-                        &identifier_str,
-                        &ident,
-                        alias,
-                    ),
+                    Some(alias) => {
+                        SelectItem::aliased_qualified_identifier(&identifier_str, &ident, alias)
+                    }
                     None => SelectItem::qualified_identifier(&identifier_str, &ident),
                 };
 
@@ -716,7 +722,7 @@ impl<'a> Parser<'a> {
 
     fn parse_insert_statement(&mut self) -> Option<Statement> {
         if self.match_(Token::Keyword(Keyword::Insert)) {
-            Some(Statement::User(UserStatement::Insert))
+            Some(Statement::Insert)
         } else {
             self.push_error(ParseErrorKind::ExpectedKeyword(String::from("INSERT")));
             None
@@ -725,7 +731,7 @@ impl<'a> Parser<'a> {
 
     fn parse_update_statement(&mut self) -> Option<Statement> {
         if self.match_(Token::Keyword(Keyword::Update)) {
-            Some(Statement::User(UserStatement::Update))
+            Some(Statement::Update)
         } else {
             self.push_error(ParseErrorKind::ExpectedKeyword(String::from("UPDATE")));
             None
@@ -734,7 +740,7 @@ impl<'a> Parser<'a> {
 
     fn parse_delete_statement(&mut self) -> Option<Statement> {
         if self.match_(Token::Keyword(Keyword::Delete)) {
-            Some(Statement::User(UserStatement::Delete))
+            Some(Statement::Delete)
         } else {
             self.push_error(ParseErrorKind::ExpectedKeyword(String::from("DELETE")));
             None
@@ -748,11 +754,11 @@ impl<'a> Parser<'a> {
             match self.peek() {
                 Some(Token::Keyword(Keyword::Table)) => {
                     let body = self.parse_create_table_statement();
-                    body.map(|x| Statement::User(UserStatement::CreateTable(x)))
+                    body.map(|x| Statement::CreateTable(x))
                 }
                 Some(Token::Keyword(Keyword::Database)) => {
                     let body = self.parse_create_database_statement();
-                    body.map(|x| Statement::Server(ServerStatement::CreateDatabase(x)))
+                    body.map(|x| Statement::CreateDatabase(x))
                 }
                 _ => {
                     self.push_error(ParseErrorKind::UnsupportedSyntax);
@@ -975,14 +981,14 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1004,8 +1010,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::aliased_identifier(
                     "a",
                     Identifier {
@@ -1016,7 +1022,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1036,14 +1042,16 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
-                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier("a", "b")]),
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
+                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(
+                    "a", "b",
+                )]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1067,8 +1075,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![
                     SelectItem::aliased_qualified_identifier(
                         "a",
@@ -1082,7 +1090,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1104,8 +1112,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::new(Expr::Wildcard)]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -1117,7 +1125,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1143,9 +1151,11 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
-                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier("u", "Name")]),
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
+                select_item_list: SelectItemList::from(vec![SelectItem::qualified_identifier(
+                    "u", "Name",
+                )]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
                         value: String::from("Users"),
@@ -1156,7 +1166,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1178,8 +1188,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier::from(String::from("Users")),
@@ -1189,7 +1199,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1211,8 +1221,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier::from(String::from("Users")),
@@ -1222,7 +1232,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1246,8 +1256,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("Name")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier::from(String::from("Users")),
@@ -1257,7 +1267,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1275,8 +1285,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::Value(Value::Number(String::from("1"))),
                     alias: None,
@@ -1285,7 +1295,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1303,8 +1313,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::Value(Value::String(String::from("hello"), QuoteType::Single)),
                     alias: None,
@@ -1313,7 +1323,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1335,8 +1345,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         left: Box::new(Expr::Value(Value::Number(String::from("1")))),
@@ -1349,7 +1359,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1371,8 +1381,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         left: Box::new(Expr::Value(Value::Number(String::from("1")))),
@@ -1385,7 +1395,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1407,8 +1417,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         left: Box::new(Expr::Value(Value::Number(String::from("1")))),
@@ -1421,7 +1431,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1443,8 +1453,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         left: Box::new(Expr::Value(Value::Number(String::from("1")))),
@@ -1457,7 +1467,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1487,8 +1497,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         left: Box::new(Expr::BinaryOperator {
@@ -1509,7 +1519,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1535,8 +1545,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         // (1 +
@@ -1556,7 +1566,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1584,8 +1594,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem {
                     expr: Expr::BinaryOperator {
                         // (1 + 2)
@@ -1604,7 +1614,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1655,8 +1665,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![
                     SelectItem::simple_identifier("a"),
                     SelectItem::simple_identifier("b"),
@@ -1665,7 +1675,7 @@ mod parser_tests {
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1695,8 +1705,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -1718,7 +1728,7 @@ mod parser_tests {
                 }),
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1748,8 +1758,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -1765,7 +1775,7 @@ mod parser_tests {
                 }),
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1795,8 +1805,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -1812,7 +1822,7 @@ mod parser_tests {
                 }),
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1844,8 +1854,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -1861,7 +1871,7 @@ mod parser_tests {
                 }),
                 order_by_clause: None,
                 group_by_clause: None,
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -1889,27 +1899,27 @@ mod parser_tests {
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
         let expected = Ok(Program::Statements(vec![
-            Statement::User(UserStatement::Select(SelectExpressionBody {
+            Statement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            })),
-            Statement::User(UserStatement::Select(SelectExpressionBody {
+            }),
+            Statement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("b")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            })),
-            Statement::User(UserStatement::Select(SelectExpressionBody {
+            }),
+            Statement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("c")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            })),
+            }),
         ]));
 
         assert_eq!(lexer, expected);
@@ -1932,20 +1942,20 @@ mod parser_tests {
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
         let expected = Ok(Program::Statements(vec![
-            Statement::User(UserStatement::Select(SelectExpressionBody {
+            Statement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            })),
-            Statement::User(UserStatement::Select(SelectExpressionBody {
+            }),
+            Statement::Select(SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("b")]),
                 from_clause: None,
                 where_clause: None,
                 order_by_clause: None,
                 group_by_clause: None,
-            })),
+            }),
         ]));
 
         assert_eq!(lexer, expected);
@@ -1996,8 +2006,8 @@ mod parser_tests {
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
         let expected: Result<Program, Vec<ParseError>> =
-            Ok(Program::Statements(vec![Statement::User(
-                UserStatement::Select(SelectExpressionBody {
+            Ok(Program::Statements(vec![Statement::Select(
+                SelectExpressionBody {
                     select_item_list: SelectItemList::from(vec![
                         SelectItem::simple_identifier("Name"),
                         SelectItem::simple_identifier("Age"),
@@ -2029,7 +2039,7 @@ mod parser_tests {
                             value: String::from("Name"),
                         },
                     }),
-                }),
+                },
             )]));
 
         assert_eq!(lexer, expected);
@@ -2057,8 +2067,8 @@ mod parser_tests {
 
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Select(SelectExpressionBody {
+        let expected = Ok(Program::Statements(vec![Statement::Select(
+            SelectExpressionBody {
                 select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("a")]),
                 from_clause: Some(FromClause {
                     identifier: Identifier {
@@ -2074,7 +2084,7 @@ mod parser_tests {
                         value: String::from("c"),
                     },
                 }),
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -2160,9 +2170,7 @@ mod parser_tests {
         let tokens = vec![Token::Keyword(Keyword::Insert), Token::EOF];
         let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Insert,
-        )]));
+        let expected = Ok(Program::Statements(vec![Statement::Insert]));
 
         assert_eq!(lexer, expected);
     }
@@ -2172,9 +2180,7 @@ mod parser_tests {
         let tokens = vec![Token::Keyword(Keyword::Update), Token::EOF];
         let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Update,
-        )]));
+        let expected = Ok(Program::Statements(vec![Statement::Update]));
 
         assert_eq!(lexer, expected);
     }
@@ -2184,9 +2190,7 @@ mod parser_tests {
         let tokens = vec![Token::Keyword(Keyword::Delete), Token::EOF];
         let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::Delete,
-        )]));
+        let expected = Ok(Program::Statements(vec![Statement::Delete]));
 
         assert_eq!(lexer, expected);
     }
@@ -2215,8 +2219,8 @@ mod parser_tests {
         ];
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::User(
-            UserStatement::CreateTable(CreateTableBody {
+        let expected = Ok(Program::Statements(vec![Statement::CreateTable(
+            CreateTableBody {
                 table_name: Identifier::from("Users".to_string()),
                 column_list: vec![
                     ColumnDefinition {
@@ -2230,7 +2234,7 @@ mod parser_tests {
                         nullable: false,
                     },
                 ],
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);
@@ -2249,10 +2253,10 @@ mod parser_tests {
         ];
         let lexer = Parser::new_positionless(tokens, &query).parse();
 
-        let expected = Ok(Program::Statements(vec![Statement::Server(
-            ServerStatement::CreateDatabase(CreateDatabaseBody {
+        let expected = Ok(Program::Statements(vec![Statement::CreateDatabase(
+            CreateDatabaseBody {
                 database_name: Identifier::from("Db".to_string()),
-            }),
+            },
         )]));
 
         assert_eq!(lexer, expected);

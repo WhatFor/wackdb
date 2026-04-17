@@ -8,21 +8,11 @@ pub enum Program {
 
 #[derive(PartialEq, Debug)]
 pub enum Statement {
-    User(UserStatement),
-    Server(ServerStatement),
-}
-
-#[derive(PartialEq, Debug)]
-pub enum UserStatement {
     Select(SelectExpressionBody),
     Update,
     Insert,
     Delete,
     CreateTable(CreateTableBody),
-}
-
-#[derive(PartialEq, Debug)]
-pub enum ServerStatement {
     CreateDatabase(CreateDatabaseBody),
 }
 
@@ -153,7 +143,7 @@ impl SelectItem {
         SelectItem {
             expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
                 qualifier: Identifier::from(qualifier.to_string()),
-                identifier: Identifier::from(identifier.to_string())
+                identifier: Identifier::from(identifier.to_string()),
             }),
             alias: None,
         }
@@ -173,12 +163,15 @@ impl SelectItem {
         }
     }
 
-    pub fn aliased_qualified_identifier(qualifier: &str, identifier: &str, alias: Identifier) -> Self {
-
+    pub fn aliased_qualified_identifier(
+        qualifier: &str,
+        identifier: &str,
+        alias: Identifier,
+    ) -> Self {
         SelectItem {
             expr: Expr::QualifiedIdentifier(QualifiedIdentifier {
                 qualifier: Identifier::from(qualifier.to_string()),
-                identifier: Identifier::from(identifier.to_string())
+                identifier: Identifier::from(identifier.to_string()),
             }),
             alias: Some(alias),
         }
