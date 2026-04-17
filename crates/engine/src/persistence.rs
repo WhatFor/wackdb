@@ -11,7 +11,8 @@ use thiserror::Error;
 
 use crate::{
     catalog::MASTER_NAME,
-    db::{DatabaseId, FileType},
+    db::DatabaseId,
+    file_format::FileType,
     page::{PageId, PAGE_SIZE_BYTES},
     page_cache::PageBytes,
     util,

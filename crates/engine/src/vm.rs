@@ -7,8 +7,8 @@ use thiserror::Error;
 
 use crate::{
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
-    db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::Storage,
+    file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,

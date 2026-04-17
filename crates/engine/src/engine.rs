@@ -1,5 +1,6 @@
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
-use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
+use crate::db::{self, DatabaseId};
+use crate::file_format::{DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager, IdentifiedFile};
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
@@ -45,13 +46,13 @@ impl Engine {
         match master_db_result {
             Ok(x) => {
                 self.storage.file_manager.add(
-                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Primary),
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Primary),
                     x.dat,
                     x.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
-                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Log),
+                    FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Log),
                     x.log,
                     0,
                 );
@@ -77,17 +78,13 @@ impl Engine {
                     );
 
                     self.storage.file_manager.add(
-                        FileId::new(
-                            user_db.id,
-                            user_db.name.clone().into(),
-                            db::FileType::Primary,
-                        ),
+                        FileId::new(user_db.id, user_db.name.clone().into(), FileType::Primary),
                         user_db.dat,
                         user_db.allocated_page_count,
                     );
 
                     self.storage.file_manager.add(
-                        FileId::new(user_db.id, user_db.name.into(), db::FileType::Log),
+                        FileId::new(user_db.id, user_db.name.into(), FileType::Log),
                         user_db.log,
                         0,
                     );
@@ -155,13 +152,13 @@ impl Engine {
                 let result = persistence::create_database(db_name, next_id, false)?;
 
                 self.storage.file_manager.add(
-                    FileId::new(result.id, result.name.clone(), db::FileType::Primary),
+                    FileId::new(result.id, result.name.clone(), FileType::Primary),
                     result.dat,
                     result.allocated_page_count,
                 );
 
                 self.storage.file_manager.add(
-                    FileId::new(result.id, result.name, db::FileType::Log),
+                    FileId::new(result.id, result.name, FileType::Log),
                     result.log,
                     0,
                 );

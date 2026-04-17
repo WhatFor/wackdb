@@ -5,7 +5,8 @@ use std::{collections::HashMap, fs::File, hash::Hash};
 use thiserror::Error;
 
 use crate::{
-    db::{DatabaseId, FileType},
+    db::DatabaseId,
+    file_format::FileType,
     page::{PageDecoder, PageId},
     page_cache::PageBytes,
     persistence,

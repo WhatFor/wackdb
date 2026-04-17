@@ -1,6 +1,7 @@
 use deku::{ctx::Endian, DekuRead, DekuWrite};
 
-use crate::db::{DatabaseId, CURRENT_DATABASE_VERSION};
+use crate::db::DatabaseId;
+use crate::file_format::CURRENT_DATABASE_VERSION;
 use crate::page::PageId;
 use crate::types::{DbByte, DbDate, DbInt, DbLong, DbShort};
 use crate::util::now_bytes;

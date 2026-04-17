@@ -1,4 +1,4 @@
-use crate::{db::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
+use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
 
 pub type PageBytes = [u8; 8192];
 

@@ -4,7 +4,7 @@ use deku::DekuContainerWrite;
 use crate::{
     btree::BTree,
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME},
-    db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageHeader, PageId, PageType},
     page_cache::PageBytes,
