@@ -1,53 +1,35 @@
-use std::{
-    cell::{RefCell, RefMut},
-    rc::Rc,
-};
-
 use crate::{
+    engine::Storage,
     page::{PageDecoder, PageId},
-    page_cache::{FilePageId, PageCache},
+    page_cache::FilePageId,
 };
 
-#[derive(Clone)]
-pub struct IndexPager {
-    page_cache: Rc<RefCell<PageCache>>,
-}
-
-impl IndexPager {
-    pub fn new(page_cache: Rc<RefCell<PageCache>>) -> Self {
-        IndexPager { page_cache }
-    }
-
-    pub fn create_pager(&self, index_root_file_page_id: FilePageId) -> IndexPagerIterator {
-        IndexPagerIterator::new(index_root_file_page_id, Rc::clone(&self.page_cache))
-    }
-}
-
-pub struct IndexPagerIterator {
+pub struct IndexPager<'a> {
     file_id: u16,
     current_page: PageId,
     current_page_slot_index: u16,
-    page_cache: Rc<RefCell<PageCache>>,
+    storage: &'a mut Storage,
 }
 
-impl IndexPagerIterator {
-    pub fn new(index_root_file_page_id: FilePageId, page_cache: Rc<RefCell<PageCache>>) -> Self {
-        IndexPagerIterator {
+impl<'a> IndexPager<'a> {
+    pub fn new(index_root_file_page_id: FilePageId, storage: &'a mut Storage) -> Self {
+        IndexPager {
             file_id: index_root_file_page_id.db_id,
             current_page: index_root_file_page_id.page_index,
             current_page_slot_index: 0,
-            page_cache,
+            storage,
         }
     }
 }
 
-impl Iterator for IndexPagerIterator {
+impl<'a> Iterator for IndexPager<'a> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let page_cache = self.page_cache.borrow_mut();
-
-        let page_bytes = page_cache.get_page(&FilePageId::new(self.file_id, self.current_page))?;
+        let page_bytes = self.storage.page_cache.get_page(
+            &FilePageId::new(self.file_id, self.current_page),
+            &mut self.storage.file_manager,
+        )?;
 
         // TODO: This feels like quite a costly operation - can we instead cache the parsed page instead of just the bytes?
         //       It's decoding the page for EVERY slot we iter over!

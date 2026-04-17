@@ -21,7 +21,7 @@ fn main() {
     log::info!("-----------------");
 
     let args: Vec<String> = args().collect();
-    let repl = Repl::new();
+    let mut repl = Repl::new();
 
     if args.len() <= 1 {
         repl.run();

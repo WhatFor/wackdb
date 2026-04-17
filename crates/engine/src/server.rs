@@ -2,12 +2,12 @@ use anyhow::Result;
 use deku::{ctx::Endian, DekuContainerWrite, DekuRead, DekuWrite};
 use derive_more::derive::From;
 use parser::ast::CreateDatabaseBody;
-use std::{cell::RefMut, fs::File};
+use std::fs::File;
 use thiserror::Error;
 
 use crate::{
     btree::BTree,
-    db::{self, DatabaseId, FileType, SCHEMA_INFO_PAGE_INDEX, SchemaInfo},
+    db::{self, DatabaseId, FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     engine::CURRENT_DATABASE_VERSION,
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageEncoderError, PageHeader, PageId, PageType},
@@ -776,7 +776,7 @@ fn initialise_indexes_table(
     Ok(page.collect())
 }
 
-pub fn ensure_master_tables_exist(mut file_manager: RefMut<FileManager>) -> Result<()> {
+pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
     let master_id = &IdMapKey::new(MASTER_DB_ID, FileType::Primary);
 
     // read out the schema info page

@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
     db::{DatabaseId, FileType},
-    page::{self, PageDecoder, PageId},
+    page::{PageDecoder, PageId},
     page_cache::PageBytes,
     persistence,
 };
@@ -53,17 +53,12 @@ pub struct IdentifiedFile<'a> {
     pub file: &'a File,
 }
 
+#[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
     handles: HashMap<FileId, File>,
     allocated_page_count: HashMap<FileId, PageId>,
-}
-
-impl Default for FileManager {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl FileManager {

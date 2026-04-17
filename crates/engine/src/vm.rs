@@ -2,13 +2,11 @@ use anyhow::{Error, Result};
 use deku::DekuReader;
 use derive_more::derive::From;
 use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, UserStatement, Value};
-use std::{cell::RefCell, ops::Add, rc::Rc};
 use thiserror::Error;
 
 use crate::{
     db::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    engine::{ColumnResult, ExprResult, ResultSet, StatementResult},
-    fm::FileManager,
+    engine::{ColumnResult, ExprResult, ResultSet, StatementResult, Storage},
     index_pager::IndexPager,
     page::PageDecoder,
     page_cache::FilePageId,
@@ -17,10 +15,8 @@ use crate::{
     types::DbLong,
 };
 
-pub struct VirtualMachine {
-    file_manager: Rc<RefCell<FileManager>>,
-    index_pager: Rc<RefCell<IndexPager>>,
-}
+#[derive(Default)]
+pub struct VirtualMachine;
 
 #[derive(Debug, From, Error)]
 enum StatementError {
@@ -52,17 +48,11 @@ struct ColumnResultWithMetadata {
 }
 
 impl VirtualMachine {
-    pub fn new(
-        file_manager: Rc<RefCell<FileManager>>,
-        index_pager: Rc<RefCell<IndexPager>>,
-    ) -> Self {
-        VirtualMachine {
-            file_manager,
-            index_pager,
-        }
-    }
-
-    pub fn execute_user_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
+    pub fn execute_user_statement(
+        &self,
+        statement: &UserStatement,
+        mut storage: &mut Storage,
+    ) -> Result<StatementResult> {
         let is_const_expr = self.is_constant_statement(statement);
 
         if is_const_expr {
@@ -71,7 +61,7 @@ impl VirtualMachine {
         }
 
         match statement {
-            UserStatement::Select(s) => self.evaluate_select_statement(s),
+            UserStatement::Select(s) => self.evaluate_select_statement(s, &mut storage),
             UserStatement::Update => todo!(),
             UserStatement::Insert => todo!(),
             UserStatement::Delete => todo!(),
@@ -82,8 +72,7 @@ impl VirtualMachine {
     // todo: type?
     fn is_constant_statement(&self, statement: &UserStatement) -> bool {
         match statement {
-            UserStatement::Select(select_expression_body) =>
-                select_expression_body
+            UserStatement::Select(select_expression_body) => select_expression_body
                 .select_item_list
                 .item_list
                 .iter()
@@ -115,7 +104,9 @@ impl VirtualMachine {
             Expr::IsNull(expr) => self.is_const_exp(expr),
             Expr::IsNotNull(expr) => self.is_const_exp(expr),
             Expr::Like { expr, pattern } => self.is_const_exp(expr) && self.is_const_exp(pattern),
-            Expr::NotLike { expr, pattern } => self.is_const_exp(expr) && self.is_const_exp(pattern),
+            Expr::NotLike { expr, pattern } => {
+                self.is_const_exp(expr) && self.is_const_exp(pattern)
+            }
             Expr::IsIn { expr, list } => {
                 self.is_const_exp(expr) && list.iter().all(|e| self.is_const_exp(e))
             }
@@ -178,12 +169,16 @@ impl VirtualMachine {
     fn evaluate_select_statement(
         &self,
         statement: &SelectExpressionBody,
+        mut storage: &mut Storage,
     ) -> Result<StatementResult> {
         log::debug!("SELECT:");
         match &statement.from_clause {
             Some(from) => {
-                let is_select_wildcard =
-                    statement.select_item_list.item_list.iter().any(|i| *i == SelectItem::new(Expr::Wildcard));
+                let is_select_wildcard = statement
+                    .select_item_list
+                    .item_list
+                    .iter()
+                    .any(|i| *i == SelectItem::new(Expr::Wildcard));
 
                 log::debug!("   ITEMS: {:?}", statement.select_item_list.item_list);
 
@@ -209,8 +204,9 @@ impl VirtualMachine {
                 // Step 1.
                 // Fetch the `master` database file, we need to read a lot of metadata from it
                 // in order to know where to read the user-query data from (and if it's even valid).
-                let fm = self.file_manager.borrow();
-                let master_data_file = fm.get_from_id(MASTER_DB_ID, FileType::Primary);
+                let master_data_file = storage
+                    .file_manager
+                    .get_from_id(MASTER_DB_ID, FileType::Primary);
 
                 if master_data_file.is_none() {
                     return Err(Error::msg("Failed to read Master data file"));
@@ -226,16 +222,14 @@ impl VirtualMachine {
                 let schema_page = PageDecoder::from_bytes(&schema_page_bytes);
                 let schema_info = schema_page.try_read::<SchemaInfo>(0)?;
 
-                let pager = self.index_pager.borrow();
-
                 // Step 3.
                 // Create an pager and read all the Database records that exist
                 // in the schema.
                 // Validate if the database exists.
-                let databases_page_iter = pager.create_pager(FilePageId::new(
-                    MASTER_DB_ID,
-                    schema_info.databases_root_page_id,
-                ));
+                let databases_page_iter = IndexPager::new(
+                    FilePageId::new(MASTER_DB_ID, schema_info.databases_root_page_id),
+                    &mut storage,
+                );
 
                 let mut dbs = databases_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
@@ -258,10 +252,10 @@ impl VirtualMachine {
                 // Step 4.
                 // Create a pager and read all the Table records that exist in the schema.
                 // Validate if the target table exists.
-                let tables_page_iter = pager.create_pager(FilePageId::new(
-                    MASTER_DB_ID,
-                    schema_info.tables_root_page_id,
-                ));
+                let tables_page_iter = IndexPager::new(
+                    FilePageId::new(MASTER_DB_ID, schema_info.tables_root_page_id),
+                    &mut storage,
+                );
 
                 let mut tables = tables_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
@@ -292,10 +286,10 @@ impl VirtualMachine {
                 // Create a pager and read from the Schema the indexes that exist.
                 // Then find the Primary Key index on the target table.
                 // This is needed to know where to start reading the data from.
-                let indexes_page_iter = pager.create_pager(FilePageId::new(
-                    MASTER_DB_ID,
-                    schema_info.indexes_root_page_id,
-                ));
+                let indexes_page_iter = IndexPager::new(
+                    FilePageId::new(MASTER_DB_ID, schema_info.indexes_root_page_id),
+                    &mut storage,
+                );
 
                 let mut indexes = indexes_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
@@ -321,10 +315,10 @@ impl VirtualMachine {
                 // Step 6.
                 // Create a pager and read all Columns from the Schema that exist.
                 // Validate that the requested columns exist.
-                let columns_page_iter = pager.create_pager(FilePageId::new(
-                    MASTER_DB_ID,
-                    schema_info.columns_root_page_id,
-                ));
+                let columns_page_iter = IndexPager::new(
+                    FilePageId::new(MASTER_DB_ID, schema_info.columns_root_page_id),
+                    &mut storage,
+                );
 
                 let columns = columns_page_iter.map(|item| {
                     let mut cursor = std::io::Cursor::new(item);
@@ -343,7 +337,6 @@ impl VirtualMachine {
                 //      If wildcard, will be all columns sorted by the position property from master.columns,
                 //      else will be sorted in the order in which the columns appeared in the query.
                 let selected_columns: Vec<ColumnResultWithMetadata> = if is_select_wildcard {
-
                     // TODO: This needs work. It just dumps all columns as our selected, but doesn't account for const columns.
                     // Test: SELECT *, 'Hello' from Tables
                     columns_of_target_table
@@ -392,9 +385,11 @@ impl VirtualMachine {
                                     name.push_str(&index.to_string());
 
                                     name
-                                },
+                                }
                                 Expr::Identifier(identifier) => identifier.value.clone(),
-                                Expr::QualifiedIdentifier(identifiers) => identifiers.identifier.value.clone(),
+                                Expr::QualifiedIdentifier(identifiers) => {
+                                    identifiers.identifier.value.clone()
+                                }
                                 Expr::Wildcard => unreachable!(),
                             };
 
@@ -432,21 +427,25 @@ impl VirtualMachine {
                         .filter(|i| match &i.expr {
                             // TODO: Handle all types of SelectItem expressions.
                             // TODO: I hate that we've turned this iter into a vec and now back into an iter
-                            Expr::QualifiedIdentifier(ident) =>
-                                columns_of_target_table
+                            Expr::QualifiedIdentifier(ident) => columns_of_target_table
                                 .iter()
                                 // TODO: clone is a bit shit
-                                .all(|c| String::from_utf8(c.name.clone()).unwrap() != ident.identifier.value),
-                            Expr::Identifier(ident) =>
-                                columns_of_target_table
+                                .all(|c| {
+                                    String::from_utf8(c.name.clone()).unwrap()
+                                        != ident.identifier.value
+                                }),
+                            Expr::Identifier(ident) => columns_of_target_table
                                 .iter()
                                 // TODO: clone is a bit shit
                                 .all(|c| String::from_utf8(c.name.clone()).unwrap() != ident.value),
                             Expr::Value(_) => false,
                             _ => {
-                                log::trace!("[EVAL SELECT] Expression {:?} defaulted to 'missing'.", i.expr);
+                                log::trace!(
+                                    "[EVAL SELECT] Expression {:?} defaulted to 'missing'.",
+                                    i.expr
+                                );
                                 true
-                            },
+                            }
                         })
                         .cloned()
                         .collect();
@@ -460,10 +459,10 @@ impl VirtualMachine {
                 // Step 7.
                 // Because deku wont work to deserialise a type it knows nothing about,
                 // we need to use our column schema info to decide how to read the incoming row bytes.
-                let target_table_iter = pager.create_pager(FilePageId::new(
-                    MASTER_DB_ID,
-                    target_table_index_root_id.try_into().unwrap(),
-                ));
+                let target_table_iter = IndexPager::new(
+                    FilePageId::new(MASTER_DB_ID, target_table_index_root_id.try_into().unwrap()),
+                    &mut storage,
+                );
 
                 let mut results_with_positions: Vec<Vec<ExprResultWithPosition>> =
                     target_table_iter
@@ -596,12 +595,15 @@ impl VirtualMachine {
                         })
                         .collect();
 
-                let sorted_rows = results_with_positions.iter_mut().map(|r| {
-                    r.sort_by(|a, b| a.pos.cmp(&b.pos));
+                let sorted_rows = results_with_positions
+                    .iter_mut()
+                    .map(|r| {
+                        r.sort_by(|a, b| a.pos.cmp(&b.pos));
 
-                    // TODO: clone
-                    r.into_iter().map(|e| e.expr.clone()).collect()
-                }).collect();
+                        // TODO: clone
+                        r.into_iter().map(|e| e.expr.clone()).collect()
+                    })
+                    .collect();
 
                 // TODO: clone
                 let sorted_columns = selected_columns.iter().map(|c| c.col.clone()).collect();

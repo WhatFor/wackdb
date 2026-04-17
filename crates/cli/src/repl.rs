@@ -34,13 +34,13 @@ pub enum CommandResult {
 
 impl Repl {
     pub fn new() -> Self {
-        let engine = Engine::new();
+        let mut engine = Engine::new();
         engine.init();
 
         Repl { engine }
     }
 
-    pub fn run(&self) {
+    pub fn run(&mut self) {
         loop {
             Repl::print_prompt();
 
@@ -136,7 +136,7 @@ impl Repl {
         exit(0);
     }
 
-    pub fn eval_command(&self, input: &str) -> CommandResult {
+    pub fn eval_command(&mut self, input: &str) -> CommandResult {
         let input_str = input.to_string();
 
         let lexer = Lexer::new(&input_str);
@@ -149,7 +149,6 @@ impl Repl {
 
         match parse_result {
             Ok(ast) => {
-
                 log::trace!("Parsing complete. Tokens: {:?}", ast);
                 let execute_result = self.engine.execute(&ast);
 
@@ -168,7 +167,7 @@ impl Repl {
         }
     }
 
-    pub fn eval_file(&self, file: &str) -> CommandResult {
+    pub fn eval_file(&mut self, file: &str) -> CommandResult {
         match std::fs::read_to_string(file) {
             Ok(file_content) => self.eval_command(&file_content),
             Err(_) => CommandResult::Failed(String::from("Failed to open file.")),
@@ -179,7 +178,7 @@ impl Repl {
     /// to be validated as a command by this point.
     /// This will either eval a command or
     /// short-circuit for a meta command.
-    fn handle_repl_command(&self, buf: &str) -> Result {
+    fn handle_repl_command(&mut self, buf: &str) -> Result {
         let fmt_buf = buf.trim();
 
         if Repl::is_meta_command(fmt_buf) {

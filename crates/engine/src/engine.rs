@@ -1,6 +1,5 @@
 use crate::db::{self, DatabaseId, DatabaseInfo, FileType, DATABASE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager, IdentifiedFile};
-use crate::index_pager::IndexPager;
 use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::persistence;
@@ -10,7 +9,7 @@ use crate::vm::VirtualMachine;
 use anyhow::Result;
 use parser::ast::{Program, ServerStatement, UserStatement};
 use std::fmt::Display;
-use std::{cell::RefCell, fs::File, rc::Rc};
+use std::fs::File;
 
 /// System wide Consts
 pub const DATA_FILE_EXT: &str = "wak";
@@ -29,10 +28,13 @@ pub const PAGE_HEADER_SIZE_BYTES_USIZE: usize = 32;
 pub const WACK_DIRECTORY: &str = "data"; // TODO: Hardcoded for now. See /docs/assumptions.
 
 pub struct Engine {
-    page_cache: Rc<RefCell<PageCache>>,
-    file_manager: Rc<RefCell<FileManager>>,
     vm: VirtualMachine,
-    index_pager: Rc<RefCell<IndexPager>>,
+    storage: Storage,
+}
+
+pub struct Storage {
+    pub page_cache: PageCache,
+    pub file_manager: FileManager,
 }
 
 #[derive(Debug)]
@@ -107,38 +109,31 @@ impl Default for Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        let file_manager = Rc::new(RefCell::new(FileManager::new()));
-
-        let page_cache = Rc::new(RefCell::new(PageCache::new(
-            PAGE_CACHE_CAPACITY,
-            Rc::clone(&file_manager),
-        )));
-
-        let index_pager = Rc::new(RefCell::new(IndexPager::new(Rc::clone(&page_cache))));
-        let vm = VirtualMachine::new(Rc::clone(&file_manager), Rc::clone(&index_pager));
+        let vm = VirtualMachine::default();
+        let page_cache = PageCache::new(PAGE_CACHE_CAPACITY);
+        let file_manager = FileManager::default();
 
         Engine {
-            page_cache,
-            file_manager,
             vm,
-            index_pager,
+            storage: Storage {
+                page_cache,
+                file_manager,
+            },
         }
     }
 
-    pub fn init(&self) {
+    pub fn init(&mut self) {
         let master_db_result = server::open_or_create_master_db();
 
         match master_db_result {
             Ok(x) => {
-                let mut fm = self.file_manager.borrow_mut();
-
-                fm.add(
+                self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Primary),
                     x.dat,
                     x.allocated_page_count,
                 );
 
-                fm.add(
+                self.storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), db::FileType::Log),
                     x.log,
                     0,
@@ -150,7 +145,7 @@ impl Engine {
             }
         }
 
-        if let Err(e) = server::ensure_master_tables_exist(self.file_manager.borrow_mut()) {
+        if let Err(e) = server::ensure_master_tables_exist(&mut self.storage.file_manager) {
             log::error!("Error initialising master tables: {:?}", e);
             return;
         }
@@ -164,9 +159,7 @@ impl Engine {
                         user_db.allocated_page_count
                     );
 
-                    let mut fm = self.file_manager.borrow_mut();
-
-                    fm.add(
+                    self.storage.file_manager.add(
                         FileId::new(
                             user_db.id,
                             user_db.name.clone().into(),
@@ -176,7 +169,7 @@ impl Engine {
                         user_db.allocated_page_count,
                     );
 
-                    fm.add(
+                    self.storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.into(), db::FileType::Log),
                         user_db.log,
                         0,
@@ -192,7 +185,7 @@ impl Engine {
         self.validate_files();
     }
 
-    pub fn execute(&self, prog: &Program) -> Result<ExecuteResult> {
+    pub fn execute(&mut self, prog: &Program) -> Result<ExecuteResult> {
         let mut results = vec![];
         let mut errors = vec![];
 
@@ -224,12 +217,12 @@ impl Engine {
     }
 
     /// Userland statements. For example, SELECT, INSERT, etc.
-    pub fn execute_user_statement(&self, statement: &UserStatement) -> Result<StatementResult> {
+    pub fn execute_user_statement(&mut self, statement: &UserStatement) -> Result<StatementResult> {
         dbg!(&statement);
         match statement {
             UserStatement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                self.vm.execute_user_statement(statement)
+                self.vm.execute_user_statement(statement, &mut self.storage)
             }
             UserStatement::Update => {
                 log::info!("Updating");
@@ -251,20 +244,23 @@ impl Engine {
     }
 
     /// Serverland statements. For example, CREATE DATABASE.
-    pub fn execute_server_statement(&self, statement: &ServerStatement) -> Result<StatementResult> {
+    pub fn execute_server_statement(
+        &mut self,
+        statement: &ServerStatement,
+    ) -> Result<StatementResult> {
         match statement {
             ServerStatement::CreateDatabase(s) => {
                 let next_id = self.next_id();
 
                 let result = server::create_user_database(s, next_id)?;
 
-                self.file_manager.borrow_mut().add(
+                self.storage.file_manager.add(
                     FileId::new(result.id, result.name.clone(), db::FileType::Primary),
                     result.dat,
                     result.allocated_page_count,
                 );
 
-                self.file_manager.borrow_mut().add(
+                self.storage.file_manager.add(
                     FileId::new(result.id, result.name, db::FileType::Log),
                     result.log,
                     0,
@@ -278,11 +274,10 @@ impl Engine {
         }
     }
 
-    /// For all files in self.file_manager, validate them
     fn validate_files(&self) {
-        let fm = self.file_manager.borrow();
-
-        fm.get_all()
+        self.storage
+            .file_manager
+            .get_all()
             .filter(|file| file.id.ty != FileType::Log)
             .for_each(|file| self.validate_file(file));
     }
@@ -305,34 +300,36 @@ impl Engine {
         };
     }
 
-    pub fn open_user_dbs(&self) -> Result<Box<impl Iterator<Item = OpenDatabaseResult> + '_>> {
+    pub fn open_user_dbs(&self) -> Result<Vec<OpenDatabaseResult>> {
         let dbs = persistence::find_user_databases()?;
 
-        let results = dbs.map(|db| {
-            let user_db = persistence::open_db(&db);
-            let allocated_page_count = persistence::get_allocated_page_count(&user_db.dat);
-            let id = self.get_db_id(&user_db.dat);
+        let results = dbs
+            .map(|db| {
+                let user_db = persistence::open_db(&db);
+                let allocated_page_count = persistence::get_allocated_page_count(&user_db.dat);
+                let id = self.get_db_id(&user_db.dat);
 
-            if id.is_err() {
-                panic!("I have no idea");
-            }
+                if id.is_err() {
+                    panic!("I have no idea");
+                }
 
-            log::info!("Opening user DB: {:?}", db);
+                log::info!("Opening user DB: {:?}", db);
 
-            OpenDatabaseResult {
-                id: id.unwrap(),
-                name: db,
-                dat: user_db.dat,
-                log: user_db.log,
-                allocated_page_count,
-            }
-        });
+                OpenDatabaseResult {
+                    id: id.unwrap(),
+                    name: db,
+                    dat: user_db.dat,
+                    log: user_db.log,
+                    allocated_page_count,
+                }
+            })
+            .collect();
 
-        Ok(Box::new(results))
+        Ok(results)
     }
 
     fn next_id(&self) -> DatabaseId {
-        self.file_manager.borrow().next_file_id()
+        self.storage.file_manager.next_file_id()
     }
 
     pub fn get_db_id(&self, file: &File) -> Result<DatabaseId> {

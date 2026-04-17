@@ -1,5 +1,4 @@
 use crate::{db::FileType, fm::FileManager, lru::LRUCache, page::PageId, persistence};
-use std::{cell::RefCell, rc::Rc};
 
 pub type PageBytes = [u8; 8192];
 
@@ -18,27 +17,22 @@ impl FilePageId {
 pub type FilePageCache = LRUCache<FilePageId, PageBytes>;
 
 pub struct PageCache {
-    lru_cache: Rc<RefCell<FilePageCache>>,
-    file_manager: Rc<RefCell<FileManager>>,
+    lru_cache: FilePageCache,
 }
 
 impl PageCache {
-    pub fn new(capacity: usize, file_manager: Rc<RefCell<FileManager>>) -> Self {
-        let lru_cache = Rc::new(RefCell::new(FilePageCache::new(capacity)));
+    pub fn new(capacity: usize) -> Self {
+        let lru_cache = FilePageCache::new(capacity);
 
-        PageCache {
-            lru_cache,
-            file_manager,
-        }
+        PageCache { lru_cache }
     }
 
-    pub fn get_page(&self, id: &FilePageId) -> Option<PageBytes> {
-        if let Some(page) = self.lru_cache.borrow().get(id) {
+    pub fn get_page(&mut self, id: &FilePageId, file_manager: &FileManager) -> Option<PageBytes> {
+        if let Some(page) = self.lru_cache.get(id) {
             return Some(*page);
         }
 
-        let fm_borrow = self.file_manager.borrow();
-        let file = fm_borrow.get_from_id(id.db_id, FileType::Primary);
+        let file = file_manager.get_from_id(id.db_id, FileType::Primary);
 
         match file {
             Some(file_handle) => {
@@ -46,10 +40,9 @@ impl PageCache {
 
                 match disk_page {
                     Ok(disk_page_ok) => {
-                        let mut lru = self.lru_cache.borrow_mut();
-                        lru.put(id, disk_page_ok);
+                        self.lru_cache.put(id, disk_page_ok);
 
-                        if let Some(created) = lru.get(id) {
+                        if let Some(created) = self.lru_cache.get(id) {
                             return Some(*created);
                         }
 
@@ -64,37 +57,34 @@ impl PageCache {
 
     pub fn put_page(&mut self, id: &FilePageId, data: PageBytes) {
         // TODO: This probably needs to do a lot more than just put it into the cache.
-        self.lru_cache.borrow_mut().put(id, data);
+        self.lru_cache.put(id, data);
     }
 }
 
 #[cfg(test)]
 mod page_cache_tests {
-    use std::{cell::RefCell, rc::Rc};
-
-    use crate::{fm::FileManager, page_cache::FilePageId};
-
     use super::{PageBytes, PageCache};
+    use crate::{fm::FileManager, page_cache::FilePageId};
 
     #[test]
     fn test_put_and_get() {
-        let fm = Rc::new(RefCell::new(FileManager::new()));
-        let mut page_cache = PageCache::new(3, Rc::clone(&fm));
+        let fm = FileManager::new();
+        let mut page_cache = PageCache::new(3);
 
         let mut page: PageBytes = [0; 8192];
         page[0] = 5;
 
         let ix = FilePageId::new(0, 1);
         page_cache.put_page(&ix, page);
-        let read_value = page_cache.get_page(&ix);
+        let read_value = page_cache.get_page(&ix, &fm);
 
         assert_eq!(read_value.unwrap(), page);
     }
 
     #[test]
     fn test_capacity() {
-        let fm = Rc::new(RefCell::new(FileManager::new()));
-        let mut page_cache = PageCache::new(3, Rc::clone(&fm));
+        let fm = FileManager::new();
+        let mut page_cache = PageCache::new(3);
 
         let page: PageBytes = [0; 8192];
 
@@ -103,10 +93,10 @@ mod page_cache_tests {
         page_cache.put_page(&FilePageId::new(0, 3), page);
         page_cache.put_page(&FilePageId::new(0, 4), page);
 
-        let read_value_evicted = page_cache.get_page(&FilePageId::new(0, 1));
+        let read_value_evicted = page_cache.get_page(&FilePageId::new(0, 1), &fm);
         assert_eq!(read_value_evicted, None);
 
-        let read_value_exists = page_cache.get_page(&FilePageId::new(0, 2));
+        let read_value_exists = page_cache.get_page(&FilePageId::new(0, 2), &fm);
         assert_eq!(read_value_exists.unwrap(), page);
     }
 }
