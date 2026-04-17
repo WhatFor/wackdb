@@ -173,7 +173,103 @@ impl DatabaseStorage for MemoryFile {
 }
 
 #[cfg(test)]
-mod file_tests {
+mod disk_file_tests {
+    use std::env::temp_dir;
+    use std::fs::OpenOptions;
+    use std::path::PathBuf;
+    use uuid::Uuid;
+
+    use crate::file::{DatabaseStorage, DiskFile};
+    use crate::page::PAGE_SIZE_BYTES;
+
+    fn temp_dir_path() -> std::path::PathBuf {
+        let mut dir = temp_dir();
+        let id = Uuid::new_v4().to_string();
+        dir.push(id + ".tmp");
+
+        dir
+    }
+
+    fn get_temp_file() -> (DiskFile, PathBuf) {
+        let path = temp_dir_path();
+
+        let file = OpenOptions::new()
+            .write(true)
+            .read(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .expect("Failed to create temp file");
+
+        (DiskFile::new(file), path)
+    }
+
+    #[test]
+    fn test_write_page() {
+        let (mut file, temp_path) = get_temp_file();
+        let data = vec![1, 2, 0];
+
+        let result = file.write_page(&data, 0);
+
+        assert!(result.is_ok());
+
+        // Clean down
+        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
+    }
+
+    #[test]
+    fn test_read_page() {
+        let (mut file, temp_path) = get_temp_file();
+
+        // Create a page-sized buffer
+        let mut buffer = vec![0; PAGE_SIZE_BYTES as usize];
+        buffer[0] = 1;
+
+        // Act
+        let _ = file.write_page(&buffer, 0);
+
+        // Read
+        let result = file.read_page(0);
+        let read_bytes = result.unwrap();
+
+        // Assert
+        assert_eq!(read_bytes[0], 1);
+        assert_eq!(read_bytes[1], 0);
+
+        // Clean down
+        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
+    }
+
+    #[test]
+    fn test_page_seek() {
+        let (mut file, temp_path) = get_temp_file();
+
+        // Create 2 page-sized buffers
+        let buffer1 = vec![0; PAGE_SIZE_BYTES as usize];
+        let mut buffer2 = vec![0; PAGE_SIZE_BYTES as usize];
+
+        // Write a byte at the start of the 2nd page
+        buffer2[0] = 1;
+
+        // Act
+        let _ = file.write_page(&buffer1, 0);
+        let _ = file.write_page(&buffer2, 1);
+
+        // Read
+        let result = file.read_page(1);
+        let read_bytes = result.unwrap();
+
+        // Assert
+        assert_eq!(read_bytes[0], 1);
+        assert_eq!(read_bytes[1], 0);
+
+        // Clean down
+        std::fs::remove_file(temp_path).expect("Unable to clear down test.");
+    }
+}
+
+#[cfg(test)]
+mod memory_file_tests {
     use crate::file::{DatabaseStorage, MemoryFile};
     use crate::page::PAGE_SIZE_BYTES;
 
