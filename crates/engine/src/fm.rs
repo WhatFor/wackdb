@@ -167,3 +167,39 @@ impl FileManager {
         self.handles.keys().map(|id| id.id).max().unwrap_or(0) + 1
     }
 }
+
+#[cfg(test)]
+mod fm_tests {
+    use crate::file::MemoryFile;
+
+    use super::*;
+
+    #[test]
+    fn fm_can_add_and_get_file_by_id() {
+        let mut fm = FileManager::new();
+
+        let id = FileId::new(1, String::from("File 1"), FileType::Primary);
+        let file = Box::new(MemoryFile::new(vec![]));
+
+        fm.add(id, file, 0);
+
+        let actual = fm.get_from_id(1, FileType::Primary);
+
+        assert!(actual.is_some());
+    }
+
+    #[test]
+    fn fm_can_add_and_get_file_by_name() {
+        let mut fm = FileManager::new();
+
+        let name = String::from("File 1");
+        let id = FileId::new(1, name.clone(), FileType::Primary);
+        let file = Box::new(MemoryFile::new(vec![]));
+
+        fm.add(id, file, 0);
+
+        let actual = fm.get_from_name(name, FileType::Primary);
+
+        assert!(actual.is_some());
+    }
+}
