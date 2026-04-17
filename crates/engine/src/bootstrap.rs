@@ -3,12 +3,12 @@ use deku::DekuContainerWrite;
 
 use crate::{
     btree::BTree,
+    catalog::DbInt,
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME},
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::{FileManager, IdMapKey},
     page::{PageEncoder, PageHeader, PageId, PageType},
     page_cache::PageBytes,
-    types::DbInt,
 };
 
 pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {

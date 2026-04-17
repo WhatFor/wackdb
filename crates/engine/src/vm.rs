@@ -6,6 +6,7 @@ use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, Statement,
 use thiserror::Error;
 
 use crate::{
+    catalog::DbLong,
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
     engine::Storage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
@@ -13,7 +14,6 @@ use crate::{
     page::PageDecoder,
     page_cache::FilePageId,
     persistence,
-    types::DbLong,
 };
 
 #[derive(Default)]

@@ -1,4 +1,4 @@
-use crate::types::DbInt;
+use crate::catalog::DbInt;
 
 /// B-Tree implementation
 ///

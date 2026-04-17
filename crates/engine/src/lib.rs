@@ -10,6 +10,5 @@ mod lru;
 pub mod page;
 mod page_cache;
 mod persistence;
-mod types;
 mod util;
 mod vm;
