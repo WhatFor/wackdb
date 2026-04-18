@@ -5,14 +5,13 @@ use deku::DekuContainerWrite;
 
 use crate::{
     btree::BTree,
-    buffer_pool::{BufferPool, FilePageId, PageBytes},
+    buffer_pool::{FilePageId, PageBytes},
     catalog::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
     engine::Storage,
-    file::{read_page_as, DatabaseStorage},
+    file::DatabaseStorage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    fm::FileManager,
     page::{PageEncoder, PageHeader, PageId, PageType},
     persistence::{self, OpenDatabaseResult, WACK_DIRECTORY},
     util,
@@ -74,6 +73,7 @@ pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
     results
 }
 
+// TODO: Remove me in favour of reading from the master DB.
 pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
     let base_path = util::get_base_path();
     let data_path = Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));

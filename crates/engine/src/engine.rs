@@ -1,5 +1,5 @@
 use crate::bootstrap;
-use crate::buffer_pool::BufferPool;
+use crate::buffer_pool::{BufferPool, FilePageId};
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
 use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager};
@@ -7,7 +7,7 @@ use crate::page::PageDecoder;
 use crate::persistence::ValidationError;
 use crate::vm::VirtualMachine;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use cli_common::{ExecuteResult, StatementResult};
 use parser::ast::{Program, Statement};
 
@@ -182,14 +182,28 @@ impl Engine {
             .get_all()
             .filter(|file| file.id.ty != FileType::Log)
             .map(|file| {
-                let file_info_page = file.file.read_page(FILE_INFO_PAGE_INDEX)?;
+                let file_info_page = self.storage.buffer_pool.get_page(
+                    &FilePageId {
+                        db_id: file.id.id,
+                        page_index: FILE_INFO_PAGE_INDEX,
+                    },
+                    &self.storage.file_manager,
+                );
 
-                let page = PageDecoder::from_bytes(&file_info_page);
-                let checksum_pass = page.check();
+                match file_info_page {
+                    Some(info_page) => {
+                        let page = PageDecoder::from_bytes(&info_page);
+                        let checksum_pass = page.check();
 
-                match checksum_pass.pass {
-                    true => Ok(()),
-                    false => Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass).into()),
+                        match checksum_pass.pass {
+                            true => Ok(()),
+                            false => {
+                                Err(ValidationError::FileInfoChecksumIncorrect(checksum_pass)
+                                    .into())
+                            }
+                        }
+                    }
+                    None => bail!("Errrr"), // TODO: Do better.
                 }
             })
             .collect()

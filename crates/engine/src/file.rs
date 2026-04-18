@@ -1,5 +1,4 @@
 use anyhow::Result;
-use deku::DekuContainerRead;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::sync::Mutex;
@@ -78,17 +77,6 @@ pub trait DatabaseStorage {
 
         self.write_page(&collected, SCHEMA_INFO_PAGE_INDEX)
     }
-}
-
-pub fn read_page_as<'a, T>(file: &dyn DatabaseStorage, page_index: PageId) -> Result<T>
-where
-    T: DekuContainerRead<'a> + std::fmt::Debug,
-{
-    let page_bytes = file.read_page(page_index)?;
-    let page = PageDecoder::from_bytes(&page_bytes);
-    let bytes = page.try_read::<T>(0)?;
-
-    Ok(bytes)
 }
 
 pub struct DiskFile {
