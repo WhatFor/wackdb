@@ -1,4 +1,4 @@
-name: Rust
+name: Build
 
 on:
   push:
@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Deps
+      run: sudo apt-get install -y protobuf-compiler
     - name: Build
       run: cargo build --verbose
     - name: Run tests
