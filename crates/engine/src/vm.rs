@@ -856,3 +856,200 @@ impl VirtualMachine {
         ExprResult::Null
     }
 }
+
+#[cfg(test)]
+mod vm_tests {
+    use super::VirtualMachine;
+    use crate::{buffer_pool::BufferPool, engine::Storage, fm::FileManager};
+    use cli_common::ExprResult;
+    use lexer::Lexer;
+    use parser::Parser;
+
+    fn storage() -> Storage {
+        Storage {
+            buffer_pool: BufferPool::default(),
+            file_manager: FileManager::default(),
+        }
+    }
+
+    fn exec(sql: &str) -> cli_common::StatementResult {
+        let storage = storage();
+        let vm = VirtualMachine::default();
+        let buf = String::from(sql);
+        let lex = Lexer::new(&buf).lex();
+        let tokens: Vec<lexer::token::Token> = lex.tokens.into_iter().map(|t| t.token).collect();
+        let mut parser = Parser::new_positionless(tokens, sql);
+        let program = parser.parse().unwrap();
+        match program {
+            parser::ast::Program::Statements(stmts) => {
+                vm.execute_statement(&stmts[0], &storage).unwrap()
+            }
+            _ => panic!("Expected statements"),
+        }
+    }
+
+    #[test]
+    fn test_constant_select_integer() {
+        let result = exec("SELECT 1");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
+    fn test_constant_select_add() {
+        let result = exec("SELECT 1 + 2");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
+    }
+
+    #[test]
+    fn test_constant_select_subtract() {
+        let result = exec("SELECT 5 - 3");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(2));
+    }
+
+    #[test]
+    fn test_constant_select_multiply() {
+        let result = exec("SELECT 3 * 4");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(12));
+    }
+
+    #[test]
+    fn test_constant_select_divide() {
+        let result = exec("SELECT 10 / 2");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(5));
+    }
+
+    #[test]
+    fn test_constant_select_modulo() {
+        let result = exec("SELECT 7 % 3");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
+    fn test_constant_select_division_by_zero_returns_zero() {
+        // Documents current behavior: division by zero silently returns 0.
+        let result = exec("SELECT 1 / 0");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(0));
+    }
+
+    #[test]
+    fn test_constant_select_string() {
+        let result = exec("SELECT 'hello'");
+        assert_eq!(
+            result.result_set.rows[0][0],
+            ExprResult::String("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_constant_select_string_concat() {
+        let result = exec("SELECT 'hello' + ' world'");
+        assert_eq!(
+            result.result_set.rows[0][0],
+            ExprResult::String("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn test_constant_select_null() {
+        let result = exec("SELECT null");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    fn test_constant_select_null_arithmetic_returns_null() {
+        let result = exec("SELECT 1 + null");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    fn test_constant_select_type_mismatch_returns_null() {
+        // Int + String is undefined; documents that it returns Null rather than erroring.
+        let result = exec("SELECT 1 + 'hello'");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    fn test_constant_select_comparison_greater_than_true() {
+        let result = exec("SELECT 5 > 3");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_greater_than_false() {
+        let result = exec("SELECT 3 > 5");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_less_than() {
+        let result = exec("SELECT 3 < 5");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_less_than_or_equal() {
+        let result = exec("SELECT 3 <= 3");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_greater_than_or_equal() {
+        let result = exec("SELECT 5 >= 5");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_equal_true() {
+        let result = exec("SELECT 1 = 1");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_equal_false() {
+        let result = exec("SELECT 1 = 2");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_not_equal_true() {
+        let result = exec("SELECT 1 <> 2");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    fn test_constant_select_comparison_not_equal_false() {
+        let result = exec("SELECT 1 <> 1");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    fn test_constant_select_multiple_columns() {
+        let result = exec("SELECT 1, 2, 3");
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        assert_eq!(result.result_set.rows[0][1], ExprResult::Int(2));
+        assert_eq!(result.result_set.rows[0][2], ExprResult::Int(3));
+    }
+
+    #[test]
+    fn test_constant_select_column_name_defaults_to_index() {
+        let result = exec("SELECT 42");
+        assert_eq!(result.result_set.columns[0].name, "Column 0");
+    }
+
+    #[test]
+    fn test_non_constant_select_without_from_returns_error() {
+        let storage = storage();
+        let vm = VirtualMachine::default();
+        let buf = String::from("SELECT id");
+        let lex = Lexer::new(&buf).lex();
+        let tokens: Vec<lexer::token::Token> =
+            lex.tokens.into_iter().map(|t| t.token).collect();
+        let mut parser = Parser::new_positionless(tokens, "SELECT id");
+        let stmts = match parser.parse().unwrap() {
+            parser::ast::Program::Statements(s) => s,
+            _ => panic!("Expected statements"),
+        };
+        let result = vm.execute_statement(&stmts[0], &storage);
+        assert!(result.is_err());
+    }
+}

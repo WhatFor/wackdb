@@ -929,4 +929,86 @@ mod lexer_tests {
 
         assert_eq!(actual_without_locations, expected);
     }
+
+    #[test]
+    fn test_empty_string_literal() {
+        let str = String::from("''");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        let expected = vec![
+            Token::Value(Value::SingleQuoted(Slice::new(1, 1))),
+            Token::EOF,
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_comment_at_end_of_file_without_newline() {
+        // A comment as the last token with no trailing newline should lex cleanly.
+        let str = String::from("-- this is a comment");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        let expected = vec![Token::Comment(Slice::new(0, 20)), Token::EOF];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Critical Lexer Error")]
+    fn test_tab_character_panics() {
+        // Tab is not handled and triggers the stuck-loop guard.
+        let str = String::from("\t");
+        let _ = Lexer::new(&str).lex();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_unclosed_string_panics() {
+        // Bug: a string with no closing quote causes an out-of-bounds slice panic.
+        let str = String::from("'hello");
+        let _ = Lexer::new(&str).lex();
+    }
+
+    #[test]
+    fn test_unknown_comparison_operator_stops_lexing_early() {
+        // '!=' is unrecognized; the fallthrough `break` exits the outer loop
+        // immediately, producing no tokens (not even EOF).
+        let str = String::from("!= 1");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        assert!(actual.is_empty());
+    }
+
+    #[test]
+    fn test_negative_number_followed_by_operator() {
+        // '-3' should be a single Numeric token, not Minus + Numeric.
+        let str = String::from("-3 + 1");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        let expected = vec![
+            Token::Numeric(Slice::new(0, 2)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Plus),
+            Token::Space,
+            Token::Numeric(Slice::new(5, 6)),
+            Token::EOF,
+        ];
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_minus_without_following_number_is_arithmetic() {
+        // A standalone '-' not followed by a digit is Arithmetic::Minus.
+        let str = String::from("5 - 3");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        let expected = vec![
+            Token::Numeric(Slice::new(0, 1)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Minus),
+            Token::Space,
+            Token::Numeric(Slice::new(4, 5)),
+            Token::EOF,
+        ];
+        assert_eq!(actual, expected);
+    }
 }

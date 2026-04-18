@@ -505,4 +505,97 @@ mod page_encoder_tests {
 
     //     // TODO: need to be able to read slots!
     // }
+
+    #[test]
+    fn test_encode_decode_roundtrip() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+
+        let slot1 = vec![1u8, 2, 3];
+        let slot2 = vec![4u8, 5, 6, 7];
+
+        encoder.add_slot_bytes(slot1.clone()).unwrap();
+        encoder.add_slot_bytes(slot2.clone()).unwrap();
+
+        let page_bytes = encoder.collect();
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+
+        assert_eq!(decoder.try_read_bytes(0).unwrap(), slot1);
+        assert_eq!(decoder.try_read_bytes(1).unwrap(), slot2);
+    }
+
+    #[test]
+    fn test_checksum_passes_for_valid_page() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+        encoder.add_slot_bytes(vec![1u8, 2, 3]).unwrap();
+
+        let page_bytes = encoder.collect();
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+
+        assert!(decoder.check().pass);
+    }
+
+    #[test]
+    fn test_checksum_fails_for_corrupted_page() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+        encoder.add_slot_bytes(vec![1u8, 2, 3]).unwrap();
+
+        let mut page_bytes = encoder.collect();
+        // Flip bits in the first data byte (just after the header).
+        page_bytes[PAGE_HEADER_SIZE_BYTES as usize] ^= 0xFF;
+
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+        assert!(!decoder.check().pass);
+    }
+
+    #[test]
+    fn test_slot_out_of_range_on_empty_page() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+        let page_bytes = encoder.collect();
+
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+        let result = decoder.try_read_bytes(0);
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), page::PageDecoderError::SlotOutOfRange);
+    }
+
+    #[test]
+    fn test_slot_out_of_range_beyond_count() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+        encoder.add_slot_bytes(vec![1u8]).unwrap();
+        let page_bytes = encoder.collect();
+
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+
+        assert!(decoder.try_read_bytes(0).is_ok());
+        assert_eq!(
+            decoder.try_read_bytes(1).unwrap_err(),
+            page::PageDecoderError::SlotOutOfRange
+        );
+    }
+
+    #[test]
+    fn test_empty_page_decode_has_zero_slots() {
+        let header = PageHeader::new(page::PageType::Data);
+        let mut encoder = PageEncoder::new(header);
+        let page_bytes = encoder.collect();
+
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+        assert_eq!(decoder.header().allocated_slot_count, 0);
+    }
+
+    #[test]
+    fn test_decode_header_preserves_page_type() {
+        let header = PageHeader::new(page::PageType::Index);
+        let mut encoder = PageEncoder::new(header);
+        let page_bytes = encoder.collect();
+
+        let decoder = page::PageDecoder::from_bytes(&page_bytes);
+        assert_eq!(decoder.header().page_type, page::PageType::Index);
+    }
 }
