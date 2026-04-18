@@ -1,5 +1,4 @@
 use std::{
-    ffi::OsStr,
     fs::File,
     path::{Path, PathBuf},
 };
@@ -77,7 +76,7 @@ pub struct DatabaseFilePair {
 }
 
 pub fn create_database(
-    db_name: &str,
+    db_name: &String,
     db_id: DatabaseFileId,
     is_master: bool,
 ) -> Result<OpenDatabaseResult> {
@@ -102,7 +101,11 @@ pub fn create_database(
     })
 }
 
-fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<DiskFile> {
+fn create_db_data_file(
+    db_name: &String,
+    db_id: DatabaseFileId,
+    is_master: bool,
+) -> Result<DiskFile> {
     let file = create_empty_db_file(db_name, FileType::Primary)?;
 
     file.write_file_info()?;
@@ -115,16 +118,16 @@ fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) ->
     Ok(file)
 }
 
-fn create_db_log_file(db_name: &str) -> Result<DiskFile> {
+fn create_db_log_file(db_name: &String) -> Result<DiskFile> {
     create_empty_db_file(db_name, FileType::Log)
 }
 
-pub fn db_exists(db_name: &str, file_type: FileType) -> Result<bool> {
+pub fn db_exists(db_name: &String, file_type: FileType) -> Result<bool> {
     let path = get_db_path(db_name, file_type);
     util::file_exists(&path)
 }
 
-pub fn create_empty_db_file(db_name: &str, file_type: FileType) -> Result<DiskFile> {
+pub fn create_empty_db_file(db_name: &String, file_type: FileType) -> Result<DiskFile> {
     let master_path = get_db_path(db_name, file_type);
 
     util::file_exists(&master_path)?;
@@ -133,7 +136,7 @@ pub fn create_empty_db_file(db_name: &str, file_type: FileType) -> Result<DiskFi
 }
 
 // Get a PathBuf to a file with the given name and extension
-pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
+pub fn get_db_path(db_name: &String, file_type: FileType) -> PathBuf {
     let ext = match file_type {
         FileType::Primary => DATA_FILE_EXT,
         FileType::Log => LOG_FILE_EXT,
@@ -148,11 +151,7 @@ pub fn get_db_path(db_name: &str, file_type: FileType) -> PathBuf {
     data_path
 }
 
-pub fn is_wack_file(extension: &OsStr) -> bool {
-    extension.eq_ignore_ascii_case(DATA_FILE_EXT) || extension.eq_ignore_ascii_case(LOG_FILE_EXT)
-}
-
-pub fn open_db(database_name: &str) -> DatabaseFilePair {
+pub fn open_db(database_name: &String) -> DatabaseFilePair {
     let dat = open_db_of_type(database_name, FileType::Primary);
     let log = open_db_of_type(database_name, FileType::Log);
 
@@ -162,7 +161,7 @@ pub fn open_db(database_name: &str) -> DatabaseFilePair {
     }
 }
 
-fn open_db_of_type(database_name: &str, file_type: FileType) -> File {
+fn open_db_of_type(database_name: &String, file_type: FileType) -> File {
     let path = get_db_path(database_name, file_type);
     util::open_file(&path).expect("Failed to open database.")
 }

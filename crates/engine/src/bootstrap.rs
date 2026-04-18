@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use anyhow::Result;
 use deku::DekuContainerWrite;
 
@@ -12,16 +10,17 @@ use crate::{
     engine::Storage,
     file::DatabaseStorage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    index_pager::IndexPager,
     page::{PageEncoder, PageHeader, PageId, PageType},
-    persistence::{self, OpenDatabaseResult, WACK_DIRECTORY},
-    util,
+    persistence::{self, OpenDatabaseResult},
 };
 
 pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
-    let exists = persistence::db_exists(MASTER_NAME, FileType::Primary)?;
+    let name = &MASTER_NAME.to_string();
+    let exists = persistence::db_exists(name, FileType::Primary)?;
 
     if exists {
-        let db = persistence::open_db(MASTER_NAME);
+        let db = persistence::open_db(name);
         let allocated_page_count = db.dat.allocated_page_count()?;
 
         log::info!(
@@ -40,15 +39,35 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
         });
     }
 
-    persistence::create_database(MASTER_NAME, MASTER_DB_ID, true)
+    persistence::create_database(name, MASTER_DB_ID, true)
 }
 
-pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
-    let dbs = find_user_databases()?;
+pub fn open_user_dbs(storage: &Storage) -> Result<Vec<OpenDatabaseResult>> {
+    let schema_info = storage.buffer_pool.get_page_as::<SchemaInfo>(
+        &FilePageId {
+            db_id: MASTER_DB_ID,
+            page_index: SCHEMA_INFO_PAGE_INDEX,
+        },
+        &storage.file_manager,
+    )?;
+
+    let databases_page_iter = IndexPager::new(
+        FilePageId::new(MASTER_DB_ID, schema_info.databases_root_page_id),
+        storage,
+    );
+
+    let dbs = databases_page_iter.map(|item| {
+        let mut cursor = std::io::Cursor::new(item);
+        let mut reader = deku::reader::Reader::new(&mut cursor);
+
+        return <Database as deku::DekuReader>::from_reader_with_ctx(&mut reader, ());
+    });
 
     let results = dbs
         .map(|db| {
-            let mut user_db = persistence::open_db(&db);
+            let name = String::from_utf8(db.unwrap().name).unwrap().to_string();
+
+            let mut user_db = persistence::open_db(&name);
             let allocated_page_count = user_db.dat.allocated_page_count()?;
             let id = user_db.dat.db_id();
 
@@ -56,11 +75,11 @@ pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
                 panic!("I have no idea");
             }
 
-            log::info!("Opening user DB: {:?}", db);
+            log::info!("Opening user DB: {:?}", name);
 
             Ok(OpenDatabaseResult {
                 id: id.unwrap(),
-                name: db,
+                name: name,
                 files: persistence::DatabaseFilePair {
                     dat: user_db.dat,
                     log: user_db.log,
@@ -71,39 +90,6 @@ pub fn open_user_dbs() -> Result<Vec<OpenDatabaseResult>> {
         .collect();
 
     results
-}
-
-// TODO: Remove me in favour of reading from the master DB.
-pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
-    let base_path = util::get_base_path();
-    let data_path = Path::join(&base_path, std::path::Path::new(WACK_DIRECTORY));
-
-    let files = std::fs::read_dir(data_path);
-
-    let unique_file_names = files?.filter_map(|entry| {
-        let entry = entry.ok()?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            return None;
-        }
-
-        if let Some(filename) = path.file_stem() {
-            if filename == MASTER_NAME {
-                return None;
-            }
-        }
-
-        path.extension()
-            .filter(|e| persistence::is_wack_file(e))
-            .and_then(|_| {
-                path.file_stem()
-                    .and_then(std::ffi::OsStr::to_str)
-                    .map(str::to_owned)
-            })
-    });
-
-    Ok(Box::new(unique_file_names))
 }
 
 pub fn ensure_master_tables_exist(storage: &Storage) -> Result<()> {

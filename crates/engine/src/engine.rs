@@ -66,7 +66,7 @@ impl Engine {
             return;
         }
 
-        match bootstrap::open_user_dbs() {
+        match bootstrap::open_user_dbs(&self.storage) {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     log::info!(
