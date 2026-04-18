@@ -8,6 +8,8 @@ lexer = { path = "../lexer" }
 cli_common = { path = "../cli_common" }
 parser = { path = "../parser" }
 engine = { path = "../engine" }
+
+clap = { version = "4.6", features = ["derive"] }
 log = "0.4.22"
 env_logger = "0.11.5"
 thiserror = "1.0.64"

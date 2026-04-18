@@ -1,8 +1,19 @@
+use clap::Parser;
 use env_logger::Env;
 use repl::Repl;
-use std::env::args;
 
+use crate::server::{Server, ServerConfig};
+
+mod executor;
 mod repl;
+mod server;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short = 'd', long, value_name = "port")]
+    daemon: Option<u16>,
+}
 
 fn init_logger() {
     let env = Env::default().default_filter_or("TRACE");
@@ -12,27 +23,17 @@ fn init_logger() {
         .init();
 }
 
-const FILE_EXT: &str = ".wak";
-
 fn main() {
     init_logger();
 
     log::info!("Welcome to WackDB");
     log::info!("-----------------");
 
-    let args: Vec<String> = args().collect();
-    let mut repl = Repl::new();
+    let args = Args::parse();
 
-    if args.len() <= 1 {
-        repl.run();
-    }
-
-    // TODO: Probably swap this to a cmdline flag for safety (e.g. -f or -i)
-    let looks_like_file = args[1].to_lowercase().ends_with(FILE_EXT);
-
-    if looks_like_file {
-        repl.eval_file(&args[1])
+    if let Some(port) = args.daemon {
+        Server::new(ServerConfig::Grpc(port)).run();
     } else {
-        repl.eval_command(&args[1])
-    };
+        Repl::new().run();
+    }
 }

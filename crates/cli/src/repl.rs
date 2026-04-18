@@ -3,11 +3,8 @@ use std::{
     process::exit,
 };
 
-use anyhow::Error;
-use cli_common::{ParseError, StatementResult};
+use crate::executor::CommandResult;
 use engine::engine::Engine;
-use lexer::Lexer;
-use parser::Parser;
 
 pub struct Repl {
     engine: Engine,
@@ -17,19 +14,9 @@ pub struct Repl {
 pub enum Result {
     Exit,
     Help,
-    RunDebug,
     NoInput,
     UnrecognisedInput,
     Ok(CommandResult),
-}
-
-#[derive(Debug)]
-pub enum CommandResult {
-    _UnrecognisedCommand,
-    ParseError(Vec<ParseError>),
-    ExecuteError(Error),
-    Failed(String),
-    Ok(Vec<StatementResult>),
 }
 
 impl Repl {
@@ -112,11 +99,6 @@ impl Repl {
                         Result::Help => {
                             println!("Sorry, you're on your own.");
                         }
-                        Result::RunDebug => {
-                            self.eval_command("CREATE TABLE TestTable (Id INT, Age INT);");
-                            self.eval_command("INSERT INTO TestTable (Id, Age) VALUES (1, 20);");
-                            self.eval_command("SELECT * FROM TestTable;");
-                        }
                         Result::UnrecognisedInput => {
                             println!("Error! Command not recognised.");
                         }
@@ -136,44 +118,6 @@ impl Repl {
         exit(0);
     }
 
-    pub fn eval_command(&mut self, input: &str) -> CommandResult {
-        let input_str = input.to_string();
-
-        let lexer = Lexer::new(&input_str);
-        let lex_result = lexer.lex();
-
-        log::trace!("Lexing complete. Tokens: {:?}", lex_result.tokens);
-
-        let mut parser = Parser::new(lex_result.tokens, &input_str);
-        let parse_result = parser.parse();
-
-        match parse_result {
-            Ok(ast) => {
-                log::trace!("Parsing complete. Tokens: {:?}", ast);
-                let execute_result = self.engine.execute(&ast);
-
-                match execute_result {
-                    Ok(ok_result) => {
-                        for err in ok_result.errors {
-                            println!("{err:?}");
-                        }
-
-                        CommandResult::Ok(ok_result.results)
-                    }
-                    Err(err) => CommandResult::ExecuteError(err),
-                }
-            }
-            Err(e) => CommandResult::ParseError(e),
-        }
-    }
-
-    pub fn eval_file(&mut self, file: &str) -> CommandResult {
-        match std::fs::read_to_string(file) {
-            Ok(file_content) => self.eval_command(&file_content),
-            Err(_) => CommandResult::Failed(String::from("Failed to open file.")),
-        }
-    }
-
     /// Handle user input via REPL. Input is assumed
     /// to be validated as a command by this point.
     /// This will either eval a command or
@@ -184,7 +128,7 @@ impl Repl {
         if Repl::is_meta_command(fmt_buf) {
             Repl::handle_meta_command(fmt_buf)
         } else {
-            let command_result = self.eval_command(fmt_buf);
+            let command_result = crate::executor::eval_command(&mut self.engine, fmt_buf);
             Result::Ok(command_result)
         }
     }
@@ -197,7 +141,6 @@ impl Repl {
         match buf.to_lowercase().as_ref() {
             ".exit" | ".quit" | ".close" => Result::Exit,
             ".help" | ".h" | "?" | ".?" => Result::Help,
-            ".dbg" => Result::RunDebug,
             "" => Result::NoInput,
             _ => Result::UnrecognisedInput,
         }
