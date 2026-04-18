@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use std::sync::Mutex;
 
 use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId};
@@ -70,10 +71,28 @@ impl BufferPool {
         }
     }
 
-    pub fn put_page(&self, id: &FilePageId, data: PageBytes) {
-        // TODO: This probably needs to do a lot more than just put it into the cache.
-        let mut lru = self.lru_cache.lock().unwrap();
-        lru.put(id, data);
+    pub fn put_page(
+        &self,
+        id: &FilePageId,
+        data: PageBytes,
+        file_manager: &FileManager,
+    ) -> Result<()> {
+        // TODO:
+        // need to start tracking what's been flushed and what hasn't, and bulk flushing.
+        // for now, just write everything to disk. this is obviously very slow and jank.
+        let file = file_manager.get_from_id(id.db_id, FileType::Primary);
+
+        match file {
+            Some(db_file) => {
+                db_file.write_page(&data, id.page_index)?;
+
+                let mut lru = self.lru_cache.lock().unwrap();
+                lru.put(id, data);
+
+                Ok(())
+            }
+            None => bail!("File not found!"), // TODO: Do better :)
+        }
     }
 }
 
@@ -81,9 +100,10 @@ impl BufferPool {
 mod buffer_pool_tests {
     use super::{BufferPool, PageBytes};
     use crate::{buffer_pool::FilePageId, fm::FileManager};
+    use anyhow::Result;
 
     #[test]
-    fn test_put_and_get() {
+    fn test_put_and_get() -> Result<()> {
         let fm = FileManager::new();
         let buffer_pool = BufferPool::new(3);
 
@@ -91,28 +111,32 @@ mod buffer_pool_tests {
         page[0] = 5;
 
         let ix = FilePageId::new(0, 1);
-        buffer_pool.put_page(&ix, page);
+        buffer_pool.put_page(&ix, page, &fm)?;
         let read_value = buffer_pool.get_page(&ix, &fm);
 
         assert_eq!(read_value.unwrap(), page);
+
+        Ok(())
     }
 
     #[test]
-    fn test_capacity() {
+    fn test_capacity() -> Result<()> {
         let fm = FileManager::new();
         let buffer_pool = BufferPool::new(3);
 
         let page: PageBytes = [0; 8192];
 
-        buffer_pool.put_page(&FilePageId::new(0, 1), page);
-        buffer_pool.put_page(&FilePageId::new(0, 2), page);
-        buffer_pool.put_page(&FilePageId::new(0, 3), page);
-        buffer_pool.put_page(&FilePageId::new(0, 4), page);
+        buffer_pool.put_page(&FilePageId::new(0, 1), page, &fm)?;
+        buffer_pool.put_page(&FilePageId::new(0, 2), page, &fm)?;
+        buffer_pool.put_page(&FilePageId::new(0, 3), page, &fm)?;
+        buffer_pool.put_page(&FilePageId::new(0, 4), page, &fm)?;
 
         let read_value_evicted = buffer_pool.get_page(&FilePageId::new(0, 1), &fm);
         assert_eq!(read_value_evicted, None);
 
         let read_value_exists = buffer_pool.get_page(&FilePageId::new(0, 2), &fm);
         assert_eq!(read_value_exists.unwrap(), page);
+
+        Ok(())
     }
 }
