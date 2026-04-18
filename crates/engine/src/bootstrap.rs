@@ -5,10 +5,11 @@ use deku::DekuContainerWrite;
 
 use crate::{
     btree::BTree,
-    buffer_pool::PageBytes,
+    buffer_pool::{BufferPool, FilePageId, PageBytes},
     catalog::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
+    engine::Storage,
     file::{read_page_as, DatabaseStorage},
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::FileManager,
@@ -105,15 +106,15 @@ pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
     Ok(Box::new(unique_file_names))
 }
 
-pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
-    let master_file = file_manager
-        .get_from_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap()
-        .as_ref();
-
+pub fn ensure_master_tables_exist(storage: &Storage) -> Result<()> {
     // read out the schema info page
-    // TODO: should use buffer pool
-    let mut schema = read_page_as::<SchemaInfo>(master_file, SCHEMA_INFO_PAGE_INDEX)?;
+    let mut schema = storage.buffer_pool.get_page_as::<SchemaInfo>(
+        &FilePageId {
+            db_id: MASTER_DB_ID,
+            page_index: SCHEMA_INFO_PAGE_INDEX,
+        },
+        &storage.file_manager,
+    )?;
 
     if schema.databases_root_page_id != 0 {
         log::debug!("SchemaInfo Page exists. Skipping initialisation.");
@@ -121,32 +122,58 @@ pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> 
     }
 
     // Write DB page
-    let databases_page_id = master_file.allocated_page_count()? + 1;
     let databases_page_bytes = initialise_databases_table()?;
-    master_file.write_page(&databases_page_bytes, databases_page_id)?;
+    let databases_page_id =
+        storage
+            .buffer_pool
+            .add_page(MASTER_DB_ID, databases_page_bytes, &storage.file_manager)?;
+
     log::debug!("Wrote Databases index to pageID {}", databases_page_id);
 
     // Write Tables pages
-    let tables_page_id = master_file.allocated_page_count()? + 1;
     let tables_page_bytes = initialise_tables_table()?;
-    master_file.write_page(&tables_page_bytes, tables_page_id)?;
+    let tables_page_id =
+        storage
+            .buffer_pool
+            .add_page(MASTER_DB_ID, tables_page_bytes, &storage.file_manager)?;
     log::debug!("Wrote Tables index to pageID {}", tables_page_id);
 
     // Write Columns pages
-    let columns_page_id = master_file.allocated_page_count()? + 1;
     let columns_page_bytes = initialise_columns_table()?;
-    master_file.write_page(&columns_page_bytes, columns_page_id)?;
+    let columns_page_id =
+        storage
+            .buffer_pool
+            .add_page(MASTER_DB_ID, columns_page_bytes, &storage.file_manager)?;
     log::debug!("Wrote Columns index to pageID {}", columns_page_id);
 
     // Write Indexes pages
-    let indexes_page_id = master_file.allocated_page_count()? + 1;
+    let indexes_page_id = {
+        // Because the indexes table stores a record for itself, we need to pre-calculate the root page ID
+        // before we insert the page.
+        let master_file = storage
+            .file_manager
+            .get_from_id(MASTER_DB_ID, FileType::Primary)
+            .unwrap(); // Safety: 99% okay to unwrap, since we've done a bunch of ops on the master DB already. It's there.
+
+        master_file.allocated_page_count()? + 1
+    };
+
     let indexes_page_bytes = initialise_indexes_table(
         databases_page_id,
         tables_page_id,
         columns_page_id,
         indexes_page_id,
     )?;
-    master_file.write_page(&indexes_page_bytes, indexes_page_id)?;
+
+    storage.buffer_pool.put_page(
+        &FilePageId {
+            db_id: MASTER_DB_ID,
+            page_index: indexes_page_id,
+        },
+        indexes_page_bytes,
+        &storage.file_manager,
+    )?;
+
     log::debug!("Wrote Indexes index to pageID {}", indexes_page_id);
 
     schema.databases_root_page_id = databases_page_id.to_owned();
@@ -162,7 +189,14 @@ pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> 
     schema_page.add_slot_bytes(schema_info_bytes)?;
     let schema_page_bytes = schema_page.collect();
 
-    master_file.write_page(&schema_page_bytes, SCHEMA_INFO_PAGE_INDEX)?;
+    storage.buffer_pool.put_page(
+        &FilePageId {
+            db_id: MASTER_DB_ID,
+            page_index: SCHEMA_INFO_PAGE_INDEX,
+        },
+        schema_page_bytes,
+        &storage.file_manager,
+    )?;
 
     Ok(())
 }
@@ -567,7 +601,6 @@ fn initialise_indexes_table(
     columns_root_id: PageId,
     indexes_root_id: PageId,
 ) -> Result<PageBytes> {
-    // TODO
     let indexes = [
         Index::new(
             1,

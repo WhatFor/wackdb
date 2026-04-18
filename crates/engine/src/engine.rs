@@ -61,7 +61,7 @@ impl Engine {
             }
         }
 
-        if let Err(e) = bootstrap::ensure_master_tables_exist(&mut self.storage.file_manager) {
+        if let Err(e) = bootstrap::ensure_master_tables_exist(&self.storage) {
             log::error!("Error initialising master tables: {:?}", e);
             return;
         }

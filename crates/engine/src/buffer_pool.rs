@@ -1,7 +1,9 @@
 use anyhow::{bail, Result};
 use std::sync::Mutex;
 
-use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId};
+use crate::{
+    file::DatabaseFileId, file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId,
+};
 
 pub type PageBytes = [u8; 8192];
 
@@ -10,8 +12,8 @@ pub const BUFFER_POOL_CAPACITY: usize = 10; // Test
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FilePageId {
-    pub db_id: u16,
-    pub page_index: u32,
+    pub db_id: DatabaseFileId,
+    pub page_index: PageId,
 }
 
 impl FilePageId {
@@ -38,6 +40,23 @@ impl BufferPool {
 
         BufferPool {
             lru_cache: Mutex::new(lru_cache),
+        }
+    }
+
+    pub fn get_page_as<'a, T>(&self, id: &FilePageId, file_manager: &FileManager) -> Result<T>
+    where
+        T: deku::DekuContainerRead<'a> + std::fmt::Debug,
+    {
+        let bytes = self.get_page(&id, file_manager);
+
+        match bytes {
+            Some(page_bytes) => {
+                let page = crate::page::PageDecoder::from_bytes(&page_bytes);
+                let bytes = page.try_read::<T>(0)?;
+
+                Ok(bytes)
+            }
+            None => bail!("Page not found."), // TODO: Do better :)
         }
     }
 
@@ -71,6 +90,33 @@ impl BufferPool {
         }
     }
 
+    pub fn add_page(
+        &self,
+        id: DatabaseFileId,
+        data: PageBytes,
+        file_manager: &FileManager,
+    ) -> Result<PageId> {
+        let file = file_manager.get_from_id(id, FileType::Primary);
+
+        match file {
+            Some(db_file) => {
+                let next_page_id = db_file.allocated_page_count()? + 1;
+
+                self.put_page(
+                    &FilePageId {
+                        db_id: id,
+                        page_index: next_page_id,
+                    },
+                    data,
+                    file_manager,
+                )?;
+
+                Ok(next_page_id)
+            }
+            None => bail!("File not found!"), // TODO: Do better :)
+        }
+    }
+
     pub fn put_page(
         &self,
         id: &FilePageId,
@@ -99,19 +145,31 @@ impl BufferPool {
 #[cfg(test)]
 mod buffer_pool_tests {
     use super::{BufferPool, PageBytes};
-    use crate::{buffer_pool::FilePageId, fm::FileManager};
+
+    use crate::{
+        buffer_pool::FilePageId,
+        file::MemoryFile,
+        file_format::FileType,
+        fm::{FileId, FileManager},
+    };
+
     use anyhow::Result;
 
     #[test]
     fn test_put_and_get() -> Result<()> {
-        let fm = FileManager::new();
+        let mut fm = FileManager::new();
+
+        fm.add(
+            FileId::new(1, String::from("File 1"), FileType::Primary),
+            Box::new(MemoryFile::new(vec![])),
+            0,
+        );
+
         let buffer_pool = BufferPool::new(3);
+        let page: PageBytes = [1; 8192];
 
-        let mut page: PageBytes = [0; 8192];
-        page[0] = 5;
-
-        let ix = FilePageId::new(0, 1);
-        buffer_pool.put_page(&ix, page, &fm)?;
+        let ix = FilePageId::new(1, 1);
+        buffer_pool.add_page(ix.db_id, page, &fm)?;
         let read_value = buffer_pool.get_page(&ix, &fm);
 
         assert_eq!(read_value.unwrap(), page);
@@ -121,21 +179,32 @@ mod buffer_pool_tests {
 
     #[test]
     fn test_capacity() -> Result<()> {
-        let fm = FileManager::new();
+        let mut fm = FileManager::new();
+        let db = 1;
+
+        fm.add(
+            FileId::new(db, String::from("File 1"), FileType::Primary),
+            Box::new(MemoryFile::new(vec![])),
+            0,
+        );
+
         let buffer_pool = BufferPool::new(3);
 
-        let page: PageBytes = [0; 8192];
+        let page_1: PageBytes = [1; 8192];
+        buffer_pool.put_page(&FilePageId::new(db, 1), page_1, &fm)?;
+        let page_2: PageBytes = [2; 8192];
+        buffer_pool.put_page(&FilePageId::new(db, 2), page_2, &fm)?;
+        let page_3: PageBytes = [3; 8192];
+        buffer_pool.put_page(&FilePageId::new(db, 3), page_3, &fm)?;
+        let page_4: PageBytes = [4; 8192];
+        buffer_pool.put_page(&FilePageId::new(db, 4), page_4, &fm)?;
 
-        buffer_pool.put_page(&FilePageId::new(0, 1), page, &fm)?;
-        buffer_pool.put_page(&FilePageId::new(0, 2), page, &fm)?;
-        buffer_pool.put_page(&FilePageId::new(0, 3), page, &fm)?;
-        buffer_pool.put_page(&FilePageId::new(0, 4), page, &fm)?;
+        // This file was evicted from the LRU cache (capacity: 3), but should still return as it can be read from the file.
+        let read_value_evicted = buffer_pool.get_page(&FilePageId::new(db, 1), &fm);
+        assert_eq!(read_value_evicted.unwrap(), page_1);
 
-        let read_value_evicted = buffer_pool.get_page(&FilePageId::new(0, 1), &fm);
-        assert_eq!(read_value_evicted, None);
-
-        let read_value_exists = buffer_pool.get_page(&FilePageId::new(0, 2), &fm);
-        assert_eq!(read_value_exists.unwrap(), page);
+        let read_value_exists = buffer_pool.get_page(&FilePageId::new(db, 2), &fm);
+        assert_eq!(read_value_exists.unwrap(), page_2);
 
         Ok(())
     }
