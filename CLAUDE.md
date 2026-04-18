@@ -58,7 +58,7 @@ The engine crate (`crates/engine/src/`) is the core of the project:
 - **`vm.rs`** — `VirtualMachine`: executes statements.
 - **`bootstrap.rs`** — Master database initialization: creates or opens the master DB and its system tables.
 - **`page.rs`** — Binary page format using `deku` for encoding/decoding. Pages are 8192 bytes; slot-based row storage.
-- **`page_cache.rs`** — LRU cache for in-memory pages (backed by `lru.rs`).
+- **`buffer_pool.rs`** — LRU cache for in-memory pages (backed by `lru.rs`).
 - **`file.rs`** — `DatabaseStorage` trait with `DiskFile` and `InMemoryFile` implementations. Handles page-level read/write.
 - **`fm.rs`** — `FileManager`: maps file IDs to open `DatabaseStorage` handles.
 - **`file_format.rs`** — Binary file format constants and structs: `FileInfo`, `DatabaseInfo`, `SchemaInfo`.
@@ -71,7 +71,7 @@ The engine crate (`crates/engine/src/`) is the core of the project:
 2. Lexer tokenizes → `Vec<Token>`
 3. Parser builds → `Statement` (AST)
 4. `Engine::execute()` dispatches to `VirtualMachine`
-5. VM reads rows from pages via `PageCache` → `FileManager` → disk
+5. VM reads rows from pages via `BufferPool` → `FileManager` → disk
 6. Returns `ResultSet` (column definitions + rows) to CLI
 
 ## Storage Format

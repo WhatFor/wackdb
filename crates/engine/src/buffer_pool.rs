@@ -4,8 +4,8 @@ use crate::{file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId}
 
 pub type PageBytes = [u8; 8192];
 
-//pub const PAGE_CACHE_CAPACITY: usize = 131_072; // 1GB
-pub const PAGE_CACHE_CAPACITY: usize = 10; // Test
+//pub const BUFFER_POOL_CAPACITY: usize = 131_072; // 1GB
+pub const BUFFER_POOL_CAPACITY: usize = 10; // Test
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct FilePageId {
@@ -19,23 +19,23 @@ impl FilePageId {
     }
 }
 
-pub type FilePageCache = LRUCache<FilePageId, PageBytes>;
+pub type PageBufferPool = LRUCache<FilePageId, PageBytes>;
 
-pub struct PageCache {
-    lru_cache: Mutex<FilePageCache>,
+pub struct BufferPool {
+    lru_cache: Mutex<PageBufferPool>,
 }
 
-impl Default for PageCache {
+impl Default for BufferPool {
     fn default() -> Self {
-        Self::new(PAGE_CACHE_CAPACITY)
+        Self::new(BUFFER_POOL_CAPACITY)
     }
 }
 
-impl PageCache {
+impl BufferPool {
     pub fn new(capacity: usize) -> Self {
-        let lru_cache = FilePageCache::new(capacity);
+        let lru_cache = PageBufferPool::new(capacity);
 
-        PageCache {
+        BufferPool {
             lru_cache: Mutex::new(lru_cache),
         }
     }
@@ -78,21 +78,21 @@ impl PageCache {
 }
 
 #[cfg(test)]
-mod page_cache_tests {
-    use super::{PageBytes, PageCache};
-    use crate::{fm::FileManager, page_cache::FilePageId};
+mod buffer_pool_tests {
+    use super::{BufferPool, PageBytes};
+    use crate::{buffer_pool::FilePageId, fm::FileManager};
 
     #[test]
     fn test_put_and_get() {
         let fm = FileManager::new();
-        let page_cache = PageCache::new(3);
+        let buffer_pool = BufferPool::new(3);
 
         let mut page: PageBytes = [0; 8192];
         page[0] = 5;
 
         let ix = FilePageId::new(0, 1);
-        page_cache.put_page(&ix, page);
-        let read_value = page_cache.get_page(&ix, &fm);
+        buffer_pool.put_page(&ix, page);
+        let read_value = buffer_pool.get_page(&ix, &fm);
 
         assert_eq!(read_value.unwrap(), page);
     }
@@ -100,19 +100,19 @@ mod page_cache_tests {
     #[test]
     fn test_capacity() {
         let fm = FileManager::new();
-        let page_cache = PageCache::new(3);
+        let buffer_pool = BufferPool::new(3);
 
         let page: PageBytes = [0; 8192];
 
-        page_cache.put_page(&FilePageId::new(0, 1), page);
-        page_cache.put_page(&FilePageId::new(0, 2), page);
-        page_cache.put_page(&FilePageId::new(0, 3), page);
-        page_cache.put_page(&FilePageId::new(0, 4), page);
+        buffer_pool.put_page(&FilePageId::new(0, 1), page);
+        buffer_pool.put_page(&FilePageId::new(0, 2), page);
+        buffer_pool.put_page(&FilePageId::new(0, 3), page);
+        buffer_pool.put_page(&FilePageId::new(0, 4), page);
 
-        let read_value_evicted = page_cache.get_page(&FilePageId::new(0, 1), &fm);
+        let read_value_evicted = buffer_pool.get_page(&FilePageId::new(0, 1), &fm);
         assert_eq!(read_value_evicted, None);
 
-        let read_value_exists = page_cache.get_page(&FilePageId::new(0, 2), &fm);
+        let read_value_exists = buffer_pool.get_page(&FilePageId::new(0, 2), &fm);
         assert_eq!(read_value_exists.unwrap(), page);
     }
 }

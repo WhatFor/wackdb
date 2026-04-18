@@ -1,7 +1,7 @@
 use crate::{
+    buffer_pool::FilePageId,
     engine::Storage,
     page::{PageDecoder, PageId},
-    page_cache::FilePageId,
 };
 
 pub struct IndexPager<'a> {
@@ -26,7 +26,7 @@ impl<'a> Iterator for IndexPager<'a> {
     type Item = Vec<u8>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let page_bytes = self.storage.page_cache.get_page(
+        let page_bytes = self.storage.buffer_pool.get_page(
             &FilePageId::new(self.file_id, self.current_page),
             &self.storage.file_manager,
         )?;

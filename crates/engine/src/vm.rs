@@ -6,13 +6,13 @@ use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, Statement,
 use thiserror::Error;
 
 use crate::{
+    buffer_pool::FilePageId,
     catalog::DbLong,
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
     engine::Storage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     index_pager::IndexPager,
     page::PageDecoder,
-    page_cache::FilePageId,
 };
 
 #[derive(Default)]

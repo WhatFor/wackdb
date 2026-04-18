@@ -3,7 +3,7 @@ use deku::ctx::Endian;
 use deku::prelude::*;
 use thiserror::Error;
 
-use crate::page_cache::PageBytes;
+use crate::buffer_pool::PageBytes;
 
 /// The max, current version number for the Page Header record
 pub const CURRENT_HEADER_VERSION: u8 = 1;

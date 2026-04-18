@@ -1,5 +1,6 @@
 mod bootstrap;
 pub mod btree;
+mod buffer_pool;
 mod catalog;
 pub mod engine;
 mod file;
@@ -8,7 +9,6 @@ mod fm;
 mod index_pager;
 mod lru;
 pub mod page;
-mod page_cache;
 mod persistence;
 mod util;
 mod vm;

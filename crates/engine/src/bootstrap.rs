@@ -5,6 +5,7 @@ use deku::DekuContainerWrite;
 
 use crate::{
     btree::BTree,
+    buffer_pool::PageBytes,
     catalog::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
@@ -12,7 +13,6 @@ use crate::{
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     fm::FileManager,
     page::{PageEncoder, PageHeader, PageId, PageType},
-    page_cache::PageBytes,
     persistence::{self, OpenDatabaseResult, WACK_DIRECTORY},
     util,
 };
@@ -112,7 +112,7 @@ pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> 
         .as_ref();
 
     // read out the schema info page
-    // TODO: should use page cache
+    // TODO: should use buffer pool
     let mut schema = read_page_as::<SchemaInfo>(master_file, SCHEMA_INFO_PAGE_INDEX)?;
 
     if schema.databases_root_page_id != 0 {

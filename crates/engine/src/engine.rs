@@ -1,9 +1,9 @@
 use crate::bootstrap;
+use crate::buffer_pool::BufferPool;
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
 use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager};
 use crate::page::PageDecoder;
-use crate::page_cache::PageCache;
 use crate::persistence::ValidationError;
 use crate::vm::VirtualMachine;
 
@@ -17,20 +17,20 @@ pub struct Engine {
 }
 
 pub struct Storage {
-    pub page_cache: PageCache,
+    pub buffer_pool: BufferPool,
     pub file_manager: FileManager,
 }
 
 impl Default for Engine {
     fn default() -> Self {
         let vm = VirtualMachine::default();
-        let page_cache = PageCache::default();
+        let buffer_pool = BufferPool::default();
         let file_manager = FileManager::default();
 
         Engine {
             vm,
             storage: Storage {
-                page_cache,
+                buffer_pool,
                 file_manager,
             },
         }

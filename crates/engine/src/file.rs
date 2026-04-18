@@ -5,12 +5,12 @@ use std::io::{Read, Seek, Write};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+use crate::buffer_pool::PageBytes;
 use crate::file_format::{
     FileInfo, FileType, SchemaInfo, CURRENT_DATABASE_VERSION, FILE_INFO_PAGE_INDEX,
     SCHEMA_INFO_PAGE_INDEX,
 };
 use crate::page::{PageEncoder, PageHeader, PageType};
-use crate::page_cache::PageBytes;
 use crate::{
     file_format::{DatabaseInfo, DATABASE_INFO_PAGE_INDEX},
     page::{PageDecoder, PageId, PAGE_SIZE_BYTES},
@@ -26,7 +26,7 @@ pub trait DatabaseStorage {
     fn allocated_page_count(&self) -> Result<PageId>;
 
     fn db_id(&mut self) -> Result<DatabaseFileId> {
-        //Circumvent the page cache - can't use it until we have the db_id
+        //Circumvent the buffer pool - can't use it until we have the db_id
         let page_bytes = self.read_page(DATABASE_INFO_PAGE_INDEX)?;
         let page = PageDecoder::from_bytes(&page_bytes);
         let db_info = page.try_read::<DatabaseInfo>(0)?;
