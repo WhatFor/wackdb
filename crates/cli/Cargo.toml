@@ -10,11 +10,19 @@ parser = { path = "../parser" }
 engine = { path = "../engine" }
 
 clap = { version = "4.6", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tonic = "0.14"
+prost = "0.14"
+tonic-prost = "0.14"
+
 log = "0.4.22"
 env_logger = "0.11.5"
 thiserror = "1.0.64"
 tabled = "0.16.0"
 anyhow = "1.0.89"
+
+[build-dependencies]
+tonic-prost-build = "0.14"
 
 [lints.clippy]
 pedantic = "warn"

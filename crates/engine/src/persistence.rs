@@ -62,8 +62,6 @@ pub enum PersistenceError {
     Io(util::Error),
     #[error("IO Error: {0}")]
     StdIo(std::io::Error),
-    #[error("Failed to seek to page index.")]
-    PageSeekFailed,
 }
 
 pub struct OpenDatabaseResult {
@@ -105,7 +103,7 @@ pub fn create_database(
 }
 
 fn create_db_data_file(db_name: &str, db_id: DatabaseFileId, is_master: bool) -> Result<DiskFile> {
-    let mut file = create_empty_db_file(db_name, FileType::Primary)?;
+    let file = create_empty_db_file(db_name, FileType::Primary)?;
 
     file.write_file_info()?;
     file.write_db_info(db_name, db_id)?;

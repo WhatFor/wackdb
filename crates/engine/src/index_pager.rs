@@ -8,11 +8,11 @@ pub struct IndexPager<'a> {
     file_id: u16,
     current_page: PageId,
     current_page_slot_index: u16,
-    storage: &'a mut Storage,
+    storage: &'a Storage,
 }
 
 impl<'a> IndexPager<'a> {
-    pub fn new(index_root_file_page_id: FilePageId, storage: &'a mut Storage) -> Self {
+    pub fn new(index_root_file_page_id: FilePageId, storage: &'a Storage) -> Self {
         IndexPager {
             file_id: index_root_file_page_id.db_id,
             current_page: index_root_file_page_id.page_index,
@@ -28,7 +28,7 @@ impl<'a> Iterator for IndexPager<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let page_bytes = self.storage.page_cache.get_page(
             &FilePageId::new(self.file_id, self.current_page),
-            &mut self.storage.file_manager,
+            &self.storage.file_manager,
         )?;
 
         // TODO: This feels like quite a costly operation - can we instead cache the parsed page instead of just the bytes?

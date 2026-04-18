@@ -1,0 +1,22 @@
+syntax = "proto3";
+package wack;
+
+service QueryService {
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+}
+
+message ExecuteRequest {
+  string sql = 1;
+}
+
+message ExecuteResponse {
+  repeated Set sets = 1;
+}
+
+message Set {
+  repeated Row rows = 1;
+}
+
+message Row {
+  repeated string values = 1;
+}

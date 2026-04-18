@@ -9,11 +9,10 @@ pub enum CommandResult {
     _UnrecognisedCommand,
     ParseError(Vec<ParseError>),
     ExecuteError(Error),
-    Failed(String),
     Ok(Vec<StatementResult>),
 }
 
-pub fn eval_command(engine: &mut Engine, input: &str) -> CommandResult {
+pub fn eval_command(engine: &Engine, input: &str) -> CommandResult {
     let input_str = input.to_string();
 
     let lexer = Lexer::new(&input_str);

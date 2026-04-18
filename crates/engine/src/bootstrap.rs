@@ -108,11 +108,12 @@ pub fn find_user_databases() -> Result<Box<impl Iterator<Item = String>>> {
 pub fn ensure_master_tables_exist(file_manager: &mut FileManager) -> Result<()> {
     let master_file = file_manager
         .get_from_id(MASTER_DB_ID, FileType::Primary)
-        .unwrap();
+        .unwrap()
+        .as_ref();
 
     // read out the schema info page
     // TODO: should use page cache
-    let mut schema = read_page_as::<SchemaInfo>(master_file.as_mut(), SCHEMA_INFO_PAGE_INDEX)?;
+    let mut schema = read_page_as::<SchemaInfo>(master_file, SCHEMA_INFO_PAGE_INDEX)?;
 
     if schema.databases_root_page_id != 0 {
         log::debug!("SchemaInfo Page exists. Skipping initialisation.");

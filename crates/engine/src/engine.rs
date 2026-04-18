@@ -1,3 +1,4 @@
+use crate::bootstrap;
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
 use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager};
@@ -5,7 +6,6 @@ use crate::page::PageDecoder;
 use crate::page_cache::PageCache;
 use crate::persistence::ValidationError;
 use crate::vm::VirtualMachine;
-use crate::{bootstrap, persistence};
 
 use anyhow::Result;
 use cli_common::{ExecuteResult, StatementResult};
@@ -99,7 +99,7 @@ impl Engine {
         }
     }
 
-    pub fn execute(&mut self, prog: &Program) -> Result<ExecuteResult> {
+    pub fn execute(&self, prog: &Program) -> Result<ExecuteResult> {
         let mut results = vec![];
         let mut errors = vec![];
 
@@ -122,12 +122,12 @@ impl Engine {
     }
 
     // TODO: This is weird - we have arms for different status types but then just pass to `vm.execute_statement`.
-    pub fn execute_statement(&mut self, statement: &Statement) -> Result<StatementResult> {
+    pub fn execute_statement(&self, statement: &Statement) -> Result<StatementResult> {
         dbg!(&statement);
         match statement {
             Statement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                self.vm.execute_statement(statement, &mut self.storage)
+                self.vm.execute_statement(statement, &self.storage)
             }
             Statement::Update => {
                 log::info!("Updating");
@@ -145,7 +145,9 @@ impl Engine {
                 log::info!("Creating Table");
                 Ok(StatementResult::default())
             }
-            Statement::CreateDatabase(s) => {
+            Statement::CreateDatabase(_) => {
+                todo!("This CreateDatabase branch is probably going to get moved into the VM or something.");
+                /*
                 let next_id = self.storage.file_manager.next_file_id();
 
                 let db_name = s.database_name.value.as_str();
@@ -169,11 +171,12 @@ impl Engine {
                 };
 
                 Ok(StatementResult::default())
+                */
             }
         }
     }
 
-    fn validate_all_data_files(&mut self) -> Result<()> {
+    fn validate_all_data_files(&self) -> Result<()> {
         self.storage
             .file_manager
             .get_all()

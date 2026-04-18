@@ -41,9 +41,6 @@ impl Repl {
                             CommandResult::_UnrecognisedCommand => {
                                 println!("Error! Unrecognised command.");
                             }
-                            CommandResult::Failed(err) => {
-                                println!("Program Error: {err}");
-                            }
                             CommandResult::ParseError(err) => {
                                 for e in err {
                                     let message = e.kind;

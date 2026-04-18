@@ -5,6 +5,7 @@ use repl::Repl;
 use crate::server::{Server, ServerConfig};
 
 mod executor;
+mod grpc;
 mod repl;
 mod server;
 
@@ -23,7 +24,8 @@ fn init_logger() {
         .init();
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_logger();
 
     log::info!("Welcome to WackDB");
@@ -32,8 +34,10 @@ fn main() {
     let args = Args::parse();
 
     if let Some(port) = args.daemon {
-        Server::new(ServerConfig::Grpc(port)).run();
+        Server::new(ServerConfig::Grpc(port)).run().await?;
     } else {
         Repl::new().run();
     }
+
+    Ok(())
 }

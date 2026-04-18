@@ -16,6 +16,8 @@
           pkgs.cargo
           pkgs.rust-analyzer
           pkgs.rustfmt
+          pkgs.protobuf
+          pkgs.grpcurl
         ];
       };
       packages.${system}.default = pkgs.rustPlatform.buildRustPackage {

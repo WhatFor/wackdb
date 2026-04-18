@@ -51,7 +51,7 @@ impl VirtualMachine {
     pub fn execute_statement(
         &self,
         statement: &Statement,
-        mut storage: &mut Storage,
+        storage: &Storage,
     ) -> Result<StatementResult> {
         let is_const_expr = self.is_constant_statement(statement);
 
@@ -61,7 +61,9 @@ impl VirtualMachine {
         }
 
         match statement {
-            Statement::Select(s) => self.evaluate_select_statement(s, &mut storage),
+            Statement::Select(select_statement) => {
+                self.evaluate_select_statement(select_statement, storage)
+            }
             Statement::Update => todo!(),
             Statement::Insert => todo!(),
             Statement::Delete => todo!(),
@@ -172,7 +174,7 @@ impl VirtualMachine {
     fn evaluate_select_statement(
         &self,
         statement: &SelectExpressionBody,
-        mut storage: &mut Storage,
+        storage: &Storage,
     ) -> Result<StatementResult> {
         log::debug!("SELECT:");
         match &statement.from_clause {
@@ -232,7 +234,7 @@ impl VirtualMachine {
                 // Validate if the database exists.
                 let databases_page_iter = IndexPager::new(
                     FilePageId::new(MASTER_DB_ID, schema_info.databases_root_page_id),
-                    &mut storage,
+                    storage,
                 );
 
                 let mut dbs = databases_page_iter.map(|item| {
@@ -258,7 +260,7 @@ impl VirtualMachine {
                 // Validate if the target table exists.
                 let tables_page_iter = IndexPager::new(
                     FilePageId::new(MASTER_DB_ID, schema_info.tables_root_page_id),
-                    &mut storage,
+                    storage,
                 );
 
                 let mut tables = tables_page_iter.map(|item| {
@@ -292,7 +294,7 @@ impl VirtualMachine {
                 // This is needed to know where to start reading the data from.
                 let indexes_page_iter = IndexPager::new(
                     FilePageId::new(MASTER_DB_ID, schema_info.indexes_root_page_id),
-                    &mut storage,
+                    storage,
                 );
 
                 let mut indexes = indexes_page_iter.map(|item| {
@@ -321,7 +323,7 @@ impl VirtualMachine {
                 // Validate that the requested columns exist.
                 let columns_page_iter = IndexPager::new(
                     FilePageId::new(MASTER_DB_ID, schema_info.columns_root_page_id),
-                    &mut storage,
+                    storage,
                 );
 
                 let columns = columns_page_iter.map(|item| {
@@ -465,7 +467,7 @@ impl VirtualMachine {
                 // we need to use our column schema info to decide how to read the incoming row bytes.
                 let target_table_iter = IndexPager::new(
                     FilePageId::new(MASTER_DB_ID, target_table_index_root_id.try_into().unwrap()),
-                    &mut storage,
+                    storage,
                 );
 
                 let mut results_with_positions: Vec<Vec<ExprResultWithPosition>> =

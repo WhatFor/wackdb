@@ -33,14 +33,14 @@ pub struct IdMapKey {
 
 pub struct IdentifiedFile<'a> {
     pub id: &'a FileId,
-    pub file: &'a mut dyn DatabaseStorage,
+    pub file: &'a dyn DatabaseStorage,
 }
 
 #[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
-    handles: HashMap<FileId, Box<dyn DatabaseStorage>>,
+    handles: HashMap<FileId, Box<dyn DatabaseStorage + Send + Sync>>,
     allocated_page_count: HashMap<FileId, PageId>,
 }
 
@@ -54,7 +54,12 @@ impl FileManager {
         }
     }
 
-    pub fn add(&mut self, id: FileId, file: Box<dyn DatabaseStorage>, page_count: PageId) {
+    pub fn add(
+        &mut self,
+        id: FileId,
+        file: Box<dyn DatabaseStorage + Send + Sync>,
+        page_count: PageId,
+    ) {
         // Insert entries into the ID and Name maps to facilitate finding Files by either property
         self.id_map.insert(
             IdMapKey {
@@ -77,27 +82,27 @@ impl FileManager {
     }
 
     pub fn get_from_id(
-        &mut self,
+        &self,
         id: DatabaseFileId,
         ty: FileType,
-    ) -> Option<&mut Box<dyn DatabaseStorage>> {
+    ) -> Option<&Box<dyn DatabaseStorage + Send + Sync>> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
-        self.handles.get_mut(file_id)
+        self.handles.get(file_id)
     }
 
     pub fn get_from_name(
-        &mut self,
+        &self,
         name: String,
         ty: FileType,
-    ) -> Option<&mut Box<dyn DatabaseStorage>> {
+    ) -> Option<&Box<dyn DatabaseStorage + Send + Sync>> {
         let file_id = self.name_map.get(&NameMapKey { name, ty })?;
-        self.handles.get_mut(file_id)
+        self.handles.get(file_id)
     }
 
-    pub fn get_all<'a>(&'a mut self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
-        Box::new(self.handles.iter_mut().map(|(id, file)| IdentifiedFile {
+    pub fn get_all<'a>(&'a self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
+        Box::new(self.handles.iter().map(|(id, file)| IdentifiedFile {
             id,
-            file: file.as_mut(),
+            file: file.as_ref(),
         }))
     }
 
