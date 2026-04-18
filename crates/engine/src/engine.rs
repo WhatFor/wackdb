@@ -5,6 +5,7 @@ use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager};
 use crate::page::PageDecoder;
 use crate::persistence::ValidationError;
+use crate::sm::SchemaManager;
 use crate::vm::VirtualMachine;
 
 use anyhow::{bail, Result};
@@ -14,6 +15,7 @@ use parser::ast::{Program, Statement};
 pub struct Engine {
     vm: VirtualMachine,
     storage: Storage,
+    sm: SchemaManager,
 }
 
 pub struct Storage {
@@ -27,12 +29,21 @@ impl Default for Engine {
         let buffer_pool = BufferPool::default();
         let file_manager = FileManager::default();
 
+        let storage = Storage {
+            buffer_pool,
+            file_manager,
+        };
+
+        let sm = SchemaManager::new(&storage);
+
+        if sm.is_err() {
+            panic!("Couldn't build Schema info. Critically borked.");
+        }
+
         Engine {
             vm,
-            storage: Storage {
-                buffer_pool,
-                file_manager,
-            },
+            sm: sm.unwrap(),
+            storage,
         }
     }
 }

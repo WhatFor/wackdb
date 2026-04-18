@@ -10,6 +10,7 @@ Want to support two usage patterns:
 ### TODO List
 
 - Add an in-memory store for schema info; it changes so rarely that it doesn't make sense to read/decode it every query. This is used in vm.rs and in bootstrap.open_user_dbs.
+- I quite often just pass the file_manager through into the buffer_pool when it's needed; This seems pointless. Can't I just wire that up once?
 - Implement support for writes.
 - Implement a WAL.
 - Need to update the buffer_pool; currently it just writes all pages straight to disk rather than batching and flushing. This is pretty shit.
@@ -21,3 +22,10 @@ Want to support two usage patterns:
 - Can I test this `server.rs` module? Figure that out. Might just be a simple start/stop harness? All it really does it receive requests and pass them to the parser/lexer, at which point that's all tested.
 - Transition to sending all read/write traffic via the page_cache (or buffer_pool; maybe rename it?).
 - Remove find_user_databases in bootstrap.rs; this data is in the DB now.
+
+### Planning a schema cache
+
+- not sure what to call it; maybe just SchemaCache? lmao
+- all it's info just comes from the master DB's SchemaInfo page, and then from the various master tables like Databases, Tables, etc. So just normal pages in normal DB files. This means it can and should all come from the buffer_pool. So this should sit on top of the BP.
+- Will need a way to invalidate the cache; When the schema is changed, that's going to be through the buffer_pool but the SchemaCache won't know. I think this might mean schema changes should happen through this. Which means it might not be just a cache any more - it's a schema manager.
+- It'll want to keep track of ALL schema info, not just master schema - user schema too.

@@ -10,5 +10,6 @@ mod index_pager;
 mod lru;
 pub mod page;
 mod persistence;
+mod sm;
 mod util;
 mod vm;
