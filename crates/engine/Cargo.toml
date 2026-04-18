@@ -20,7 +20,6 @@ anyhow = "1.0.89"
 
 [dev-dependencies]
 divan = "0.1.14"
-lexer = { path = "../lexer" }
 
 [[bench]]
 name = "page"

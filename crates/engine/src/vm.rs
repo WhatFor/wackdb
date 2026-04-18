@@ -862,8 +862,10 @@ mod vm_tests {
     use super::VirtualMachine;
     use crate::{buffer_pool::BufferPool, engine::Storage, fm::FileManager};
     use cli_common::ExprResult;
-    use lexer::Lexer;
-    use parser::Parser;
+    use parser::ast::{
+        BinaryOperator, Expr, Identifier, QuoteType, SelectExpressionBody, SelectItem,
+        SelectItemList, Statement, Value,
+    };
 
     fn storage() -> Storage {
         Storage {
@@ -872,159 +874,178 @@ mod vm_tests {
         }
     }
 
-    fn exec(sql: &str) -> cli_common::StatementResult {
-        let storage = storage();
-        let vm = VirtualMachine::default();
-        let buf = String::from(sql);
-        let lex = Lexer::new(&buf).lex();
-        let tokens: Vec<lexer::token::Token> = lex.tokens.into_iter().map(|t| t.token).collect();
-        let mut parser = Parser::new_positionless(tokens, sql);
-        let program = parser.parse().unwrap();
-        match program {
-            parser::ast::Program::Statements(stmts) => {
-                vm.execute_statement(&stmts[0], &storage).unwrap()
-            }
-            _ => panic!("Expected statements"),
+    fn int(n: &str) -> Expr {
+        Expr::Value(Value::Number(n.to_string()))
+    }
+
+    fn str_val(s: &str) -> Expr {
+        Expr::Value(Value::String(s.to_string(), QuoteType::Single))
+    }
+
+    fn binop(left: Expr, op: BinaryOperator, right: Expr) -> Expr {
+        Expr::BinaryOperator {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
         }
+    }
+
+    fn const_select(exprs: Vec<Expr>) -> Statement {
+        Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(
+                exprs.into_iter().map(SelectItem::new).collect(),
+            ),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        })
+    }
+
+    fn exec(stmt: Statement) -> cli_common::StatementResult {
+        let vm = VirtualMachine::default();
+        vm.execute_statement(&stmt, &storage()).unwrap()
     }
 
     #[test]
     fn test_constant_select_integer() {
-        let result = exec("SELECT 1");
+        let result = exec(const_select(vec![int("1")]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
     }
 
     #[test]
     fn test_constant_select_add() {
-        let result = exec("SELECT 1 + 2");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::Plus, int("2"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
     }
 
     #[test]
     fn test_constant_select_subtract() {
-        let result = exec("SELECT 5 - 3");
+        let result = exec(const_select(vec![binop(int("5"), BinaryOperator::Minus, int("3"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(2));
     }
 
     #[test]
     fn test_constant_select_multiply() {
-        let result = exec("SELECT 3 * 4");
+        let result = exec(const_select(vec![binop(int("3"), BinaryOperator::Multiply, int("4"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(12));
     }
 
     #[test]
     fn test_constant_select_divide() {
-        let result = exec("SELECT 10 / 2");
+        let result = exec(const_select(vec![binop(int("10"), BinaryOperator::Divide, int("2"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(5));
     }
 
     #[test]
     fn test_constant_select_modulo() {
-        let result = exec("SELECT 7 % 3");
+        let result = exec(const_select(vec![binop(int("7"), BinaryOperator::Modulo, int("3"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
     }
 
     #[test]
     fn test_constant_select_division_by_zero_returns_zero() {
         // Documents current behavior: division by zero silently returns 0.
-        let result = exec("SELECT 1 / 0");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::Divide, int("0"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(0));
     }
 
     #[test]
     fn test_constant_select_string() {
-        let result = exec("SELECT 'hello'");
-        assert_eq!(
-            result.result_set.rows[0][0],
-            ExprResult::String("hello".to_string())
-        );
+        let result = exec(const_select(vec![str_val("hello")]));
+        assert_eq!(result.result_set.rows[0][0], ExprResult::String("hello".to_string()));
     }
 
     #[test]
     fn test_constant_select_string_concat() {
-        let result = exec("SELECT 'hello' + ' world'");
-        assert_eq!(
-            result.result_set.rows[0][0],
-            ExprResult::String("hello world".to_string())
-        );
+        let result = exec(const_select(vec![binop(
+            str_val("hello"),
+            BinaryOperator::Plus,
+            str_val(" world"),
+        )]));
+        assert_eq!(result.result_set.rows[0][0], ExprResult::String("hello world".to_string()));
     }
 
     #[test]
     fn test_constant_select_null() {
-        let result = exec("SELECT null");
+        let result = exec(const_select(vec![Expr::Value(Value::Null)]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
     }
 
     #[test]
     fn test_constant_select_null_arithmetic_returns_null() {
-        let result = exec("SELECT 1 + null");
+        let result = exec(const_select(vec![binop(
+            int("1"),
+            BinaryOperator::Plus,
+            Expr::Value(Value::Null),
+        )]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
     }
 
     #[test]
     fn test_constant_select_type_mismatch_returns_null() {
         // Int + String is undefined; documents that it returns Null rather than erroring.
-        let result = exec("SELECT 1 + 'hello'");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::Plus, str_val("x"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
     }
 
     #[test]
     fn test_constant_select_comparison_greater_than_true() {
-        let result = exec("SELECT 5 > 3");
+        let result = exec(const_select(vec![binop(int("5"), BinaryOperator::GreaterThan, int("3"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_greater_than_false() {
-        let result = exec("SELECT 3 > 5");
+        let result = exec(const_select(vec![binop(int("3"), BinaryOperator::GreaterThan, int("5"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
     }
 
     #[test]
     fn test_constant_select_comparison_less_than() {
-        let result = exec("SELECT 3 < 5");
+        let result = exec(const_select(vec![binop(int("3"), BinaryOperator::LessThan, int("5"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_less_than_or_equal() {
-        let result = exec("SELECT 3 <= 3");
+        let result = exec(const_select(vec![binop(int("3"), BinaryOperator::LessThanOrEqual, int("3"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_greater_than_or_equal() {
-        let result = exec("SELECT 5 >= 5");
+        let result = exec(const_select(vec![binop(int("5"), BinaryOperator::GreaterThanOrEqual, int("5"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_equal_true() {
-        let result = exec("SELECT 1 = 1");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::Equal, int("1"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_equal_false() {
-        let result = exec("SELECT 1 = 2");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::Equal, int("2"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
     }
 
     #[test]
     fn test_constant_select_comparison_not_equal_true() {
-        let result = exec("SELECT 1 <> 2");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::NotEqual, int("2"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
     }
 
     #[test]
     fn test_constant_select_comparison_not_equal_false() {
-        let result = exec("SELECT 1 <> 1");
+        let result = exec(const_select(vec![binop(int("1"), BinaryOperator::NotEqual, int("1"))]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
     }
 
     #[test]
     fn test_constant_select_multiple_columns() {
-        let result = exec("SELECT 1, 2, 3");
+        let result = exec(const_select(vec![int("1"), int("2"), int("3")]));
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
         assert_eq!(result.result_set.rows[0][1], ExprResult::Int(2));
         assert_eq!(result.result_set.rows[0][2], ExprResult::Int(3));
@@ -1032,24 +1053,38 @@ mod vm_tests {
 
     #[test]
     fn test_constant_select_column_name_defaults_to_index() {
-        let result = exec("SELECT 42");
+        let result = exec(const_select(vec![int("42")]));
         assert_eq!(result.result_set.columns[0].name, "Column 0");
     }
 
     #[test]
+    fn test_constant_select_column_alias() {
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::aliased(
+                int("1"),
+                Identifier::from("my_col".to_string()),
+            )]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+        let result = exec(stmt);
+        assert_eq!(result.result_set.columns[0].alias, Some("my_col".to_string()));
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
     fn test_non_constant_select_without_from_returns_error() {
-        let storage = storage();
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::simple_identifier("id")]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
         let vm = VirtualMachine::default();
-        let buf = String::from("SELECT id");
-        let lex = Lexer::new(&buf).lex();
-        let tokens: Vec<lexer::token::Token> =
-            lex.tokens.into_iter().map(|t| t.token).collect();
-        let mut parser = Parser::new_positionless(tokens, "SELECT id");
-        let stmts = match parser.parse().unwrap() {
-            parser::ast::Program::Statements(s) => s,
-            _ => panic!("Expected statements"),
-        };
-        let result = vm.execute_statement(&stmts[0], &storage);
+        let result = vm.execute_statement(&stmt, &storage());
         assert!(result.is_err());
     }
 }
