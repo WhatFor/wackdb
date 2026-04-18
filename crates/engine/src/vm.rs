@@ -1,4 +1,4 @@
-use anyhow::{Error, Result};
+use anyhow::Result;
 use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
 use deku::DekuReader;
 use derive_more::derive::From;
@@ -10,9 +10,8 @@ use crate::{
     catalog::DbLong,
     catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
     engine::Storage,
-    file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
+    file_format::{SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     index_pager::IndexPager,
-    page::PageDecoder,
 };
 
 #[derive(Default)]
@@ -207,28 +206,18 @@ impl VirtualMachine {
                 };
 
                 // Step 1.
-                // Fetch the `master` database file, we need to read a lot of metadata from it
-                // in order to know where to read the user-query data from (and if it's even valid).
-                let master_data_file = storage
-                    .file_manager
-                    .get_from_id(MASTER_DB_ID, FileType::Primary);
-
-                if master_data_file.is_none() {
-                    return Err(Error::msg("Failed to read Master data file"));
-                }
-
-                // Step 2.
                 // Read the `master` SCHEMA_INFO page. This is going to tell us
                 // where in the `master` DB to find info on the databases, tables, columns
                 // and indexes that exist.
-                let schema_page_bytes = master_data_file
-                    .unwrap()
-                    .read_page(SCHEMA_INFO_PAGE_INDEX)?;
+                let schema_info = storage.buffer_pool.get_page_as::<SchemaInfo>(
+                    &FilePageId {
+                        db_id: MASTER_DB_ID,
+                        page_index: SCHEMA_INFO_PAGE_INDEX,
+                    },
+                    &storage.file_manager,
+                )?;
 
-                let schema_page = PageDecoder::from_bytes(&schema_page_bytes);
-                let schema_info = schema_page.try_read::<SchemaInfo>(0)?;
-
-                // Step 3.
+                // Step 2.
                 // Create an pager and read all the Database records that exist
                 // in the schema.
                 // Validate if the database exists.
@@ -255,7 +244,7 @@ impl VirtualMachine {
 
                 log::debug!("Validated database {} exists.", &database_name);
 
-                // Step 4.
+                // Step 3.
                 // Create a pager and read all the Table records that exist in the schema.
                 // Validate if the target table exists.
                 let tables_page_iter = IndexPager::new(
@@ -288,7 +277,7 @@ impl VirtualMachine {
 
                 log::debug!("Validated table {} exists.", &table_name);
 
-                // Step 5.
+                // Step 4.
                 // Create a pager and read from the Schema the indexes that exist.
                 // Then find the Primary Key index on the target table.
                 // This is needed to know where to start reading the data from.
@@ -318,7 +307,7 @@ impl VirtualMachine {
 
                 log::debug!("Found PK index for table {}.", &table_name);
 
-                // Step 6.
+                // Step 5.
                 // Create a pager and read all Columns from the Schema that exist.
                 // Validate that the requested columns exist.
                 let columns_page_iter = IndexPager::new(
@@ -423,7 +412,7 @@ impl VirtualMachine {
 
                 log::trace!("[EVAL SELECT] Selected columns: {:?}", selected_columns);
 
-                // Step 6.5.
+                // Step 6.
                 // Validate that the requested columns exist.
                 if !is_select_wildcard {
                     let missing_columns: Vec<SelectItem> = statement
