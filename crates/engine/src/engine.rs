@@ -61,7 +61,17 @@ impl Default for Engine {
             panic!();
         }
 
-        match bootstrap::open_user_dbs(&storage) {
+        let sm = SchemaManager::new(&storage);
+
+        // TODO: Clean this up
+        if sm.is_err() {
+            log::error!("Failed to build SchemaManager. See: {:?}", sm.unwrap_err());
+            panic!("Couldn't build Schema info. Critically borked.",);
+        }
+
+        let sm_u = sm.unwrap();
+
+        match bootstrap::open_user_dbs(&sm_u) {
             Ok(user_dbs) => {
                 for user_db in user_dbs {
                     log::info!(
@@ -93,16 +103,9 @@ impl Default for Engine {
             panic!("Failed to validate file: {:?}", e);
         }
 
-        let sm = SchemaManager::new(&storage);
-
-        if sm.is_err() {
-            log::error!("Failed to build SchemaManager. See: {:?}", sm.unwrap_err());
-            panic!("Couldn't build Schema info. Critically borked.",);
-        }
-
         Engine {
             vm,
-            sm: sm.unwrap(),
+            sm: sm_u,
             storage,
         }
     }

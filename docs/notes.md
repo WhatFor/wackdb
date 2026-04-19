@@ -9,7 +9,6 @@ Want to support two usage patterns:
 
 ### TODO List
 
-- Add an in-memory store for schema info; it changes so rarely that it doesn't make sense to read/decode it every query. This is used in vm.rs and in bootstrap.open_user_dbs.
 - I quite often just pass the file_manager through into the buffer_pool when it's needed; This seems pointless. Can't I just wire that up once?
 - Implement support for writes.
 - Implement a WAL.
@@ -22,6 +21,7 @@ Want to support two usage patterns:
 - Can I test this `server.rs` module? Figure that out. Might just be a simple start/stop harness? All it really does it receive requests and pass them to the parser/lexer, at which point that's all tested.
 - Transition to sending all read/write traffic via the page_cache (or buffer_pool; maybe rename it?).
 - Remove find_user_databases in bootstrap.rs; this data is in the DB now.
+- Add an in-memory store for schema info; it changes so rarely that it doesn't make sense to read/decode it every query. This is used in vm.rs and in bootstrap.open_user_dbs.
 
 ### Planning a schema cache
 

@@ -13,6 +13,7 @@ use crate::{
     index_pager::IndexPager,
     page::{PageEncoder, PageHeader, PageId, PageType},
     persistence::{self, OpenDatabaseResult},
+    sm::SchemaManager,
 };
 
 pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
@@ -42,32 +43,13 @@ pub fn open_or_create_master_db() -> Result<OpenDatabaseResult> {
     persistence::create_database(name, MASTER_DB_ID, true)
 }
 
-pub fn open_user_dbs(storage: &Storage) -> Result<Vec<OpenDatabaseResult>> {
-    let schema_info = storage.buffer_pool.get_page_as::<SchemaInfo>(
-        &FilePageId {
-            db_id: MASTER_DB_ID,
-            page_index: SCHEMA_INFO_PAGE_INDEX,
-        },
-        &storage.file_manager,
-    )?;
-
-    let databases_page_iter = IndexPager::new(
-        FilePageId::new(MASTER_DB_ID, schema_info.databases_root_page_id),
-        storage,
-    );
-
-    let dbs = databases_page_iter.map(|item| {
-        let mut cursor = std::io::Cursor::new(item);
-        let mut reader = deku::reader::Reader::new(&mut cursor);
-
-        return <Database as deku::DekuReader>::from_reader_with_ctx(&mut reader, ());
-    });
-
-    let results = dbs
+pub fn open_user_dbs(schema_manager: &SchemaManager) -> Result<Vec<OpenDatabaseResult>> {
+    schema_manager
+        .schema
+        .databases
+        .iter()
         .map(|db| {
-            let name = String::from_utf8(db.unwrap().name).unwrap().to_string();
-
-            let mut user_db = persistence::open_db(&name);
+            let mut user_db = persistence::open_db(&db.name);
             let allocated_page_count = user_db.dat.allocated_page_count()?;
             let id = user_db.dat.db_id();
 
@@ -75,11 +57,11 @@ pub fn open_user_dbs(storage: &Storage) -> Result<Vec<OpenDatabaseResult>> {
                 panic!("I have no idea");
             }
 
-            log::info!("Opening user DB: {:?}", name);
+            log::info!("Opening user DB: {:?}", db.name);
 
             Ok(OpenDatabaseResult {
                 id: id.unwrap(),
-                name: name,
+                name: db.name.clone(),
                 files: persistence::DatabaseFilePair {
                     dat: user_db.dat,
                     log: user_db.log,
@@ -87,9 +69,7 @@ pub fn open_user_dbs(storage: &Storage) -> Result<Vec<OpenDatabaseResult>> {
                 allocated_page_count,
             })
         })
-        .collect();
-
-    results
+        .collect()
 }
 
 pub fn ensure_master_tables_exist(storage: &Storage) -> Result<()> {
