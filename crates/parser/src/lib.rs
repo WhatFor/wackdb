@@ -2333,28 +2333,28 @@ mod parser_tests {
 
     #[test]
     fn test_simple_insert_statement() {
-        let query = String::from("INSERT INTO Users (Id, Name) VALUES (1, 'Bobby');");
+        let query = String::from("INSERT INTO DB.Users (Id, Name) VALUES (1, 'Bobby');");
         let tokens = vec![
             Token::Keyword(Keyword::Insert),
             Token::Space,
             Token::Keyword(Keyword::Into),
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(12, 17))),
+            Token::Identifier(LexerIdent::new(Slice::new(12, 20))),
             Token::Space,
             Token::ParenOpen,
-            Token::Identifier(LexerIdent::new(Slice::new(19, 21))),
+            Token::Identifier(LexerIdent::new(Slice::new(22, 24))),
             Token::Comma,
             Token::Space,
-            Token::Identifier(LexerIdent::new(Slice::new(23, 27))),
+            Token::Identifier(LexerIdent::new(Slice::new(26, 30))),
             Token::ParenClose,
             Token::Space,
             Token::Keyword(Keyword::Values),
             Token::Space,
             Token::ParenOpen,
-            Token::Numeric(Slice::new(37, 38)),
+            Token::Numeric(Slice::new(40, 41)),
             Token::Comma,
             Token::Space,
-            Token::Value(LexerValue::SingleQuoted(Slice::new(41, 46))),
+            Token::Value(LexerValue::SingleQuoted(Slice::new(44, 49))),
             Token::ParenClose,
             Token::EOF,
         ];
@@ -2367,7 +2367,9 @@ mod parser_tests {
                     identifier: Identifier {
                         value: String::from("Users"),
                     },
-                    qualifier: None,
+                    qualifier: Some(Identifier {
+                        value: String::from("DB"),
+                    }),
                 },
                 column_list: InsertColumnList {
                     column_list: vec![

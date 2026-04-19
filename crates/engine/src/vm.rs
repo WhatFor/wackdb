@@ -552,6 +552,12 @@ impl VirtualMachine {
         storage: &Storage,
         sm: &SchemaManager,
     ) -> Result<StatementResult> {
+        // Full process:
+        // 1. Verify the database and table exists
+        // 2. Verify the columns exist
+        // 3. Tell the buffer_pool about the new data
+        // 4. TODO: WAL stuff
+
         todo!()
     }
 

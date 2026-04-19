@@ -9,6 +9,10 @@ Want to support two usage patterns:
 
 ### TODO List
 
+- The lexer doesn't seem to do qualified identifiers, e.g.
+  - SELECT * FROM master.databases;
+  - INSERT INTO master.databases (Id) VALUES (1);
+- The parser should check that the number of columns matches the number of values in an INSERT statement.
 - I quite often just pass the file_manager through into the buffer_pool when it's needed; This seems pointless. Can't I just wire that up once?
 - Implement support for writes (see next section).
 - Implement a WAL.
@@ -16,9 +20,6 @@ Want to support two usage patterns:
 
 ### Supporting Writes
 
-- Check lexer and parser:
-  - INSERT support
-    - lexer seems fine, parser does not.
 - Update VM to handle INSERTS.
 - For now, just have the write go through the buffer_pool direct to disk.
 - Think about the WAL, but don't implement yet.
@@ -31,6 +32,7 @@ Want to support two usage patterns:
 - Transition to sending all read/write traffic via the page_cache (or buffer_pool; maybe rename it?).
 - Remove find_user_databases in bootstrap.rs; this data is in the DB now.
 - Add an in-memory store for schema info; it changes so rarely that it doesn't make sense to read/decode it every query. This is used in vm.rs and in bootstrap.open_user_dbs.
+- Add support for INSERT INTO statements into parser.
 
 ### Planning a schema cache
 
