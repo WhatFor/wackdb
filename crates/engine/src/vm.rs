@@ -856,3 +856,822 @@ impl VirtualMachine {
         ExprResult::Null
     }
 }
+
+#[cfg(test)]
+mod vm_tests {
+
+    use super::*;
+    use crate::{buffer_pool::BufferPool, fm::FileManager};
+    use parser::ast::*;
+
+    fn create_test_storage() -> Storage {
+        Storage {
+            buffer_pool: BufferPool::default(),
+            file_manager: FileManager::default(),
+        }
+    }
+
+    #[test]
+    /// SELECT 1;
+    fn test_constant_select_integer() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let one = Expr::Value(Value::Number("1".to_string()));
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(one)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
+    /// SELECT 1, 2, 3;
+    fn test_constant_select_integer_multiple_columns() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let one = Expr::Value(Value::Number("1".to_string()));
+        let two = Expr::Value(Value::Number("2".to_string()));
+        let three = Expr::Value(Value::Number("3".to_string()));
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![
+                SelectItem::new(one),
+                SelectItem::new(two),
+                SelectItem::new(three),
+            ]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        assert_eq!(result.result_set.rows[0][1], ExprResult::Int(2));
+        assert_eq!(result.result_set.rows[0][2], ExprResult::Int(3));
+    }
+
+    #[test]
+    /// SELECT 1 As AliasName;
+    fn test_constant_select_integer_with_alias() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let value = Expr::Value(Value::Number("1".to_string()));
+        let alias = Identifier {
+            value: String::from("AliasName"),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::aliased(value, alias)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        assert_eq!(
+            result.result_set.columns[0],
+            ColumnResult {
+                name: String::from("AliasName"),
+                alias: Some(String::from("AliasName"))
+            }
+        );
+    }
+
+    #[test]
+    /// SELECT 1 AS A, 2 AS B, 3 AS C;
+    fn test_constant_select_integer_multiple_columns_with_aliases() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let one = Expr::Value(Value::Number("1".to_string()));
+        let one_alias = Identifier::from(String::from("A"));
+
+        let two = Expr::Value(Value::Number("2".to_string()));
+        let two_alias = Identifier::from(String::from("B"));
+
+        let three = Expr::Value(Value::Number("3".to_string()));
+        let three_alias = Identifier::from(String::from("C"));
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![
+                SelectItem::aliased(one, one_alias),
+                SelectItem::aliased(two, two_alias),
+                SelectItem::aliased(three, three_alias),
+            ]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(
+            result.result_set.columns[0],
+            ColumnResult {
+                name: String::from("A"),
+                alias: Some(String::from("A"))
+            }
+        );
+        assert_eq!(
+            result.result_set.columns[1],
+            ColumnResult {
+                name: String::from("B"),
+                alias: Some(String::from("B"))
+            }
+        );
+        assert_eq!(
+            result.result_set.columns[2],
+            ColumnResult {
+                name: String::from("C"),
+                alias: Some(String::from("C"))
+            }
+        );
+    }
+
+    #[test]
+    /// SELECT 1 + 2;
+    fn test_constant_select_add() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Plus,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
+    }
+
+    #[test]
+    /// SELECT 3 - 2;
+    fn test_constant_select_subtract() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("3".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Minus,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
+    /// SELECT 3 * 4;
+    fn test_constant_select_multiply() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("3".to_string()));
+        let right = Expr::Value(Value::Number("4".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Multiply,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(12));
+    }
+
+    #[test]
+    /// SELECT 12 / 4;
+    fn test_constant_select_divide_whole_number() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("12".to_string()));
+        let right = Expr::Value(Value::Number("4".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Divide,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
+    }
+
+    #[test]
+    /// SELECT 1 / 0;
+    /// TODO: Should blow up, but currently just returns 0. That's not correct.
+    fn test_constant_select_divide_by_zero() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("0".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Divide,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(0));
+    }
+
+    #[test]
+    /// SELECT 11 % 5;
+    fn test_constant_select_modulo() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("11".to_string()));
+        let right = Expr::Value(Value::Number("5".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Modulo,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+    }
+
+    #[test]
+    /// SELECT 'Hello';
+    fn test_constant_select_string() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let str = Expr::Value(Value::String(String::from("Hello"), QuoteType::Single));
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(str)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(
+            result.result_set.rows[0][0],
+            ExprResult::String(String::from("Hello"))
+        );
+    }
+
+    #[test]
+    /// SELECT 'Hello, ' + 'World';
+    fn test_constant_select_string_concat() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::String(String::from("Hello, "), QuoteType::Single));
+        let right = Expr::Value(Value::String(String::from("World"), QuoteType::Single));
+        let concat = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Plus,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(concat)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(
+            result.result_set.rows[0][0],
+            ExprResult::String(String::from("Hello, World"))
+        );
+    }
+
+    #[test]
+    /// SELECT NULL;
+    fn test_constant_select_null() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let null = Expr::Value(Value::Null);
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(null)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    /// SELECT 1 + NULL;
+    fn test_constant_select_numeric_plus_null_returns_null() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("5".to_string()));
+        let right = Expr::Value(Value::Null);
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Plus,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    /// SELECT 1 + 'Hello';
+    /// TODO: This is probably a bit odd; It should return an error.
+    fn test_constant_select_numeric_plus_string_returns_null() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("5".to_string()));
+        let right = Expr::Value(Value::String(String::from("Hello"), QuoteType::Single));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Plus,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+    }
+
+    #[test]
+    /// SELECT 2 > 1;
+    fn test_constant_select_number_greater_than_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("1".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::GreaterThan,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 1 > 2;
+    fn test_constant_select_number_greater_than_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::GreaterThan,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 2 >= 2;
+    fn test_constant_select_number_greater_than_or_equal_number_same_value() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::GreaterThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 3 >= 2;
+    fn test_constant_select_number_greater_than_or_equal_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("3".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::GreaterThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 2 >= 3;
+    fn test_constant_select_number_greater_than_or_equal_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("3".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::GreaterThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 2 < 1;
+    fn test_constant_select_number_less_than_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("1".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::LessThan,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 1 < 2;
+    fn test_constant_select_number_less_than_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::LessThan,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 2 <= 2;
+    fn test_constant_select_number_less_than_or_equal_number_same_value() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::LessThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 3 <= 2;
+    fn test_constant_select_number_less_than_or_equal_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("3".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::LessThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 2 <= 3;
+    fn test_constant_select_number_less_than_or_equal_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("2".to_string()));
+        let right = Expr::Value(Value::Number("3".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::LessThanOrEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 1 = 1;
+    fn test_constant_select_number_equal_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("1".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Equal,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+
+    #[test]
+    /// SELECT 1 = 2;
+    fn test_constant_select_number_equal_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::Equal,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 1 <> 1;
+    fn test_constant_select_number_not_equal_number_false() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("1".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::NotEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+    }
+
+    #[test]
+    /// SELECT 1 <> 2;
+    fn test_constant_select_number_not_equal_number_true() {
+        let vm = VirtualMachine::default();
+        let storage = create_test_storage();
+
+        let left = Expr::Value(Value::Number("1".to_string()));
+        let right = Expr::Value(Value::Number("2".to_string()));
+        let op = Expr::BinaryOperator {
+            left: left.into(),
+            op: BinaryOperator::NotEqual,
+            right: right.into(),
+        };
+
+        let stmt = Statement::Select(SelectExpressionBody {
+            select_item_list: SelectItemList::from(vec![SelectItem::new(op)]),
+            from_clause: None,
+            where_clause: None,
+            order_by_clause: None,
+            group_by_clause: None,
+        });
+
+        let result = vm.execute_statement(&stmt, &storage).unwrap();
+
+        assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+    }
+}
