@@ -19,8 +19,7 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut engine = Engine::default();
-        engine.init();
+        let engine = Engine::default();
 
         match self.config {
             ServerConfig::Grpc(port_number) => {
@@ -56,8 +55,7 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let incoming = TcpIncoming::from(listener).with_nodelay(Some(true));
 
-        let mut engine = Engine::default();
-        engine.init();
+        let engine = Engine::default();
         let query_server = QueryServer::new(engine);
 
         tokio::spawn(async move {

@@ -43,14 +43,20 @@ impl<'a> Lexer<'a> {
                 '\'' => {
                     let end_pos = self.scan_to(curr_offset + 1, '\'') + 1;
 
-                    let slice = &self.buf[curr_offset..end_pos];
+                    if end_pos > self.len {
+                        self.pos += 1;
 
-                    self.pos += slice.len();
+                        Token::Unknown
+                    } else {
+                        let slice = &self.buf[curr_offset..end_pos];
 
-                    Token::Value(Value::SingleQuoted(Slice::new(
-                        curr_offset + 1,
-                        end_pos - 1,
-                    )))
+                        self.pos += slice.len();
+
+                        Token::Value(Value::SingleQuoted(Slice::new(
+                            curr_offset + 1,
+                            end_pos - 1,
+                        )))
+                    }
                 }
                 // Space
                 ' ' => {
@@ -812,7 +818,12 @@ mod lexer_tests {
         let lexer = Lexer::new(&str).lex();
         let actual_without_locations = to_token_vec_without_locations(lexer.tokens);
 
-        let expected = vec![Token::Identifier(Ident::new(Slice::new(0, 1))), Token::Dot, Token::Identifier(Ident::new(Slice::new(2, 3))), Token::EOF];
+        let expected = vec![
+            Token::Identifier(Ident::new(Slice::new(0, 1))),
+            Token::Dot,
+            Token::Identifier(Ident::new(Slice::new(2, 3))),
+            Token::EOF,
+        ];
 
         assert_eq!(actual_without_locations, expected);
     }
@@ -831,6 +842,22 @@ mod lexer_tests {
         ];
 
         assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_minus_without_following_number_is_arithmetic() {
+        let str = String::from("5 - 3");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+        let expected = vec![
+            Token::Numeric(Slice::new(0, 1)),
+            Token::Space,
+            Token::Arithmetic(Arithmetic::Minus),
+            Token::Space,
+            Token::Numeric(Slice::new(4, 5)),
+            Token::EOF,
+        ];
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -869,6 +896,32 @@ mod lexer_tests {
         let expected = vec![Token::Unknown, Token::EOF];
 
         assert_eq!(actual_without_locations, expected);
+    }
+
+    #[test]
+    fn test_empty_string_literal() {
+        let str = String::from("''");
+        let lexer = Lexer::new(&str).lex();
+        let actual = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![
+            Token::Value(Value::SingleQuoted(Slice::new(1, 1))),
+            Token::EOF,
+        ];
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_unclosed_string_panics() {
+        let str = String::from("'");
+        let lexer = Lexer::new(&str).lex();
+
+        let actual = to_token_vec_without_locations(lexer.tokens);
+
+        let expected = vec![Token::Unknown, Token::EOF];
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

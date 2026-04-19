@@ -21,10 +21,9 @@ pub enum Result {
 
 impl Repl {
     pub fn new() -> Self {
-        let mut engine = Engine::default();
-        engine.init();
-
-        Repl { engine }
+        Repl {
+            engine: Engine::default(),
+        }
     }
 
     pub fn run(&mut self) {

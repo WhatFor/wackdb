@@ -9,17 +9,19 @@ use crate::{
 use anyhow::Result;
 use deku::DekuReader;
 
+#[derive(Debug)]
 struct Schema {
     pub databases: Vec<SchemaDatabase>,
 }
 
+#[derive(Debug)]
 struct SchemaDatabase {
     pub id: DbInt,
     pub name: String,
     pub tables: Vec<SchemaTable>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SchemaTable {
     pub id: DbInt,
     pub name: String,
@@ -28,7 +30,7 @@ struct SchemaTable {
     pub indexes: Vec<SchemaIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SchemaColumn {
     pub id: DbInt,
     pub name: String,
@@ -36,7 +38,7 @@ struct SchemaColumn {
     // TODO: Probably need more here!
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct SchemaIndex {
     pub id: DbInt,
     pub name: String,
@@ -44,6 +46,7 @@ struct SchemaIndex {
     // TODO: Probably need more here!
 }
 
+#[derive(Debug)]
 pub struct SchemaManager {
     schema: Schema,
 }
