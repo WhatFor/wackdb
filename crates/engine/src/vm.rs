@@ -7,11 +7,11 @@ use thiserror::Error;
 
 use crate::{
     buffer_pool::FilePageId,
-    catalog::DbLong,
-    catalog::{Column, ColumnType, Database, Index, IndexType, Table, MASTER_DB_ID},
+    catalog::{Column, ColumnType, Database, DbLong, Index, IndexType, Table, MASTER_DB_ID},
     engine::Storage,
     file_format::{SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     index_pager::IndexPager,
+    sm::SchemaManager,
 };
 
 #[derive(Default)]
@@ -51,6 +51,7 @@ impl VirtualMachine {
         &self,
         statement: &Statement,
         storage: &Storage,
+        schema: &SchemaManager,
     ) -> Result<StatementResult> {
         let is_const_expr = self.is_constant_statement(statement);
 
@@ -61,7 +62,7 @@ impl VirtualMachine {
 
         match statement {
             Statement::Select(select_statement) => {
-                self.evaluate_select_statement(select_statement, storage)
+                self.evaluate_select_statement(select_statement, storage, schema)
             }
             Statement::Update => todo!(),
             Statement::Insert => todo!(),
@@ -174,6 +175,7 @@ impl VirtualMachine {
         &self,
         statement: &SelectExpressionBody,
         storage: &Storage,
+        schema: &SchemaManager,
     ) -> Result<StatementResult> {
         log::debug!("SELECT:");
         match &statement.from_clause {
@@ -861,21 +863,47 @@ impl VirtualMachine {
 mod vm_tests {
 
     use super::*;
-    use crate::{buffer_pool::BufferPool, fm::FileManager};
+    use crate::{
+        buffer_pool::BufferPool,
+        catalog::MASTER_NAME,
+        file::{DatabaseStorage, MemoryFile},
+        fm::{FileId, FileManager},
+        sm::{Schema, SchemaDatabase, SchemaTable},
+    };
+    use anyhow::Result;
     use parser::ast::*;
 
-    fn create_test_storage() -> Storage {
-        Storage {
+    fn create_test_storage() -> Result<Storage> {
+        let file_manager = FileManager::default();
+
+        Ok(Storage {
             buffer_pool: BufferPool::default(),
-            file_manager: FileManager::default(),
-        }
+            file_manager,
+        })
+    }
+
+    fn create_test_schema() -> SchemaManager {
+        SchemaManager::from(Schema {
+            databases: vec![SchemaDatabase {
+                id: 0,
+                name: String::from("TEST"),
+                tables: vec![SchemaTable {
+                    id: 0,
+                    name: String::from("Table"),
+                    database_id: 0,
+                    columns: vec![],
+                    indexes: vec![],
+                }],
+            }],
+        })
     }
 
     #[test]
     /// SELECT 1;
-    fn test_constant_select_integer() {
+    fn test_constant_select_integer() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let one = Expr::Value(Value::Number("1".to_string()));
 
@@ -887,16 +915,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1, 2, 3;
-    fn test_constant_select_integer_multiple_columns() {
+    fn test_constant_select_integer_multiple_columns() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let one = Expr::Value(Value::Number("1".to_string()));
         let two = Expr::Value(Value::Number("2".to_string()));
@@ -914,18 +944,20 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
         assert_eq!(result.result_set.rows[0][1], ExprResult::Int(2));
         assert_eq!(result.result_set.rows[0][2], ExprResult::Int(3));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 As AliasName;
-    fn test_constant_select_integer_with_alias() {
+    fn test_constant_select_integer_with_alias() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let value = Expr::Value(Value::Number("1".to_string()));
         let alias = Identifier {
@@ -940,7 +972,7 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
         assert_eq!(
@@ -950,13 +982,15 @@ mod vm_tests {
                 alias: Some(String::from("AliasName"))
             }
         );
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 AS A, 2 AS B, 3 AS C;
-    fn test_constant_select_integer_multiple_columns_with_aliases() {
+    fn test_constant_select_integer_multiple_columns_with_aliases() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let one = Expr::Value(Value::Number("1".to_string()));
         let one_alias = Identifier::from(String::from("A"));
@@ -979,7 +1013,7 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(
             result.result_set.columns[0],
@@ -1002,13 +1036,15 @@ mod vm_tests {
                 alias: Some(String::from("C"))
             }
         );
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 + 2;
-    fn test_constant_select_add() {
+    fn test_constant_select_add() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1026,16 +1062,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
+        Ok(())
     }
 
     #[test]
     /// SELECT 3 - 2;
-    fn test_constant_select_subtract() {
+    fn test_constant_select_subtract() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("3".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1053,16 +1091,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        Ok(())
     }
 
     #[test]
     /// SELECT 3 * 4;
-    fn test_constant_select_multiply() {
+    fn test_constant_select_multiply() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("3".to_string()));
         let right = Expr::Value(Value::Number("4".to_string()));
@@ -1080,16 +1120,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(12));
+        Ok(())
     }
 
     #[test]
     /// SELECT 12 / 4;
-    fn test_constant_select_divide_whole_number() {
+    fn test_constant_select_divide_whole_number() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("12".to_string()));
         let right = Expr::Value(Value::Number("4".to_string()));
@@ -1107,17 +1149,19 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(3));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 / 0;
     /// TODO: Should blow up, but currently just returns 0. That's not correct.
-    fn test_constant_select_divide_by_zero() {
+    fn test_constant_select_divide_by_zero() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("0".to_string()));
@@ -1135,16 +1179,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(0));
+        Ok(())
     }
 
     #[test]
     /// SELECT 11 % 5;
-    fn test_constant_select_modulo() {
+    fn test_constant_select_modulo() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("11".to_string()));
         let right = Expr::Value(Value::Number("5".to_string()));
@@ -1162,16 +1208,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Int(1));
+        Ok(())
     }
 
     #[test]
     /// SELECT 'Hello';
-    fn test_constant_select_string() {
+    fn test_constant_select_string() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let str = Expr::Value(Value::String(String::from("Hello"), QuoteType::Single));
 
@@ -1183,19 +1231,21 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(
             result.result_set.rows[0][0],
             ExprResult::String(String::from("Hello"))
         );
+        Ok(())
     }
 
     #[test]
     /// SELECT 'Hello, ' + 'World';
-    fn test_constant_select_string_concat() {
+    fn test_constant_select_string_concat() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::String(String::from("Hello, "), QuoteType::Single));
         let right = Expr::Value(Value::String(String::from("World"), QuoteType::Single));
@@ -1213,19 +1263,21 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(
             result.result_set.rows[0][0],
             ExprResult::String(String::from("Hello, World"))
         );
+        Ok(())
     }
 
     #[test]
     /// SELECT NULL;
-    fn test_constant_select_null() {
+    fn test_constant_select_null() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let null = Expr::Value(Value::Null);
 
@@ -1237,16 +1289,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 + NULL;
-    fn test_constant_select_numeric_plus_null_returns_null() {
+    fn test_constant_select_numeric_plus_null_returns_null() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("5".to_string()));
         let right = Expr::Value(Value::Null);
@@ -1264,17 +1318,19 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 + 'Hello';
     /// TODO: This is probably a bit odd; It should return an error.
-    fn test_constant_select_numeric_plus_string_returns_null() {
+    fn test_constant_select_numeric_plus_string_returns_null() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("5".to_string()));
         let right = Expr::Value(Value::String(String::from("Hello"), QuoteType::Single));
@@ -1292,16 +1348,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Null);
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 > 1;
-    fn test_constant_select_number_greater_than_number_true() {
+    fn test_constant_select_number_greater_than_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("1".to_string()));
@@ -1319,16 +1377,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 > 2;
-    fn test_constant_select_number_greater_than_number_false() {
+    fn test_constant_select_number_greater_than_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1346,16 +1406,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 >= 2;
-    fn test_constant_select_number_greater_than_or_equal_number_same_value() {
+    fn test_constant_select_number_greater_than_or_equal_number_same_value() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1373,16 +1435,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 3 >= 2;
-    fn test_constant_select_number_greater_than_or_equal_number_true() {
+    fn test_constant_select_number_greater_than_or_equal_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("3".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1400,16 +1464,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 >= 3;
-    fn test_constant_select_number_greater_than_or_equal_number_false() {
+    fn test_constant_select_number_greater_than_or_equal_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("3".to_string()));
@@ -1427,16 +1493,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 < 1;
-    fn test_constant_select_number_less_than_number_false() {
+    fn test_constant_select_number_less_than_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("1".to_string()));
@@ -1454,16 +1522,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 < 2;
-    fn test_constant_select_number_less_than_number_true() {
+    fn test_constant_select_number_less_than_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1481,16 +1551,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 <= 2;
-    fn test_constant_select_number_less_than_or_equal_number_same_value() {
+    fn test_constant_select_number_less_than_or_equal_number_same_value() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1508,16 +1580,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 3 <= 2;
-    fn test_constant_select_number_less_than_or_equal_number_false() {
+    fn test_constant_select_number_less_than_or_equal_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("3".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1535,16 +1609,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 2 <= 3;
-    fn test_constant_select_number_less_than_or_equal_number_true() {
+    fn test_constant_select_number_less_than_or_equal_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("2".to_string()));
         let right = Expr::Value(Value::Number("3".to_string()));
@@ -1562,16 +1638,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 = 1;
-    fn test_constant_select_number_equal_number_true() {
+    fn test_constant_select_number_equal_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("1".to_string()));
@@ -1589,16 +1667,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 = 2;
-    fn test_constant_select_number_equal_number_false() {
+    fn test_constant_select_number_equal_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1616,16 +1696,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 <> 1;
-    fn test_constant_select_number_not_equal_number_false() {
+    fn test_constant_select_number_not_equal_number_false() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("1".to_string()));
@@ -1643,16 +1725,18 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(false));
+        Ok(())
     }
 
     #[test]
     /// SELECT 1 <> 2;
-    fn test_constant_select_number_not_equal_number_true() {
+    fn test_constant_select_number_not_equal_number_true() -> Result<()> {
         let vm = VirtualMachine::default();
-        let storage = create_test_storage();
+        let storage = create_test_storage()?;
+        let sm = create_test_schema();
 
         let left = Expr::Value(Value::Number("1".to_string()));
         let right = Expr::Value(Value::Number("2".to_string()));
@@ -1670,8 +1754,9 @@ mod vm_tests {
             group_by_clause: None,
         });
 
-        let result = vm.execute_statement(&stmt, &storage).unwrap();
+        let result = vm.execute_statement(&stmt, &storage, &sm).unwrap();
 
         assert_eq!(result.result_set.rows[0][0], ExprResult::Bool(true));
+        Ok(())
     }
 }

@@ -10,19 +10,19 @@ use anyhow::Result;
 use deku::DekuReader;
 
 #[derive(Debug)]
-struct Schema {
+pub struct Schema {
     pub databases: Vec<SchemaDatabase>,
 }
 
 #[derive(Debug)]
-struct SchemaDatabase {
+pub struct SchemaDatabase {
     pub id: DbInt,
     pub name: String,
     pub tables: Vec<SchemaTable>,
 }
 
 #[derive(Clone, Debug)]
-struct SchemaTable {
+pub struct SchemaTable {
     pub id: DbInt,
     pub name: String,
     pub database_id: DbInt,
@@ -31,7 +31,7 @@ struct SchemaTable {
 }
 
 #[derive(Clone, Debug)]
-struct SchemaColumn {
+pub struct SchemaColumn {
     pub id: DbInt,
     pub name: String,
     pub table_id: DbInt,
@@ -39,7 +39,7 @@ struct SchemaColumn {
 }
 
 #[derive(Clone, Debug)]
-struct SchemaIndex {
+pub struct SchemaIndex {
     pub id: DbInt,
     pub name: String,
     pub table_id: DbInt,
@@ -49,6 +49,12 @@ struct SchemaIndex {
 #[derive(Debug)]
 pub struct SchemaManager {
     schema: Schema,
+}
+
+impl From<Schema> for SchemaManager {
+    fn from(schema: Schema) -> Self {
+        SchemaManager { schema }
+    }
 }
 
 impl SchemaManager {

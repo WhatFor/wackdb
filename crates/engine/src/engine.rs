@@ -137,7 +137,8 @@ impl Engine {
         match statement {
             Statement::Select(select_expression_body) => {
                 log::info!("Selecting: {:?}", select_expression_body);
-                self.vm.execute_statement(statement, &self.storage)
+                self.vm
+                    .execute_statement(statement, &self.storage, &self.sm)
             }
             Statement::Update => {
                 log::info!("Updating");
