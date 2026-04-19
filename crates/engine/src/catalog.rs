@@ -68,7 +68,7 @@ impl Table {
     }
 }
 
-#[derive(DekuRead, DekuWrite, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, DekuRead, DekuWrite, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[deku(
     id_type = "u8",
     endian = "endian",
@@ -167,7 +167,7 @@ impl Column {
     }
 }
 
-#[derive(DekuRead, DekuWrite, PartialEq, Eq)]
+#[derive(Clone, Debug, DekuRead, DekuWrite, PartialEq, Eq)]
 #[deku(
     id_type = "u8",
     endian = "endian",

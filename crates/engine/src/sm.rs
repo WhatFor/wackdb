@@ -1,6 +1,8 @@
 use crate::{
     buffer_pool::FilePageId,
-    catalog::{Column, Database, DbInt, Index, Table, MASTER_DB_ID},
+    catalog::{
+        Column, ColumnType, Database, DbByte, DbInt, DbLong, Index, IndexType, Table, MASTER_DB_ID,
+    },
     engine::Storage,
     file_format::{SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     index_pager::IndexPager,
@@ -35,6 +37,8 @@ pub struct SchemaColumn {
     pub id: DbInt,
     pub name: String,
     pub table_id: DbInt,
+    pub position: DbByte,
+    pub data_type: ColumnType,
     // TODO: Probably need more here!
 }
 
@@ -43,12 +47,14 @@ pub struct SchemaIndex {
     pub id: DbInt,
     pub name: String,
     pub table_id: DbInt,
+    pub index_type: IndexType,
+    pub root_page_id: DbLong,
     // TODO: Probably need more here!
 }
 
 #[derive(Debug)]
 pub struct SchemaManager {
-    schema: Schema,
+    pub schema: Schema,
 }
 
 impl From<Schema> for SchemaManager {
@@ -129,6 +135,8 @@ fn init(storage: &Storage) -> Result<Schema> {
             id: column.id,
             name: String::from_utf8(column.name).unwrap(),
             table_id: column.table_id,
+            position: column.position,
+            data_type: column.data_type,
         })
         .collect();
 
@@ -138,6 +146,8 @@ fn init(storage: &Storage) -> Result<Schema> {
             id: index.id,
             name: String::from_utf8(index.name).unwrap(),
             table_id: index.table_id,
+            index_type: index.index_type,
+            root_page_id: index.root_page_id,
         })
         .collect();
 
