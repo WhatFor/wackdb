@@ -147,8 +147,8 @@ impl Engine {
                 log::info!("Updating");
                 Ok(StatementResult::default())
             }
-            Statement::Insert => {
-                log::info!("Inserting");
+            Statement::Insert(insert_statement_body) => {
+                log::info!("Inserting: {:?}", insert_statement_body);
                 Ok(StatementResult::default())
             }
             Statement::Delete => {

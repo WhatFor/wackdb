@@ -86,8 +86,32 @@ limitOptions
     : NUMBER
     ;
 
+// TODO: Ignoring TOP, WITH, CTEs, OUTPUT, etc. Just raw dog INSERT, baby.
+insertStatement
+    : INSERT_SYMBOL INTO_SYMBOL tableReference (insertColumnList) VALUES_SYMBOL insertValueListList
+    ;
+    
+insertColumnList
+    : insertColumn (COMMA_SYMBOL insertColumn)*
+    ;
+
+insertColumn
+    : identifier
+    ;
+    
+insertValueListList
+    : insertValueList (COMMA_SYMBOL insertValueList)*
+    ;
+    
+insertValueList
+    : ( insertValue (COMMA_SYMBOL insertValue)* )
+    ;
+
+insertValue
+    : expr 
+    ;
+
 // TODO
-insertStatement:
 updateStatement:
 deleteStatement:
 

@@ -10,7 +10,7 @@ pub enum Program {
 pub enum Statement {
     Select(SelectExpressionBody),
     Update,
-    Insert,
+    Insert(InsertExpressionBody),
     Delete,
     CreateTable(CreateTableBody),
     CreateDatabase(CreateDatabaseBody),
@@ -41,6 +41,13 @@ pub struct ColumnDefinition {
 #[derive(PartialEq, Debug)]
 pub enum DataType {
     Int,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct InsertExpressionBody {
+    pub into_clause: IntoClause,
+    pub column_list: InsertColumnList,
+    pub value_lists: Vec<InsertValueList>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -256,6 +263,112 @@ impl fmt::Display for GroupByClause {
 }
 
 impl fmt::Debug for GroupByClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
+pub struct IntoClause {
+    pub identifier: Identifier,
+    pub qualifier: Option<Identifier>,
+}
+
+impl fmt::Display for IntoClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.qualifier {
+            Some(q) => write!(f, "{}.{}", q, self.identifier),
+            None => write!(f, "{}", self.identifier),
+        }
+    }
+}
+
+impl fmt::Debug for IntoClause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
+pub struct InsertColumnList {
+    pub column_list: Vec<InsertColumn>,
+}
+
+impl InsertColumnList {
+    pub fn from(items: Vec<InsertColumn>) -> Self {
+        InsertColumnList { column_list: items }
+    }
+}
+
+impl fmt::Display for InsertColumnList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.column_list)
+    }
+}
+
+impl fmt::Debug for InsertColumnList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct InsertColumn {
+    pub ident: Identifier,
+}
+
+impl fmt::Display for InsertColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.ident)
+    }
+}
+
+impl fmt::Debug for InsertColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq)]
+pub struct InsertValueList {
+    pub value_list: Vec<InsertValue>,
+}
+
+impl InsertValueList {
+    pub fn from(items: Vec<InsertValue>) -> Self {
+        InsertValueList { value_list: items }
+    }
+}
+
+impl fmt::Display for InsertValueList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.value_list)
+    }
+}
+
+impl fmt::Debug for InsertValueList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Passthrough to fmt::Display
+        write!(f, "{}", self)
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct InsertValue {
+    pub expr: Expr,
+}
+
+impl fmt::Display for InsertValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.expr)
+    }
+}
+
+impl fmt::Debug for InsertValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Passthrough to fmt::Display
         write!(f, "{}", self)

@@ -10,7 +10,6 @@ use crate::{
     engine::Storage,
     file::DatabaseStorage,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    index_pager::IndexPager,
     page::{PageEncoder, PageHeader, PageId, PageType},
     persistence::{self, OpenDatabaseResult},
     sm::SchemaManager,

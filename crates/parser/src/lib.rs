@@ -334,7 +334,7 @@ impl<'a> Parser<'a> {
                     let alias = self.parse_table_alias();
 
                     let (qualifier, identifier) =
-                        self.parse_from_clause_identifier_and_optional_qualifier(identifier_str);
+                        self.parse_identifier_and_optional_qualifier(identifier_str);
 
                     Some(FromClause {
                         identifier: identifier?,
@@ -352,7 +352,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_from_clause_identifier_and_optional_qualifier(
+    fn parse_identifier_and_optional_qualifier(
         &mut self,
         identifier: String,
     ) -> (Option<Identifier>, Option<Identifier>) {
@@ -721,12 +721,178 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_insert_statement(&mut self) -> Option<Statement> {
-        if self.match_(Token::Keyword(Keyword::Insert)) {
-            Some(Statement::Insert)
+        if self.lookahead(Token::Keyword(Keyword::Insert)) {
+            let exp_body = self.parse_insert_expression_body()?;
+
+            Some(Statement::Insert(exp_body))
         } else {
             self.push_error(ParseErrorKind::ExpectedKeyword(String::from("INSERT")));
             None
         }
+    }
+
+    fn parse_insert_expression_body(&mut self) -> Option<InsertExpressionBody> {
+        self.match_(Token::Keyword(Keyword::Insert));
+
+        let into_clause = self.parse_insert_into_clause()?;
+        let column_list = self.parse_insert_column_list()?;
+        let value_lists = self.parse_insert_value_lists()?;
+
+        Some(InsertExpressionBody {
+            into_clause,
+            column_list,
+            value_lists,
+        })
+    }
+
+    fn parse_insert_into_clause(&mut self) -> Option<IntoClause> {
+        self.next_significant_token();
+
+        if self.lookahead(Token::Keyword(Keyword::Into)) {
+            self.match_(Token::Keyword(Keyword::Into));
+            self.next_significant_token();
+        } else {
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("INTO")));
+            return None;
+        }
+
+        match self.peek() {
+            Some(Token::Identifier(LexerIdent { value })) => {
+                let identifier_str = String::from(self.resolve_slice(value));
+                self.eat();
+
+                let (qualifier, identifier) =
+                    self.parse_identifier_and_optional_qualifier(identifier_str);
+
+                Some(IntoClause {
+                    identifier: identifier?,
+                    qualifier,
+                })
+            }
+            _ => {
+                self.push_error(ParseErrorKind::ExpectedIdentifier);
+                None
+            }
+        }
+    }
+
+    fn parse_insert_column_list(&mut self) -> Option<InsertColumnList> {
+        let mut column_list = vec![];
+
+        self.next_significant_token();
+
+        if !self.match_(Token::ParenOpen) {
+            self.push_error(ParseErrorKind::ExpectedParentheses(String::from(
+                "Column list not found",
+            )));
+
+            return None;
+        }
+
+        column_list.push(self.parse_insert_column()?);
+        self.next_significant_token();
+
+        while self.lookahead(Token::Comma) {
+            self.match_(Token::Comma);
+            self.next_significant_token();
+            column_list.push(self.parse_insert_column()?);
+        }
+
+        self.next_significant_token();
+
+        if !self.match_(Token::ParenClose) {
+            self.push_error(ParseErrorKind::ExpectedParentheses(String::from(
+                "Column list not closed",
+            )));
+
+            return None;
+        }
+
+        Some(InsertColumnList::from(column_list))
+    }
+
+    fn parse_insert_column(&mut self) -> Option<InsertColumn> {
+        let slice = match self.peek() {
+            Some(Token::Identifier(LexerIdent { value })) => Some(value),
+            _ => None,
+        }
+        .unwrap();
+
+        let column_name = String::from(self.resolve_slice(slice));
+
+        self.eat();
+
+        Some(InsertColumn {
+            ident: Identifier::from(column_name),
+        })
+    }
+
+    fn parse_insert_value_lists(&mut self) -> Option<Vec<InsertValueList>> {
+        self.next_significant_token();
+
+        if self.lookahead(Token::Keyword(Keyword::Values)) {
+            self.match_(Token::Keyword(Keyword::Values));
+        } else {
+            self.push_error(ParseErrorKind::ExpectedKeyword(String::from("VALUES")));
+            return None;
+        }
+
+        let mut list_list = vec![];
+
+        self.next_significant_token();
+        list_list.push(self.parse_insert_values()?);
+        self.next_significant_token();
+
+        while self.lookahead(Token::Comma) {
+            self.match_(Token::Comma);
+            self.next_significant_token();
+            list_list.push(self.parse_insert_values()?);
+        }
+
+        Some(list_list)
+    }
+
+    /// e.g. (1, 2, 3)
+    fn parse_insert_values(&mut self) -> Option<InsertValueList> {
+        self.next_significant_token();
+
+        if !self.match_(Token::ParenOpen) {
+            self.push_error(ParseErrorKind::ExpectedParentheses(String::from(
+                "Value list not found",
+            )));
+
+            return None;
+        }
+
+        let mut value_list = vec![];
+
+        self.next_significant_token();
+        value_list.push(self.parse_insert_value()?);
+        self.next_significant_token();
+
+        while self.lookahead(Token::Comma) {
+            self.match_(Token::Comma);
+            self.next_significant_token();
+            value_list.push(self.parse_insert_value()?);
+        }
+
+        self.next_significant_token();
+
+        if !self.match_(Token::ParenClose) {
+            self.push_error(ParseErrorKind::ExpectedParentheses(String::from(
+                "Value list not closed",
+            )));
+
+            return None;
+        }
+
+        Some(InsertValueList { value_list })
+    }
+
+    fn parse_insert_value(&mut self) -> Option<InsertValue> {
+        let expr = self.parse_expr()?;
+
+        Some(InsertValue { expr })
     }
 
     fn parse_update_statement(&mut self) -> Option<Statement> {
@@ -2167,10 +2333,71 @@ mod parser_tests {
 
     #[test]
     fn test_simple_insert_statement() {
-        let tokens = vec![Token::Keyword(Keyword::Insert), Token::EOF];
-        let lexer = Parser::new_positionless(tokens, EMPTY_QUERY).parse();
+        let query = String::from("INSERT INTO Users (Id, Name) VALUES (1, 'Bobby');");
+        let tokens = vec![
+            Token::Keyword(Keyword::Insert),
+            Token::Space,
+            Token::Keyword(Keyword::Into),
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(12, 17))),
+            Token::Space,
+            Token::ParenOpen,
+            Token::Identifier(LexerIdent::new(Slice::new(19, 21))),
+            Token::Comma,
+            Token::Space,
+            Token::Identifier(LexerIdent::new(Slice::new(23, 27))),
+            Token::ParenClose,
+            Token::Space,
+            Token::Keyword(Keyword::Values),
+            Token::Space,
+            Token::ParenOpen,
+            Token::Numeric(Slice::new(37, 38)),
+            Token::Comma,
+            Token::Space,
+            Token::Value(LexerValue::SingleQuoted(Slice::new(41, 46))),
+            Token::ParenClose,
+            Token::EOF,
+        ];
 
-        let expected = Ok(Program::Statements(vec![Statement::Insert]));
+        let lexer = Parser::new_positionless(tokens, &query).parse();
+
+        let expected = Ok(Program::Statements(vec![Statement::Insert(
+            InsertExpressionBody {
+                into_clause: IntoClause {
+                    identifier: Identifier {
+                        value: String::from("Users"),
+                    },
+                    qualifier: None,
+                },
+                column_list: InsertColumnList {
+                    column_list: vec![
+                        InsertColumn {
+                            ident: Identifier {
+                                value: String::from("Id"),
+                            },
+                        },
+                        InsertColumn {
+                            ident: Identifier {
+                                value: String::from("Name"),
+                            },
+                        },
+                    ],
+                },
+                value_lists: vec![InsertValueList {
+                    value_list: vec![
+                        InsertValue {
+                            expr: Expr::Value(Value::Number(String::from("1"))),
+                        },
+                        InsertValue {
+                            expr: Expr::Value(Value::String(
+                                String::from("Bobby"),
+                                QuoteType::Single,
+                            )),
+                        },
+                    ],
+                }],
+            },
+        )]));
 
         assert_eq!(lexer, expected);
     }

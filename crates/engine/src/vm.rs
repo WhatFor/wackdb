@@ -1,7 +1,9 @@
 use anyhow::Result;
 use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
 use derive_more::derive::From;
-use parser::ast::{Expr, Identifier, SelectExpressionBody, SelectItem, Statement, Value};
+use parser::ast::{
+    Expr, Identifier, InsertExpressionBody, SelectExpressionBody, SelectItem, Statement, Value,
+};
 use thiserror::Error;
 
 use crate::{
@@ -63,7 +65,9 @@ impl VirtualMachine {
                 self.evaluate_select_statement(select_statement, storage, schema)
             }
             Statement::Update => todo!(),
-            Statement::Insert => todo!(),
+            Statement::Insert(insert_statement) => {
+                self.evaluate_insert_statement(insert_statement, storage, schema)
+            }
             Statement::Delete => todo!(),
             Statement::CreateTable(_) => todo!(),
             Statement::CreateDatabase(_) => todo!(),
@@ -78,11 +82,11 @@ impl VirtualMachine {
                 .item_list
                 .iter()
                 .all(|item| self.is_const_exp(&item.expr)),
-            Statement::Update => todo!(),
-            Statement::Insert => todo!(),
-            Statement::Delete => todo!(),
-            Statement::CreateTable(_) => todo!(),
-            Statement::CreateDatabase(_) => todo!(),
+            Statement::Update => false,
+            Statement::Insert(_) => false,
+            Statement::Delete => false,
+            Statement::CreateTable(_) => false,
+            Statement::CreateDatabase(_) => false,
         }
     }
 
@@ -160,11 +164,15 @@ impl VirtualMachine {
                     },
                 })
             }
-            Statement::Update => todo!(),
-            Statement::Insert => todo!(),
-            Statement::Delete => todo!(),
-            Statement::CreateTable(_) => todo!(),
-            Statement::CreateDatabase(_) => todo!(),
+            Statement::Update => unreachable!("UPDATE statements are never constant."),
+            Statement::Insert(_) => unreachable!("INSERT statements are never constant."),
+            Statement::Delete => unreachable!("DELETE statements are never constant."),
+            Statement::CreateTable(_) => {
+                unreachable!("CREATE TABLE statements are never constant.")
+            }
+            Statement::CreateDatabase(_) => {
+                unreachable!("CREATE DATABASE statements are never constant.")
+            }
         }
     }
 
@@ -536,6 +544,15 @@ impl VirtualMachine {
             }
             None => Err(SelectStatementError::NonConstantExprNoFrom.into()),
         }
+    }
+
+    fn evaluate_insert_statement(
+        &self,
+        statement: &InsertExpressionBody,
+        storage: &Storage,
+        sm: &SchemaManager,
+    ) -> Result<StatementResult> {
+        todo!()
     }
 
     fn evaluate_column_name(&self, identifier: &Option<Identifier>, index: usize) -> String {

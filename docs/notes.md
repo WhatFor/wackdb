@@ -10,9 +10,18 @@ Want to support two usage patterns:
 ### TODO List
 
 - I quite often just pass the file_manager through into the buffer_pool when it's needed; This seems pointless. Can't I just wire that up once?
-- Implement support for writes.
+- Implement support for writes (see next section).
 - Implement a WAL.
 - Need to update the buffer_pool; currently it just writes all pages straight to disk rather than batching and flushing. This is pretty shit.
+
+### Supporting Writes
+
+- Check lexer and parser:
+  - INSERT support
+    - lexer seems fine, parser does not.
+- Update VM to handle INSERTS.
+- For now, just have the write go through the buffer_pool direct to disk.
+- Think about the WAL, but don't implement yet.
 
 ### Done List
 
