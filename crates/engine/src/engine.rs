@@ -149,7 +149,8 @@ impl Engine {
             }
             Statement::Insert(insert_statement_body) => {
                 log::info!("Inserting: {:?}", insert_statement_body);
-                Ok(StatementResult::default())
+                self.vm
+                    .execute_statement(statement, &self.storage, &self.sm)
             }
             Statement::Delete => {
                 log::info!("Deleting");

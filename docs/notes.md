@@ -20,9 +20,25 @@ Want to support two usage patterns:
 
 ### Supporting Writes
 
-- Update VM to handle INSERTS.
-- For now, just have the write go through the buffer_pool direct to disk.
-- Think about the WAL, but don't implement yet.
+I'm trying to implement writes. I have added support into the lexer and parser for basic INSERT INTO statments, and the VM has a evaluate_insert_statement function with access to the &Storage context (granting access to the buffer_pool).
+I know I need to do some initial validation: check the specified DB, table and columns all exist, but that's easy; I have the SchemaManager for that. We don't need to talk about that.
+
+I'm a bit stumped on how I actually write to the DB. I can't support creating custom tables, so lets just focus on inserting into master.databases for now - this table is guaranteed to exist. The bootstrap process handles the initial creation of the table, by creating an B-tree index, initialising a number of Database structs, using deku to transform them into a byte array suitable for storage and pushing it into a slot in the index. It's very primitive, in that it won't handle stuff like re-balancing the tree or handling multiple pages of the index if one fills up. This is okay, as I know what I'm writing won't go beyond one page.
+This isn't true now I'm trying to add support for INSERT statements.
+
+I'm struggling to wrap my head around how inserts should work.
+There's a couple things I know to be true:
+- The insert needs to pass via the buffer_pool so I can update the in-memory representation of the page. The buffer_pool should probably mark the page as dirty so a future background task can come and find it to flush it to disk as a bulk operation. The buffer_pool's LRU should probably never evict dirty pages, as if we re-read them from disk it'll be out of date. This means if we do need to evict a dirty page, it needs to be flushed before doing so.
+- If the buffer_pool doesn't have the page cached already, it should probably read it, update it, and mark it as dirty?
+- The operation should also push the transaction into a WAL. This should happen before we update the buffer_pool, I think. This means if the system dies before the buffer_pool flushes dirty pages to disk, we still have all the completed transactions stored in the WAL and can recover.
+- I don't know when a WAL is cleared down... Is it a strictly recovery operation? i.e. if the system boots and we have stuff in the WAL, do we need to recover and should handle all WAL transactions? and after that, the WAL should be empty? and for normal, happy operation of the system, the background service should come along, see the dirty pages in the buffer_pool, flush them to disk and... do what with the WAL? I'm quite unclear how the two interact.
+- What the hell even is in a WAL? Does it record the queries? Or do we want to just record "wrote these bytes to this page and this offset"?
+
+#### Some decisions
+- WAL needs to write early, before the buffer_pool is updated. If we don't write the WAL, the txn failed and nothing else happens. Once the WAL is written, the page in the pool is marked dirty.
+- The WAL is append-only (a checkpointing process can edit it, though).
+- When checkpointing happens, we flush all dirty pages to disk from the buffer_pool, then append a 'flush_event' to the WAL. This signifies that everything before the flush_event is in disk and can be discarded (however I want to do that).
+- During recovery, we find the most recent flush_event in the WAL and re-apply all following transactions.
 
 ### Done List
 
