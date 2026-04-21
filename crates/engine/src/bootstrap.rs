@@ -8,7 +8,7 @@ use crate::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
     engine::Storage,
-    file::DatabaseStorage,
+    file::PagedFile,
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     page::{PageEncoder, PageHeader, PageId, PageType},
     persistence::{self, OpenDatabaseResult},

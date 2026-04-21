@@ -7,6 +7,7 @@ use crate::page::PageDecoder;
 use crate::persistence::ValidationError;
 use crate::sm::SchemaManager;
 use crate::vm::VirtualMachine;
+use crate::wal::WalHeader;
 
 use anyhow::{bail, Result};
 use cli_common::{ExecuteResult, StatementResult};
@@ -100,7 +101,11 @@ impl Default for Engine {
         }
 
         if let Err(e) = validate_all_data_files(&storage) {
-            panic!("Failed to validate file: {:?}", e);
+            panic!("Failed to validate DATA file: {:?}", e);
+        }
+
+        if let Err(e) = validate_all_log_files(&storage) {
+            panic!("Failed to validate LOG file: {:?}", e);
         }
 
         Engine {
@@ -192,11 +197,32 @@ impl Engine {
     }
 }
 
+fn validate_all_log_files(storage: &Storage) -> Result<()> {
+    storage
+        .file_manager
+        .get_all()
+        .filter(|file| file.id.ty == FileType::Log)
+        .map(|file| {
+            let header_len = <WalHeader as deku::DekuSize>::SIZE_BYTES.unwrap();
+            let header_arr = file.file.read_raw(0, header_len)?;
+
+            let mut cursor = std::io::Cursor::new(header_arr);
+            let mut reader = deku::reader::Reader::new(&mut cursor);
+
+            let header = <WalHeader as deku::DekuReader>::from_reader_with_ctx(&mut reader, ())?;
+
+            let is_magic_string_valid = header.validate();
+
+            is_magic_string_valid
+        })
+        .collect()
+}
+
 fn validate_all_data_files(storage: &Storage) -> Result<()> {
     storage
         .file_manager
         .get_all()
-        .filter(|file| file.id.ty != FileType::Log)
+        .filter(|file| file.id.ty == FileType::Primary)
         .map(|file| {
             let file_info_page = storage.buffer_pool.get_page(
                 &FilePageId {

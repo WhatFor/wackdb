@@ -19,8 +19,9 @@ use crate::{
 /// Note: Not an 'id to be used in a DB table' or otherwise.
 pub type DatabaseFileId = u16;
 
-pub trait DatabaseStorage {
+pub trait PagedFile {
     fn read_page(&self, page_index: u32) -> Result<PageBytes>;
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>>;
     fn write_page(&self, data: &[u8], page_index: u32) -> Result<()>;
     fn allocated_page_count(&self) -> Result<PageId>;
 
@@ -91,7 +92,7 @@ impl DiskFile {
     }
 }
 
-impl DatabaseStorage for DiskFile {
+impl PagedFile for DiskFile {
     fn write_page(&self, data: &[u8], page_index: u32) -> Result<()> {
         let offset = (page_index * PAGE_SIZE_BYTES as u32) as u64;
         let offset_from_start = std::io::SeekFrom::Start(offset);
@@ -113,6 +114,18 @@ impl DatabaseStorage for DiskFile {
         file.seek(offset_from_start)?;
 
         let mut buf = [0; PAGE_SIZE_BYTES as usize];
+        file.read_exact(&mut buf)?;
+
+        Ok(buf)
+    }
+
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let offset_from_start = std::io::SeekFrom::Start(offset);
+        let mut file = self.file.lock().unwrap();
+        file.seek(offset_from_start)?;
+
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
         file.read_exact(&mut buf)?;
 
         Ok(buf)
@@ -140,7 +153,7 @@ impl MemoryFile {
 }
 
 #[cfg(test)]
-impl DatabaseStorage for MemoryFile {
+impl PagedFile for MemoryFile {
     fn write_page(&self, data: &[u8], page_index: u32) -> Result<()> {
         let offset = (page_index as usize) * PAGE_SIZE_BYTES as usize;
         let end = offset + PAGE_SIZE_BYTES as usize;
@@ -172,6 +185,23 @@ impl DatabaseStorage for MemoryFile {
         Ok(buf)
     }
 
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let offset = offset as usize;
+        let end = offset + len;
+
+        let file = self.data.lock().unwrap();
+
+        if file.len() < end {
+            anyhow::bail!("Out of range read");
+        }
+
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
+        buf.copy_from_slice(&file[offset..end]);
+
+        Ok(buf)
+    }
+
     fn allocated_page_count(&self) -> Result<PageId> {
         let current = self.data.lock().unwrap();
         Ok((current.len() / PAGE_SIZE_BYTES as usize) as u32)
@@ -185,7 +215,7 @@ mod disk_file_tests {
     use std::path::PathBuf;
     use uuid::Uuid;
 
-    use crate::file::{DatabaseStorage, DiskFile};
+    use crate::file::{DiskFile, PagedFile};
     use crate::page::PAGE_SIZE_BYTES;
 
     fn temp_dir_path() -> std::path::PathBuf {
@@ -276,7 +306,7 @@ mod disk_file_tests {
 
 #[cfg(test)]
 mod memory_file_tests {
-    use crate::file::{DatabaseStorage, MemoryFile};
+    use crate::file::{MemoryFile, PagedFile};
     use crate::page::PAGE_SIZE_BYTES;
 
     #[test]

@@ -10,7 +10,7 @@ macros = { path = "../macros" }
 
 log = "0.4.22"
 derive_more = { version = "1.0.0", features = [ "from"]}
-deku = "0.18"
+deku = "0.20"
 hexlit = "0.5.5"
 crc = "3.2.1"
 uuid = { version = "1.9.1", features = [ "v4" ]}

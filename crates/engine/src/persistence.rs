@@ -1,17 +1,20 @@
 use std::{
     fs::File,
+    io::{Seek, Write},
     path::{Path, PathBuf},
 };
 
 use anyhow::Result;
+use deku::DekuContainerWrite;
 use derive_more::derive::From;
 use thiserror::Error;
 
 use crate::{
-    file::{DatabaseFileId, DatabaseStorage, DiskFile},
+    file::{DatabaseFileId, DiskFile, PagedFile},
     file_format::FileType,
     page::PageId,
     util,
+    wal::WalHeader,
 };
 
 pub const DATA_FILE_EXT: &str = "wak";
@@ -119,7 +122,17 @@ fn create_db_data_file(
 }
 
 fn create_db_log_file(db_name: &String) -> Result<DiskFile> {
-    create_empty_db_file(db_name, FileType::Log)
+    let log_file = create_empty_db_file(db_name, FileType::Log)?;
+
+    {
+        let log_header = WalHeader::default().to_bytes()?;
+
+        let mut file = log_file.file.lock().unwrap();
+        file.seek(std::io::SeekFrom::Start(0))?;
+        file.write_all(&log_header)?;
+    }
+
+    Ok(log_file)
 }
 
 pub fn db_exists(db_name: &String, file_type: FileType) -> Result<bool> {

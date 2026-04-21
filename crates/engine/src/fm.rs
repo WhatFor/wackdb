@@ -1,7 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 use crate::{
-    file::{DatabaseFileId, DatabaseStorage},
+    file::{DatabaseFileId, PagedFile},
     file_format::FileType,
     page::PageId,
 };
@@ -33,14 +33,14 @@ pub struct IdMapKey {
 
 pub struct IdentifiedFile<'a> {
     pub id: &'a FileId,
-    pub file: &'a dyn DatabaseStorage,
+    pub file: &'a dyn PagedFile,
 }
 
 #[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
-    handles: HashMap<FileId, Box<dyn DatabaseStorage + Send + Sync>>,
+    handles: HashMap<FileId, Box<dyn PagedFile + Send + Sync>>,
     allocated_page_count: HashMap<FileId, PageId>,
 }
 
@@ -54,12 +54,7 @@ impl FileManager {
         }
     }
 
-    pub fn add(
-        &mut self,
-        id: FileId,
-        file: Box<dyn DatabaseStorage + Send + Sync>,
-        page_count: PageId,
-    ) {
+    pub fn add(&mut self, id: FileId, file: Box<dyn PagedFile + Send + Sync>, page_count: PageId) {
         // Insert entries into the ID and Name maps to facilitate finding Files by either property
         self.id_map.insert(
             IdMapKey {
@@ -85,7 +80,7 @@ impl FileManager {
         &self,
         id: DatabaseFileId,
         ty: FileType,
-    ) -> Option<&Box<dyn DatabaseStorage + Send + Sync>> {
+    ) -> Option<&Box<dyn PagedFile + Send + Sync>> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
         self.handles.get(file_id)
     }
@@ -94,7 +89,7 @@ impl FileManager {
         &self,
         name: String,
         ty: FileType,
-    ) -> Option<&Box<dyn DatabaseStorage + Send + Sync>> {
+    ) -> Option<&Box<dyn PagedFile + Send + Sync>> {
         let file_id = self.name_map.get(&NameMapKey { name, ty })?;
         self.handles.get(file_id)
     }

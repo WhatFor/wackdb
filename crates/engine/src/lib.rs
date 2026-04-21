@@ -13,3 +13,4 @@ mod persistence;
 mod sm;
 mod util;
 mod vm;
+mod wal;
