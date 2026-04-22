@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
 use derive_more::derive::From;
 use parser::ast::{
@@ -12,6 +12,7 @@ use crate::{
     engine::Storage,
     index_pager::IndexPager,
     sm::{SchemaColumn, SchemaManager},
+    wal::{LogType, WalLog},
 };
 
 #[derive(Default)]
@@ -386,7 +387,7 @@ impl VirtualMachine {
                 // Because deku wont work to deserialise a type it knows nothing about,
                 // we need to use our column schema info to decide how to read the incoming row bytes.
                 let target_table_iter = IndexPager::new(
-                    FilePageId::new(MASTER_DB_ID, target_table_index_root_id.try_into().unwrap()),
+                    FilePageId::new(MASTER_DB_ID, target_table_index_root_id as u32), // TODO: if this was a user DB, it fails
                     storage,
                 );
 
@@ -552,11 +553,117 @@ impl VirtualMachine {
         storage: &Storage,
         sm: &SchemaManager,
     ) -> Result<StatementResult> {
-        // Full process:
-        // 1. Verify the database and table exists
+        // Step 1.
+        // Verify the database exists.
+        let table_name = &statement.into_clause.identifier.value;
+        let is_qualified = statement.into_clause.qualifier.is_some();
+
+        match is_qualified {
+            true => log::debug!(
+                "   FROM: {}.{}",
+                &statement.into_clause.qualifier.as_ref().unwrap(),
+                table_name
+            ),
+            false => log::debug!("   FROM: {}", table_name),
+        }
+
+        // TODO: this is me just falling back to the master database if the user doesn't specify a db. not a final solution...
+        let database_name = if is_qualified {
+            statement
+                .into_clause
+                .qualifier
+                .as_ref()
+                .unwrap()
+                .value
+                .clone()
+        } else {
+            String::from("master")
+        };
+
+        let target_db = sm.schema.databases.iter().find(|i| i.name == database_name);
+
+        if target_db.is_none() {
+            return Err(StatementError::DbDoesNotExist.into());
+        }
+
+        // Step 2.
+        // Validate if the target table exists.
+        let target_table = target_db
+            .unwrap() // TODO: Unwrap (is safe, just pointless having to unwrap)
+            .tables
+            .iter()
+            .find(|t| t.name == *table_name);
+
+        if target_table.is_none() {
+            return Err(StatementError::TableDoesNotExist.into());
+        }
+
+        let target_table_id = target_table.unwrap().id;
+
         // 2. Verify the columns exist
-        // 3. Tell the buffer_pool about the new data
-        // 4. TODO: WAL stuff
+        let columns_of_target_table: Vec<&SchemaColumn> = target_table
+            .unwrap() // Pointless unwrap
+            .columns
+            .iter()
+            .filter(|c| c.table_id == target_table_id)
+            .collect();
+
+        let selected_columns: Vec<&Identifier> = statement
+            .column_list
+            .column_list
+            .iter()
+            .map(|col| &col.ident)
+            .collect();
+
+        let missing_columns: Vec<&Identifier> = selected_columns
+            .iter()
+            .filter(|col| columns_of_target_table.iter().all(|c| c.name != col.value))
+            .cloned()
+            .collect();
+
+        if !missing_columns.is_empty() {
+            log::trace!("[EVAL SELECT] Missing columns: {:?}", missing_columns);
+            bail!("TODO: Better error (but for now, columns are missing in your query).");
+        }
+
+        // TODO: Need to actual compute the insert, because we need:
+        //   which page we're operating on
+        //      so we can store this in the log payload (along with the actual data)
+        //      and so we can make it dirty in the buffer_pool
+        //   which slot in the page we're operating on
+        // which means...
+        //   we probalby need to ask the schema where the index is for the table
+        //   we're operating on, because the data will get stored in a leaf node
+        //   of the PK table.
+        let pk_index = target_table
+            .unwrap() // TODO: Safe upwrap; handle it above
+            .indexes
+            .iter()
+            .find(|i| i.index_type == IndexType::PK);
+
+        if pk_index.is_none() {
+            bail!("TODO: For now, can't insert into a table without a PK.");
+        }
+
+        let pk_index_pager = IndexPager::new(
+            FilePageId {
+                db_id: MASTER_DB_ID, // TODO: need to support user DBs
+                page_index: pk_index.unwrap().root_page_id as u32,
+            },
+            &storage,
+        );
+
+        // TODO: I have no idea what to do with the PK; do I need to reconstruct
+        // the btree and add it in? christ I've no idea
+
+        // Step 3.
+        // Record the data in the WAL.
+        let payload = vec![];
+        let log = WalLog::new(0, None, None, LogType::Insert, payload);
+        storage.wal.log(&storage.file_manager, log)?;
+
+        // Step 4.
+        // Add the new data to the buffer_pool.
 
         todo!()
     }
@@ -810,16 +917,19 @@ mod vm_tests {
         buffer_pool::BufferPool,
         fm::FileManager,
         sm::{Schema, SchemaDatabase, SchemaTable},
+        wal::Wal,
     };
     use anyhow::Result;
     use parser::ast::*;
 
     fn create_test_storage() -> Result<Storage> {
         let file_manager = FileManager::default();
+        let wal = Wal::default();
 
         Ok(Storage {
             buffer_pool: BufferPool::default(),
             file_manager,
+            wal,
         })
     }
 

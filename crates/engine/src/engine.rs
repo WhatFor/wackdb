@@ -7,7 +7,7 @@ use crate::page::PageDecoder;
 use crate::persistence::ValidationError;
 use crate::sm::SchemaManager;
 use crate::vm::VirtualMachine;
-use crate::wal::WalHeader;
+use crate::wal::{Wal, WalHeader};
 
 use anyhow::{bail, Result};
 use cli_common::{ExecuteResult, StatementResult};
@@ -22,6 +22,7 @@ pub struct Engine {
 pub struct Storage {
     pub buffer_pool: BufferPool,
     pub file_manager: FileManager,
+    pub wal: Wal,
 }
 
 impl Default for Engine {
@@ -29,10 +30,12 @@ impl Default for Engine {
         let vm = VirtualMachine::default();
         let buffer_pool = BufferPool::default();
         let file_manager = FileManager::default();
+        let wal = Wal::default();
 
         let mut storage = Storage {
             buffer_pool,
             file_manager,
+            wal,
         };
 
         let master_db_result = bootstrap::open_or_create_master_db();

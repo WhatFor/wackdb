@@ -3,6 +3,8 @@ use deku::prelude::DekuSize;
 use deku::{ctx::Endian, DekuRead, DekuWrite};
 use thiserror::Error;
 
+use crate::fm::FileManager;
+
 /// The max, current version number for the Log Header record
 pub const CURRENT_WAL_HEADER_VERSION: u8 = 1;
 
@@ -117,4 +119,16 @@ impl WalLog {
 fn check(bytes: &[u8]) -> [u8; 2] {
     let crc = crc::Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
     crc.checksum(bytes).to_be_bytes()
+}
+
+pub struct Wal;
+
+impl Wal {
+    pub fn default() -> Self {
+        Wal {}
+    }
+
+    pub fn log(&self, fm: &FileManager, log: WalLog) -> Result<()> {
+        Ok(())
+    }
 }

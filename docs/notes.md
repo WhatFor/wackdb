@@ -1,4 +1,5 @@
 ### TODO List
+- The schema info doesn't store which file a given database is in, so user DBs wont work atm
 - The lexer doesn't seem to do qualified identifiers, e.g.
   - SELECT * FROM master.databases;
   - INSERT INTO master.databases (Id) VALUES (1);
