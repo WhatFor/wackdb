@@ -1,8 +1,9 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use deku::prelude::DekuSize;
 use deku::{ctx::Endian, DekuRead, DekuWrite};
 use thiserror::Error;
 
+use crate::file::DatabaseFileId;
 use crate::fm::FileManager;
 
 /// The max, current version number for the Log Header record
@@ -128,7 +129,13 @@ impl Wal {
         Wal {}
     }
 
-    pub fn log(&self, fm: &FileManager, log: WalLog) -> Result<()> {
+    pub fn log(&self, fm: &FileManager, database: &DatabaseFileId, log: WalLog) -> Result<()> {
+        if let Some(log_file) = fm.get_from_id(*database, crate::file_format::FileType::Log) {
+            // TODO: this isn't a paged file - so need to refactor FM
+        } else {
+            bail!("Unable to find .wal file.");
+        };
+
         Ok(())
     }
 }

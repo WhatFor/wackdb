@@ -660,7 +660,10 @@ impl VirtualMachine {
         // Record the data in the WAL.
         let payload = vec![];
         let log = WalLog::new(0, None, None, LogType::Insert, payload);
-        storage.wal.log(&storage.file_manager, log)?;
+
+        storage
+            .wal
+            .log(&storage.file_manager, &(target_db.unwrap().id as u16), log)?;
 
         // Step 4.
         // Add the new data to the buffer_pool.
