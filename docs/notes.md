@@ -1,5 +1,6 @@
 ### TODO List
 - The schema info doesn't store which file a given database is in, so user DBs wont work atm
+- validating if columns exist for a given table during insert (and maybe select?) is case sensitive.
 - The lexer doesn't seem to do qualified identifiers, e.g.
   - SELECT * FROM master.databases;
   - INSERT INTO master.databases (Id) VALUES (1);
@@ -28,7 +29,7 @@ Want to support two usage patterns:
 I'm trying to implement writes. I have added support into the lexer and parser for basic INSERT INTO statments, and the VM has a evaluate_insert_statement function with access to the &Storage context (granting access to the buffer_pool).
 I know I need to do some initial validation: check the specified DB, table and columns all exist, but that's easy; I have the SchemaManager for that. We don't need to talk about that.
 
-I'm a bit stumped on how I actually write to the DB. I can't support creating custom tables, so lets just focus on inserting into master.databases for now - this table is guaranteed to exist. The bootstrap process handles the initial creation of the table, by creating an B-tree index, initialising a number of Database structs, using deku to transform them into a byte array suitable for storage and pushing it into a slot in the index. It's very primitive, in that it won't handle stuff like re-balancing the tree or handling multiple pages of the index if one fills up. This is okay, as I know what I'm writing won't go beyond one page.
+I'm a bit stumped on how I actually write to the DB. I can't support creating custom tables, so lets just focus on inserting into master.databases for now - this table is guaranteed to exist. The bootstrap process handles the initial creation of the table, by creating a B-tree index, initialising a number of Database structs, using deku to transform them into a byte array suitable for storage and pushing it into a slot in the index. It's very primitive, in that it won't handle stuff like re-balancing the tree or handling multiple pages of the index if one fills up. This is okay, as I know what I'm writing won't go beyond one page.
 This isn't true now I'm trying to add support for INSERT statements.
 
 I'm struggling to wrap my head around how inserts should work.

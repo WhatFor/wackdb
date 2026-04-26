@@ -2,7 +2,11 @@ use anyhow::{bail, Result};
 use std::sync::Mutex;
 
 use crate::{
-    file::DatabaseFileId, file_format::FileType, fm::FileManager, lru::LRUCache, page::PageId,
+    file::{DatabaseFileId, ManagedFile},
+    file_format::FileType,
+    fm::FileManager,
+    lru::LRUCache,
+    page::PageId,
 };
 
 pub type PageBytes = [u8; 8192];
@@ -70,7 +74,7 @@ impl BufferPool {
         let file = file_manager.get_from_id(id.db_id, FileType::Primary);
 
         match file {
-            Some(file_handle) => {
+            Some(ManagedFile::Paged(file_handle)) => {
                 let disk_page = file_handle.read_page(id.page_index);
 
                 match disk_page {
@@ -86,6 +90,7 @@ impl BufferPool {
                     Err(_err) => None,
                 }
             }
+            Some(crate::file::ManagedFile::Raw(_)) => todo!("Shouldn't happen."),
             None => None,
         }
     }
@@ -99,7 +104,7 @@ impl BufferPool {
         let file = file_manager.get_from_id(id, FileType::Primary);
 
         match file {
-            Some(db_file) => {
+            Some(ManagedFile::Paged(db_file)) => {
                 let next_page_id = db_file.allocated_page_count()? + 1;
 
                 self.put_page(
@@ -113,6 +118,7 @@ impl BufferPool {
 
                 Ok(next_page_id)
             }
+            Some(crate::file::ManagedFile::Raw(_)) => todo!("Shouldn't happen."),
             None => bail!("File not found!"), // TODO: Do better :)
         }
     }
@@ -129,7 +135,7 @@ impl BufferPool {
         let file = file_manager.get_from_id(id.db_id, FileType::Primary);
 
         match file {
-            Some(db_file) => {
+            Some(ManagedFile::Paged(db_file)) => {
                 db_file.write_page(&data, id.page_index)?;
 
                 let mut lru = self.lru_cache.lock().unwrap();
@@ -137,6 +143,7 @@ impl BufferPool {
 
                 Ok(())
             }
+            Some(crate::file::ManagedFile::Raw(_)) => todo!("Shouldn't happen."),
             None => bail!("File not found!"), // TODO: Do better :)
         }
     }
@@ -148,7 +155,7 @@ mod buffer_pool_tests {
 
     use crate::{
         buffer_pool::FilePageId,
-        file::MemoryFile,
+        file::{ManagedFile, MemoryFile},
         file_format::FileType,
         fm::{FileId, FileManager},
     };
@@ -161,7 +168,7 @@ mod buffer_pool_tests {
 
         fm.add(
             FileId::new(1, String::from("File 1"), FileType::Primary),
-            Box::new(MemoryFile::new(vec![])),
+            ManagedFile::Paged(Box::new(MemoryFile::new(vec![]))),
             0,
         );
 
@@ -184,7 +191,7 @@ mod buffer_pool_tests {
 
         fm.add(
             FileId::new(db, String::from("File 1"), FileType::Primary),
-            Box::new(MemoryFile::new(vec![])),
+            ManagedFile::Paged(Box::new(MemoryFile::new(vec![]))),
             0,
         );
 

@@ -8,7 +8,7 @@ use crate::{
         Column, ColumnType, Database, DbInt, Index, IndexType, Table, MASTER_DB_ID, MASTER_NAME,
     },
     engine::Storage,
-    file::PagedFile,
+    file::{ManagedFile, PagedFile},
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
     page::{PageEncoder, PageHeader, PageId, PageType},
     persistence::{self, OpenDatabaseResult},
@@ -112,15 +112,17 @@ pub fn ensure_master_tables_exist(storage: &Storage) -> Result<()> {
     log::debug!("Wrote Columns index to pageID {}", columns_page_id);
 
     // Write Indexes pages
-    let indexes_page_id = {
+    let indexes_page_id = match storage
+        .file_manager
+        .get_from_id(MASTER_DB_ID, FileType::Primary)
+        .unwrap()
+    {
+        ManagedFile::Raw(_) => {
+            todo!("This shouldn't ever be possible; consider refactoring into an expect.")
+        }
         // Because the indexes table stores a record for itself, we need to pre-calculate the root page ID
         // before we insert the page.
-        let master_file = storage
-            .file_manager
-            .get_from_id(MASTER_DB_ID, FileType::Primary)
-            .unwrap(); // Safety: 99% okay to unwrap, since we've done a bunch of ops on the master DB already. It's there.
-
-        master_file.allocated_page_count()? + 1
+        ManagedFile::Paged(paged_file) => paged_file.allocated_page_count()? + 1,
     };
 
     let indexes_page_bytes = initialise_indexes_table(

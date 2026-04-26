@@ -1,6 +1,8 @@
 use anyhow::Result;
+use deku::{DekuContainerRead, DekuContainerWrite, DekuSize};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
+use std::os::unix::fs::FileExt;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -10,6 +12,7 @@ use crate::file_format::{
     SCHEMA_INFO_PAGE_INDEX,
 };
 use crate::page::{PageEncoder, PageHeader, PageType};
+use crate::wal::WalHeader;
 use crate::{
     file_format::{DatabaseInfo, DATABASE_INFO_PAGE_INDEX},
     page::{PageDecoder, PageId, PAGE_SIZE_BYTES},
@@ -19,9 +22,13 @@ use crate::{
 /// Note: Not an 'id to be used in a DB table' or otherwise.
 pub type DatabaseFileId = u16;
 
+pub enum ManagedFile {
+    Raw(Box<dyn RawFile + Send + Sync>),
+    Paged(Box<dyn PagedFile + Send + Sync>),
+}
+
 pub trait PagedFile {
     fn read_page(&self, page_index: u32) -> Result<PageBytes>;
-    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>>;
     fn write_page(&self, data: &[u8], page_index: u32) -> Result<()>;
     fn allocated_page_count(&self) -> Result<PageId>;
 
@@ -80,6 +87,56 @@ pub trait PagedFile {
     }
 }
 
+pub trait RawFile {
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>>;
+    fn write_raw(&self, offset: u64, data: &[u8]) -> Result<()>;
+    fn append_raw(&self, data: &[u8]) -> Result<()>;
+}
+
+impl RawFile for DiskFile {
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let offset_from_start = std::io::SeekFrom::Start(offset);
+        let mut file = self.file.lock().unwrap();
+        file.seek(offset_from_start)?;
+
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
+        file.read_exact(&mut buf)?;
+
+        Ok(buf)
+    }
+
+    fn write_raw(&self, offset: u64, data: &[u8]) -> Result<()> {
+        let file = self.file.lock().unwrap();
+        file.write_all_at(data, offset)?;
+        Ok(())
+    }
+
+    fn append_raw(&self, data: &[u8]) -> Result<()> {
+        let file = self.file.lock().unwrap();
+
+        // Read header to find the end of the flushed data
+        let mut header_bytes = [0u8; WalHeader::SIZE_BYTES.unwrap()];
+        file.read_exact_at(&mut header_bytes, 0)?;
+        let (_, mut header) = WalHeader::from_bytes((&header_bytes, header_bytes.len()))?;
+        let next_free_offset = header.last_flushed_offset as u64;
+
+        // Write our new data at the next free point
+        file.write_all_at(data, next_free_offset)?;
+
+        // Update the header to point to the new end
+        let updated_free_offset = next_free_offset + data.len() as u64;
+        header.last_flushed_offset = updated_free_offset as u32;
+        let updated_header_bytes = header.to_bytes().unwrap();
+        file.write_all_at(&updated_header_bytes, 0)?;
+
+        // Ensure the data is actually flushed to disk (silly OS not listening)
+        file.sync_data()?;
+
+        Ok(())
+    }
+}
+
 pub struct DiskFile {
     pub file: Mutex<File>,
 }
@@ -119,18 +176,6 @@ impl PagedFile for DiskFile {
         Ok(buf)
     }
 
-    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
-        let offset_from_start = std::io::SeekFrom::Start(offset);
-        let mut file = self.file.lock().unwrap();
-        file.seek(offset_from_start)?;
-
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
-        file.read_exact(&mut buf)?;
-
-        Ok(buf)
-    }
-
     fn allocated_page_count(&self) -> Result<PageId> {
         let metadata = self.file.lock().unwrap().metadata()?;
 
@@ -149,6 +194,34 @@ impl MemoryFile {
         MemoryFile {
             data: Mutex::new(data),
         }
+    }
+}
+
+#[cfg(test)]
+impl RawFile for MemoryFile {
+    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let offset = offset as usize;
+        let end = offset + len;
+
+        let file = self.data.lock().unwrap();
+
+        if file.len() < end {
+            anyhow::bail!("Out of range read");
+        }
+
+        let mut buf = Vec::with_capacity(len);
+        buf.resize(len, 0);
+        buf.copy_from_slice(&file[offset..end]);
+
+        Ok(buf)
+    }
+
+    fn write_raw(&self, offset: u64, data: &[u8]) -> Result<()> {
+        todo!()
+    }
+
+    fn append_raw(&self, data: &[u8]) -> Result<()> {
+        todo!()
     }
 }
 
@@ -181,23 +254,6 @@ impl PagedFile for MemoryFile {
 
         let mut buf = [0u8; PAGE_SIZE_BYTES as usize];
         buf.copy_from_slice(&current[offset..end]);
-
-        Ok(buf)
-    }
-
-    fn read_raw(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
-        let offset = offset as usize;
-        let end = offset + len;
-
-        let file = self.data.lock().unwrap();
-
-        if file.len() < end {
-            anyhow::bail!("Out of range read");
-        }
-
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
-        buf.copy_from_slice(&file[offset..end]);
 
         Ok(buf)
     }

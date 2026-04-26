@@ -1,6 +1,7 @@
 use crate::bootstrap;
 use crate::buffer_pool::{BufferPool, FilePageId};
 use crate::catalog::{MASTER_DB_ID, MASTER_NAME};
+use crate::file::ManagedFile;
 use crate::file_format::{FileType, FILE_INFO_PAGE_INDEX};
 use crate::fm::{FileId, FileManager};
 use crate::page::PageDecoder;
@@ -44,13 +45,13 @@ impl Default for Engine {
             Ok(x) => {
                 storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Primary),
-                    Box::new(x.files.dat),
+                    ManagedFile::Paged(Box::new(x.files.dat)),
                     x.allocated_page_count,
                 );
 
                 storage.file_manager.add(
                     FileId::new(MASTER_DB_ID, MASTER_NAME.into(), FileType::Log),
-                    Box::new(x.files.log),
+                    ManagedFile::Raw(Box::new(x.files.log)),
                     0,
                 );
             }
@@ -86,13 +87,13 @@ impl Default for Engine {
 
                     storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.clone().into(), FileType::Primary),
-                        Box::new(user_db.files.dat),
+                        ManagedFile::Paged(Box::new(user_db.files.dat)),
                         user_db.allocated_page_count,
                     );
 
                     storage.file_manager.add(
                         FileId::new(user_db.id, user_db.name.into(), FileType::Log),
-                        Box::new(user_db.files.log),
+                        ManagedFile::Raw(Box::new(user_db.files.log)),
                         0,
                     );
                 }
@@ -205,18 +206,22 @@ fn validate_all_log_files(storage: &Storage) -> Result<()> {
         .file_manager
         .get_all()
         .filter(|file| file.id.ty == FileType::Log)
-        .map(|file| {
-            let header_len = <WalHeader as deku::DekuSize>::SIZE_BYTES.unwrap();
-            let header_arr = file.file.read_raw(0, header_len)?;
+        .map(|file| match file.file {
+            ManagedFile::Paged(_) => bail!("Log files can't be paged."),
+            ManagedFile::Raw(raw_file) => {
+                let header_len = <WalHeader as deku::DekuSize>::SIZE_BYTES.unwrap();
+                let header_arr = raw_file.read_raw(0, header_len)?;
 
-            let mut cursor = std::io::Cursor::new(header_arr);
-            let mut reader = deku::reader::Reader::new(&mut cursor);
+                let mut cursor = std::io::Cursor::new(header_arr);
+                let mut reader = deku::reader::Reader::new(&mut cursor);
 
-            let header = <WalHeader as deku::DekuReader>::from_reader_with_ctx(&mut reader, ())?;
+                let header =
+                    <WalHeader as deku::DekuReader>::from_reader_with_ctx(&mut reader, ())?;
 
-            let is_magic_string_valid = header.validate();
+                let is_magic_string_valid = header.validate();
 
-            is_magic_string_valid
+                is_magic_string_valid
+            }
         })
         .collect()
 }

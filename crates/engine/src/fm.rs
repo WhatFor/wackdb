@@ -1,7 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 use crate::{
-    file::{DatabaseFileId, PagedFile},
+    file::{DatabaseFileId, ManagedFile},
     file_format::FileType,
     page::PageId,
 };
@@ -33,14 +33,14 @@ pub struct IdMapKey {
 
 pub struct IdentifiedFile<'a> {
     pub id: &'a FileId,
-    pub file: &'a dyn PagedFile,
+    pub file: &'a ManagedFile,
 }
 
 #[derive(Default)]
 pub struct FileManager {
     name_map: HashMap<NameMapKey, FileId>,
     id_map: HashMap<IdMapKey, FileId>,
-    handles: HashMap<FileId, Box<dyn PagedFile + Send + Sync>>,
+    handles: HashMap<FileId, ManagedFile>,
     allocated_page_count: HashMap<FileId, PageId>,
 }
 
@@ -54,7 +54,7 @@ impl FileManager {
         }
     }
 
-    pub fn add(&mut self, id: FileId, file: Box<dyn PagedFile + Send + Sync>, page_count: PageId) {
+    pub fn add(&mut self, id: FileId, file: ManagedFile, page_count: PageId) {
         // Insert entries into the ID and Name maps to facilitate finding Files by either property
         self.id_map.insert(
             IdMapKey {
@@ -76,29 +76,22 @@ impl FileManager {
         self.allocated_page_count.insert(id.clone(), page_count);
     }
 
-    pub fn get_from_id(
-        &self,
-        id: DatabaseFileId,
-        ty: FileType,
-    ) -> Option<&Box<dyn PagedFile + Send + Sync>> {
+    pub fn get_from_id(&self, id: DatabaseFileId, ty: FileType) -> Option<&ManagedFile> {
         let file_id = self.id_map.get(&IdMapKey { id, ty })?;
         self.handles.get(file_id)
     }
 
-    pub fn get_from_name(
-        &self,
-        name: String,
-        ty: FileType,
-    ) -> Option<&Box<dyn PagedFile + Send + Sync>> {
+    pub fn get_from_name(&self, name: String, ty: FileType) -> Option<&ManagedFile> {
         let file_id = self.name_map.get(&NameMapKey { name, ty })?;
         self.handles.get(file_id)
     }
 
     pub fn get_all<'a>(&'a self) -> Box<dyn Iterator<Item = IdentifiedFile<'a>> + 'a> {
-        Box::new(self.handles.iter().map(|(id, file)| IdentifiedFile {
-            id,
-            file: file.as_ref(),
-        }))
+        Box::new(
+            self.handles
+                .iter()
+                .map(|(id, file)| IdentifiedFile { id, file }),
+        )
     }
 
     pub fn next_file_id(&self) -> DatabaseFileId {
@@ -117,6 +110,7 @@ mod fm_tests {
 
         let id = FileId::new(1, String::from("File 1"), FileType::Primary);
         let file = Box::new(MemoryFile::new(vec![]));
+        let file = ManagedFile::Paged(file);
 
         fm.add(id, file, 0);
 
@@ -132,6 +126,7 @@ mod fm_tests {
         let name = String::from("File 1");
         let id = FileId::new(1, name.clone(), FileType::Primary);
         let file = Box::new(MemoryFile::new(vec![]));
+        let file = ManagedFile::Paged(file);
 
         fm.add(id, file, 0);
 
