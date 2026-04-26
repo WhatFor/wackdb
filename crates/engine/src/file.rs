@@ -1,5 +1,5 @@
 use anyhow::Result;
-use deku::{DekuContainerRead, DekuContainerWrite, DekuSize};
+use deku::{DekuContainerRead, DekuContainerWrite, DekuReader, DekuSize};
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::os::unix::fs::FileExt;
@@ -117,21 +117,30 @@ impl RawFile for DiskFile {
 
         // Read header to find the end of the flushed data
         let mut header_bytes = [0u8; WalHeader::SIZE_BYTES.unwrap()];
-        file.read_exact_at(&mut header_bytes, 0)?;
-        let (_, mut header) = WalHeader::from_bytes((&header_bytes, header_bytes.len()))?;
+
+        file.read_exact_at(&mut header_bytes, 0)
+            .expect("Failed to read WAL header");
+
+        let mut cursor = std::io::Cursor::new(header_bytes);
+        let mut reader = deku::reader::Reader::new(&mut cursor);
+        let mut header = WalHeader::from_reader_with_ctx(&mut reader, ()).unwrap();
+
         let next_free_offset = header.last_flushed_offset as u64;
 
         // Write our new data at the next free point
-        file.write_all_at(data, next_free_offset)?;
+        file.write_all_at(data, next_free_offset)
+            .expect("Failed to write bytes to file");
 
         // Update the header to point to the new end
         let updated_free_offset = next_free_offset + data.len() as u64;
         header.last_flushed_offset = updated_free_offset as u32;
         let updated_header_bytes = header.to_bytes().unwrap();
-        file.write_all_at(&updated_header_bytes, 0)?;
+
+        file.write_all_at(&updated_header_bytes, 0)
+            .expect("Failed to update header in file");
 
         // Ensure the data is actually flushed to disk (silly OS not listening)
-        file.sync_data()?;
+        file.sync_data().expect("Failed to flush to disk");
 
         Ok(())
     }

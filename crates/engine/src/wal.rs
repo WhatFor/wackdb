@@ -135,7 +135,9 @@ impl Wal {
             match log_file {
                 ManagedFile::Raw(raw_file) => {
                     let bytes = log.to_bytes()?;
-                    raw_file.append_raw(&bytes)?;
+                    raw_file
+                        .append_raw(&bytes)
+                        .expect("Failed to write bytes to file.");
                 }
                 ManagedFile::Paged(_) => todo!("Shouldn't ever be paged - this is a log fie."),
             }

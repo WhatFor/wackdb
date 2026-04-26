@@ -705,6 +705,8 @@ impl VirtualMachine {
             })
             .collect();
 
+        log::info!("Inserting: {:?}", insert_rows);
+
         // Step 3.
         // Rebuild the entire B-tree based on the PK pages???
         // TODO: this seems monsterously wasteful lmao
@@ -747,7 +749,9 @@ impl VirtualMachine {
         // Step 4.
         // Add the new data to the buffer_pool.
 
-        todo!()
+        Ok(StatementResult {
+            ..Default::default()
+        })
     }
 
     fn evaluate_column_name(&self, identifier: &Option<Identifier>, index: usize) -> String {
