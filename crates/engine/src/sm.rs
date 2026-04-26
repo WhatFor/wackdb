@@ -39,6 +39,7 @@ pub struct SchemaColumn {
     pub table_id: DbInt,
     pub position: DbByte,
     pub data_type: ColumnType,
+    pub default_value: Vec<u8>,
     // TODO: Probably need more here!
 }
 
@@ -137,6 +138,7 @@ fn init(storage: &Storage) -> Result<Schema> {
             table_id: column.table_id,
             position: column.position,
             data_type: column.data_type,
+            default_value: column.default_value,
         })
         .collect();
 

@@ -608,22 +608,22 @@ impl VirtualMachine {
             .filter(|c| c.table_id == target_table_id)
             .collect();
 
-        let selected_columns: Vec<&Identifier> = statement
+        let specified_insert_columns: Vec<&Identifier> = statement
             .column_list
             .column_list
             .iter()
             .map(|col| &col.ident)
             .collect();
 
-        let missing_columns: Vec<&Identifier> = selected_columns
+        let missing_columns: Vec<&Identifier> = specified_insert_columns
             .iter()
             .filter(|col| columns_of_target_table.iter().all(|c| c.name != col.value))
             .cloned()
             .collect();
 
         if !missing_columns.is_empty() {
-            log::trace!("[EVAL SELECT] Missing columns: {:?}", missing_columns);
-            bail!("TODO: Better error (but for now, columns are missing in your query).");
+            log::trace!("[EVAL INSERT] Missing columns: {:?}", missing_columns);
+            bail!("TODO: Better error (but for now, you're trying to insert columns that dont exist).");
         }
 
         // TODO: Need to actual compute the insert, because we need:
@@ -653,8 +653,51 @@ impl VirtualMachine {
             &storage,
         );
 
-        // TODO: I have no idea what to do with the PK; do I need to reconstruct
-        // the btree and add it in? christ I've no idea
+        // Rows of columns of bytes
+        // ([<1,2,3>], [<1,2,3>], [<1,2,3>]), ([<1,2,3>], [<1,2,3>], [<1,2,3>])
+        let insert_rows: Vec<Vec<Vec<u8>>> = statement
+            .value_lists
+            .iter()
+            .map(|values| {
+                // this is taking our list of inserted columns and values and turning them into full schema objects.
+                // e.g. if columns have default values, we need to build that up.
+                let all_cols: Vec<Vec<u8>> = columns_of_target_table
+                    .iter()
+                    .map(|col| {
+                        let index_in_insert = statement
+                            .column_list
+                            .column_list
+                            .iter()
+                            .position(|c| c.ident.value == col.name);
+
+                        if let Some(col_index) = index_in_insert {
+                            let value_expr = &values.value_list.get(col_index).unwrap().expr;
+                            let value = self.evaluate_constant_expr(value_expr);
+
+                            match value {
+                                ExprResult::String(s) => s.into_bytes(),
+                                ExprResult::Long(l) => l.to_be_bytes().into(),
+                                ExprResult::Int(i) => i.to_be_bytes().into(),
+                                ExprResult::Short(s) => s.to_be_bytes().into(),
+                                ExprResult::Byte(b) => vec![b],
+                                ExprResult::Bool(_) => todo!(),
+                                ExprResult::Null => todo!(),
+                            }
+                        } else {
+                            // we need to use the default
+                            col.default_value.clone()
+                        }
+                    })
+                    .collect();
+
+                all_cols
+            })
+            .collect();
+
+        // TODO:
+        // at this point, we have a bunch of random bytes. they don't have PKs, so inserting into a b-tree isn't possible yet.
+        // where do the IDs come from? do I want to enforce specifying the PK column for now? probably.
+        //
 
         // Step 3.
         // Record the data in the WAL.
