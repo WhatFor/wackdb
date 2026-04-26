@@ -1,5 +1,6 @@
 ### TODO List
 - The schema info doesn't store which file a given database is in, so user DBs wont work atm
+- the payload inserted into the wal isn't sorted - probably needs to be to read it back out
 - validating if columns exist for a given table during insert (and maybe select?) is case sensitive.
 - running an insert without specifying the PK column will bork the index atm, as the PK value default to the default defined in the schema.
 - The lexer doesn't seem to do qualified identifiers, e.g.

@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use cli_common::{ColumnResult, ExprResult, ResultSet, StatementResult};
+use deku::DekuContainerWrite;
 use derive_more::derive::From;
 use parser::ast::{
     Expr, Identifier, InsertExpressionBody, SelectExpressionBody, SelectItem, Statement, Value,
@@ -13,7 +14,7 @@ use crate::{
     engine::Storage,
     index_pager::IndexPager,
     sm::{SchemaColumn, SchemaManager},
-    wal::{LogType, WalLog},
+    wal::{LogType, WalLog, WalPayload},
 };
 
 #[derive(Default)]
@@ -727,8 +728,9 @@ impl VirtualMachine {
         }
 
         // Add our new rows to the btree
-        for row in insert_rows {
-            let id = row.0;
+        for row in &insert_rows {
+            let id = row.0.clone(); // TODO: clone
+
             // Join all the columns together into a single vec
             let data = row.1.concat();
             btree.add(id, data);
@@ -739,12 +741,26 @@ impl VirtualMachine {
 
         // Step 3.
         // Record the data in the WAL.
-        let payload = vec![];
-        let log = WalLog::new(0, None, None, LogType::Insert, payload);
+        for row in insert_rows {
+            let data = row.1.concat();
 
-        storage
-            .wal
-            .log(&storage.file_manager, &(target_db.unwrap().id as u16), log)?;
+            let payload = WalPayload::Insert {
+                page_id: 0, // TODO
+                slot_id: 0, // TODO
+                insert_data_len: data.len() as u16,
+                insert_data: data,
+            };
+
+            let payload_bytes = payload.to_bytes()?;
+            let lsn = 0; // TODO
+            let prev_lsn = None; // TODO
+            let txn_id = None; // TODO
+            let log = WalLog::new(lsn, prev_lsn, txn_id, LogType::Insert, payload_bytes);
+
+            storage
+                .wal
+                .log(&storage.file_manager, &(target_db.unwrap().id as u16), log)?;
+        }
 
         // Step 4.
         // Add the new data to the buffer_pool.

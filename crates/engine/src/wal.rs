@@ -6,6 +6,7 @@ use thiserror::Error;
 
 use crate::file::{DatabaseFileId, ManagedFile};
 use crate::fm::FileManager;
+use crate::page::{PageId, SlotPointer};
 
 /// The max, current version number for the Log Header record
 pub const CURRENT_WAL_HEADER_VERSION: u8 = 1;
@@ -86,10 +87,31 @@ pub struct WalLog {
     pub log_type: LogType,
     #[deku(bytes = 2)]
     pub checksum: u16, // Big endian
-    #[deku(bytes = 1)]
+    #[deku(bytes = 2)]
     pub payload_len: u16,
     #[deku(bytes = 65_536, count = "payload_len")] // TODO: is 65kb enough?
     pub payload: Vec<u8>,
+}
+
+#[derive(DekuWrite)]
+#[deku(
+    id_type = "u8",
+    endian = "endian",
+    ctx = "endian: deku::ctx::Endian",
+    ctx_default = "Endian::Big"
+)]
+pub enum WalPayload {
+    #[deku(id = 0)]
+    Insert {
+        #[deku(bytes = 4)]
+        page_id: PageId,
+        #[deku(bytes = 2)]
+        slot_id: SlotPointer,
+        #[deku(bytes = 2)]
+        insert_data_len: u16,
+        #[deku(bytes = 65_536, count = "insert_data_len")] // TODO: is 65kb enough?
+        insert_data: Vec<u8>,
+    },
 }
 
 impl WalLog {
