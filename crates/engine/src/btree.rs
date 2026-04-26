@@ -1,5 +1,3 @@
-use crate::catalog::DbInt;
-
 /// B-Tree implementation
 ///
 /// A B-tree is a data structure that stores sorted data that is quick to search (O(log n)).
@@ -15,11 +13,10 @@ pub struct KeyValuePair<K, V> {
     pub value: V,
 }
 
-type Key = DbInt;
 type Value = Vec<u8>;
 
-type InteriorItem = KeyValuePair<Key, NodeType>;
-type LeafItem = KeyValuePair<Key, Value>;
+type InteriorItem<T> = KeyValuePair<T, NodeType<T>>;
+type LeafItem<T> = KeyValuePair<T, Value>;
 
 impl<K, V> KeyValuePair<K, V> {
     pub fn new(key: K, value: V) -> Self {
@@ -28,23 +25,23 @@ impl<K, V> KeyValuePair<K, V> {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub enum NodeType {
-    Interior(Vec<InteriorItem>),
-    Leaf(Vec<LeafItem>),
+pub enum NodeType<T> {
+    Interior(Vec<InteriorItem<T>>),
+    Leaf(Vec<LeafItem<T>>),
 }
 
-pub struct BTree {
-    pub root: NodeType,
+pub struct BTree<T: PartialOrd> {
+    pub root: NodeType<T>,
 }
 
-impl BTree {
+impl<T: PartialOrd> BTree<T> {
     pub fn new() -> Self {
         let root = NodeType::Leaf(Vec::new());
 
         BTree { root }
     }
 
-    pub fn add(&mut self, key: Key, value: Value) {
+    pub fn add(&mut self, key: T, value: Value) {
         let mut current_node = &mut self.root;
 
         loop {
@@ -81,7 +78,7 @@ impl BTree {
     }
 }
 
-impl Default for BTree {
+impl<T: PartialOrd> Default for BTree<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -93,7 +90,7 @@ mod btree_tests {
 
     #[test]
     fn new_btree() {
-        let actual = BTree::new();
+        let actual = BTree::<i32>::new();
 
         assert_eq!(actual.root, NodeType::Leaf(Vec::new()));
     }

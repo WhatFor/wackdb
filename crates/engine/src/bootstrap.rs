@@ -170,7 +170,7 @@ pub fn ensure_master_tables_exist(storage: &Storage) -> Result<()> {
 
 fn initialise_databases_table() -> Result<PageBytes> {
     let database = Database::new(MASTER_DB_ID, MASTER_NAME.into());
-    let mut databases_index = BTree::new();
+    let mut databases_index = BTree::<DbInt>::new();
     let database_bytes = database.to_bytes()?;
     databases_index.add(database.id.into(), database_bytes);
 
@@ -213,7 +213,7 @@ fn initialise_tables_table() -> Result<PageBytes> {
         Table::new(INDEXES_TABLE_ID, MASTER_DB_ID, INDEXES_TABLE.to_string()),
     ];
 
-    let mut index = BTree::new();
+    let mut index = BTree::<DbInt>::new();
 
     for table in tables {
         let table_bytes = table.to_bytes()?;
@@ -524,7 +524,7 @@ fn initialise_columns_table() -> Result<PageBytes> {
         ),
     ];
 
-    let mut index = BTree::new();
+    let mut index = BTree::<DbInt>::new();
 
     for col in database_table_columns {
         let col_bytes = col.to_bytes()?;
@@ -572,6 +572,7 @@ fn initialise_indexes_table(
         Index::new(
             1,
             DATABASES_TABLE_ID,
+            1, // id column
             String::from("PK_Databases"),
             IndexType::PK,
             true,
@@ -580,6 +581,7 @@ fn initialise_indexes_table(
         Index::new(
             2,
             TABLES_TABLE_ID,
+            5, // id column
             String::from("PK_Tables"),
             IndexType::PK,
             true,
@@ -588,6 +590,7 @@ fn initialise_indexes_table(
         Index::new(
             3,
             COLUMNS_TABLE_ID,
+            9, // id column
             String::from("PK_Columns"),
             IndexType::PK,
             true,
@@ -596,6 +599,7 @@ fn initialise_indexes_table(
         Index::new(
             4,
             INDEXES_TABLE_ID,
+            19, // id column
             String::from("PK_Indexes"),
             IndexType::PK,
             true,
@@ -603,7 +607,7 @@ fn initialise_indexes_table(
         ),
     ];
 
-    let mut index = BTree::new();
+    let mut index = BTree::<DbInt>::new();
 
     for index_record in indexes {
         let bytes = index_record.to_bytes()?;

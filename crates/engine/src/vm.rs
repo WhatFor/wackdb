@@ -7,6 +7,7 @@ use parser::ast::{
 use thiserror::Error;
 
 use crate::{
+    btree::BTree,
     buffer_pool::FilePageId,
     catalog::{ColumnType, DbLong, IndexType, MASTER_DB_ID},
     engine::Storage,
@@ -645,17 +646,20 @@ impl VirtualMachine {
             bail!("TODO: For now, can't insert into a table without a PK.");
         }
 
-        let pk_index_pager = IndexPager::new(
-            FilePageId {
-                db_id: MASTER_DB_ID, // TODO: need to support user DBs
-                page_index: pk_index.unwrap().root_page_id as u32,
-            },
-            &storage,
-        );
+        let pk_column_id = pk_index
+            .unwrap() // TODO: pointless unwrap, checked above
+            .column_id;
+
+        let pk_column_position = columns_of_target_table
+            .iter()
+            .position(|col| col.id == pk_column_id)
+            .expect("Already verified column exists.");
 
         // Rows of columns of bytes
         // ([<1,2,3>], [<1,2,3>], [<1,2,3>]), ([<1,2,3>], [<1,2,3>], [<1,2,3>])
-        let insert_rows: Vec<Vec<Vec<u8>>> = statement
+        // alongside their PK column
+        // TODO: refactor to make this clearer
+        let insert_rows: Vec<(Vec<u8>, Vec<Vec<u8>>)> = statement
             .value_lists
             .iter()
             .map(|values| {
@@ -690,14 +694,46 @@ impl VirtualMachine {
                     })
                     .collect();
 
-                all_cols
+                // TODO: the column we pluck out here might be a default value, i.e. 0.
+                //       this wont make the b-tree very happy, but not something i want to fix atm.
+                let pk_col = all_cols
+                    .get(pk_column_position)
+                    .expect("Already verified all columns exist")
+                    .clone(); // TODO: clone
+
+                (pk_col, all_cols)
             })
             .collect();
 
-        // TODO:
-        // at this point, we have a bunch of random bytes. they don't have PKs, so inserting into a b-tree isn't possible yet.
-        // where do the IDs come from? do I want to enforce specifying the PK column for now? probably.
-        //
+        // Step 3.
+        // Rebuild the entire B-tree based on the PK pages???
+        // TODO: this seems monsterously wasteful lmao
+        let mut btree = BTree::<Vec<u8>>::new();
+
+        let pk_index_pager = IndexPager::new(
+            FilePageId {
+                db_id: MASTER_DB_ID, // TODO: need to support user DBs
+                page_index: pk_index.unwrap().root_page_id as u32,
+            },
+            &storage,
+        );
+
+        // Build up the existing BTree from the PK pager
+        for page in pk_index_pager {
+            // todo: need the ID, *gulp*
+            btree.add(vec![], page);
+        }
+
+        // Add our new rows to the btree
+        for row in insert_rows {
+            let id = row.0;
+            // Join all the columns together into a single vec
+            let data = row.1.concat();
+            btree.add(id, data);
+        }
+
+        // TODO: need to figure out which btree pages have changed and which slots in them, and collect them together
+        //       to then write logs.
 
         // Step 3.
         // Record the data in the WAL.

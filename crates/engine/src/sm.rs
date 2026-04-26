@@ -48,6 +48,7 @@ pub struct SchemaIndex {
     pub id: DbInt,
     pub name: String,
     pub table_id: DbInt,
+    pub column_id: DbInt,
     pub index_type: IndexType,
     pub root_page_id: DbLong,
     // TODO: Probably need more here!
@@ -148,6 +149,7 @@ fn init(storage: &Storage) -> Result<Schema> {
             id: index.id,
             name: String::from_utf8(index.name).unwrap(),
             table_id: index.table_id,
+            column_id: index.column_id,
             index_type: index.index_type,
             root_page_id: index.root_page_id,
         })

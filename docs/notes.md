@@ -1,6 +1,7 @@
 ### TODO List
 - The schema info doesn't store which file a given database is in, so user DBs wont work atm
 - validating if columns exist for a given table during insert (and maybe select?) is case sensitive.
+- running an insert without specifying the PK column will bork the index atm, as the PK value default to the default defined in the schema.
 - The lexer doesn't seem to do qualified identifiers, e.g.
   - SELECT * FROM master.databases;
   - INSERT INTO master.databases (Id) VALUES (1);

@@ -190,6 +190,8 @@ pub struct Index {
     pub id: DbInt,
     #[deku(bytes = 4)]
     pub table_id: DbInt,
+    #[deku(bytes = 4)]
+    pub column_id: DbInt,
     #[deku(bytes = 1)]
     pub name_len: u8,
     #[deku(bytes = 128, count = "name_len")]
@@ -208,6 +210,7 @@ impl Index {
     pub fn new(
         id: DbInt,
         table_id: DbInt,
+        column_id: DbInt,
         name: String,
         index_type: IndexType,
         is_unique: bool,
@@ -216,6 +219,7 @@ impl Index {
         Index {
             id,
             table_id,
+            column_id,
             name_len: name.len() as u8,
             name: name.to_string().into_bytes(),
             index_type,
