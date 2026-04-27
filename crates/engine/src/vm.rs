@@ -709,37 +709,16 @@ impl VirtualMachine {
         log::info!("Inserting: {:?}", insert_rows);
 
         // Step 3.
-        // Rebuild the entire B-tree based on the PK pages???
-        // TODO: this seems monsterously wasteful lmao
-        let mut btree = BTree::<Vec<u8>>::new();
-
-        let pk_index_pager = IndexPager::new(
-            FilePageId {
-                db_id: MASTER_DB_ID, // TODO: need to support user DBs
-                page_index: pk_index.unwrap().root_page_id as u32,
-            },
-            &storage,
-        );
-
-        // Build up the existing BTree from the PK pager
-        for page in pk_index_pager {
-            // todo: need the ID, *gulp*
-            btree.add(vec![], page);
-        }
-
-        // Add our new rows to the btree
-        for row in &insert_rows {
-            let id = row.0.clone(); // TODO: clone
-
-            // Join all the columns together into a single vec
-            let data = row.1.concat();
-            btree.add(id, data);
-        }
-
         // TODO: need to figure out which btree pages have changed and which slots in them, and collect them together
         //       to then write logs.
+        let mut btree = BTree::<Vec<u8>>::new();
 
-        // Step 3.
+        let pk_index_id = FilePageId {
+            db_id: MASTER_DB_ID, // TODO: need to support user DBs
+            page_index: pk_index.unwrap().root_page_id as u32,
+        };
+
+        // Step 4.
         // Record the data in the WAL.
         for row in insert_rows {
             let data = row.1.concat();
