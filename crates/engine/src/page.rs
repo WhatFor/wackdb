@@ -13,6 +13,10 @@ pub const SLOT_POINTER_SIZE: u16 = 2;
 pub const PAGE_SIZE_BYTES: u16 = 8192; // 2^13
 pub const PAGE_HEADER_SIZE_BYTES: u16 = 32;
 
+/// Bit flags for PageHeader
+pub const PAGE_HEADER_FLAG_CAN_COMPACT: u16 = 1 << 0;
+pub const PAGE_HEADER_FLAG_IS_LEAF: u16 = 1 << 1; // If not set, is interior node
+
 pub type SlotPointer = u16;
 pub type PageId = u32;
 
@@ -88,6 +92,14 @@ impl PageHeader {
             free_space_end_offset: PAGE_SIZE_BYTES,
             total_allocated_bytes: PAGE_HEADER_SIZE_BYTES,
         }
+    }
+
+    pub fn set_flag(&mut self, flag: u16) {
+        self.flags |= flag;
+    }
+
+    pub fn has_flag(&self, flag: u16) -> bool {
+        self.flags & flag != 0
     }
 }
 

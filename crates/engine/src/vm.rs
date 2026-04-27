@@ -13,6 +13,7 @@ use crate::{
     catalog::{ColumnType, DbLong, IndexType, MASTER_DB_ID},
     engine::Storage,
     index_pager::IndexPager,
+    page::{PageDecoder, PageType, PAGE_HEADER_FLAG_IS_LEAF},
     sm::{SchemaColumn, SchemaManager},
     wal::{LogType, WalLog, WalPayload},
 };
@@ -711,38 +712,63 @@ impl VirtualMachine {
         // Step 3.
         // TODO: need to figure out which btree pages have changed and which slots in them, and collect them together
         //       to then write logs.
-        let mut btree = BTree::<Vec<u8>>::new();
-
         let pk_index_id = FilePageId {
             db_id: MASTER_DB_ID, // TODO: need to support user DBs
             page_index: pk_index.unwrap().root_page_id as u32,
         };
 
-        // Step 4.
-        // Record the data in the WAL.
-        for row in insert_rows {
-            let data = row.1.concat();
+        let root_page = storage
+            .buffer_pool
+            .get_page(&pk_index_id, &storage.file_manager)
+            .unwrap(); // TODO: unwrap
 
-            let payload = WalPayload::Insert {
-                page_id: 0, // TODO
-                slot_id: 0, // TODO
-                insert_data_len: data.len() as u16,
-                insert_data: data,
-            };
+        let root_page = PageDecoder::from_bytes(&root_page);
+        let is_index_page = root_page.header().page_type == PageType::Index;
 
-            let payload_bytes = payload.to_bytes()?;
-            let lsn = 0; // TODO
-            let prev_lsn = None; // TODO
-            let txn_id = None; // TODO: For now, don't support transactions. But this is important when I do.
-            let log = WalLog::new(lsn, prev_lsn, txn_id, LogType::Insert, payload_bytes);
-
-            storage
-                .wal
-                .log(&storage.file_manager, &(target_db.unwrap().id as u16), log)?;
+        if !is_index_page {
+            bail!("Expected an index page.");
         }
 
-        // Step 4.
-        // Add the new data to the buffer_pool.
+        let is_leaf_node = root_page.header().has_flag(PAGE_HEADER_FLAG_IS_LEAF);
+
+        if is_leaf_node {
+            // TODO: This won't be true once interior nodes are supported - may have to walk.
+            let page = root_page;
+
+            // Step 4.
+            // Record the data in the WAL.
+            // TODO: this will only work for inserting 1 row.
+            for row in insert_rows {
+                let data = row.1.concat();
+
+                // TODO: page_id is never actually set on the page.
+                let page_id = page.header().page_id;
+                let slot_id = page.header().allocated_slot_count; // 0-indexed, so don't need +1.
+
+                let payload = WalPayload::Insert {
+                    page_id,
+                    slot_id,
+                    insert_data_len: data.len() as u16,
+                    insert_data: data,
+                };
+
+                let payload_bytes = payload.to_bytes()?;
+                let lsn = 0; // TODO
+                let prev_lsn = None; // TODO
+                let txn_id = None; // TODO: For now, don't support transactions. But this is important when I do.
+                let log = WalLog::new(lsn, prev_lsn, txn_id, LogType::Insert, payload_bytes);
+
+                storage
+                    .wal
+                    .log(&storage.file_manager, &(target_db.unwrap().id as u16), log)?;
+            }
+        } else {
+            // TODO: For now I haven't added support for interior nodes yet, but will need to walk
+            //       down the pointers, through pages until the leaf node is found. Then run the else.
+        }
+
+        // Step 5.
+        // Add the new data to the buffer_pool, mark it as dirty.
 
         Ok(StatementResult {
             ..Default::default()

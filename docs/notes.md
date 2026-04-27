@@ -77,6 +77,10 @@ There's a couple things I know to be true:
       - maybe just a timestamp? i dont think anything is strictly needed
     - for checkpoints:
       - ??? not thinking too much about this just yet, but I know I'll need something here. that's okay.
+      
+#### 27/04/2026 Support writes: another todo list
+  1. My BTree at the moment is a way to sort items into pages (although it doesnt actually do a good job of building interior nodes). Once that's done, bootstrap.rs (is meant to but doesnt) walks the B-tree, collects each key in each leaf node and adds it to a page. That's meant to be like taking the b-tree structure and turning it into pages, ready to be written to disk.
+  2. header.page_id is never actually set. Get that set.
 
 ### Done List
 - Add support for these two modes. Will need to support a cmdline argument to toggle daemon mode by `-d`. This will probably live in `cli`. Normally `-d` will imply a *background* daemon, but I don't care about that for now so executing the command will block. Maybe I'll look at supporting this later on. Invoking with `-d` will invoke a `server.rs` module.

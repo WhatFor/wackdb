@@ -10,7 +10,7 @@ use crate::{
     engine::Storage,
     file::{ManagedFile, PagedFile},
     file_format::{FileType, SchemaInfo, SCHEMA_INFO_PAGE_INDEX},
-    page::{PageEncoder, PageHeader, PageId, PageType},
+    page::{PageEncoder, PageHeader, PageId, PageType, PAGE_HEADER_FLAG_IS_LEAF},
     persistence::{self, OpenDatabaseResult},
     sm::SchemaManager,
 };
@@ -175,7 +175,11 @@ fn initialise_databases_table() -> Result<PageBytes> {
     databases_index.add(database.id.into(), database_bytes);
 
     // TODO: This only builds one page (if it's a leaf page, which it will be) of the index...
-    let header = PageHeader::new(PageType::Index);
+    let mut header = PageHeader::new(PageType::Index);
+
+    // TODO: For now, mark all pages to Leaf as I've not yet handled interior nodes
+    header.set_flag(PAGE_HEADER_FLAG_IS_LEAF);
+
     let mut page = PageEncoder::new(header);
 
     // TODO: this is duplicated a lot
@@ -220,7 +224,11 @@ fn initialise_tables_table() -> Result<PageBytes> {
         index.add(table.id.into(), table_bytes);
     }
 
-    let header = PageHeader::new(PageType::Index);
+    let mut header = PageHeader::new(PageType::Index);
+
+    // TODO: For now, mark all pages to Leaf as I've not yet handled interior nodes
+    header.set_flag(PAGE_HEADER_FLAG_IS_LEAF);
+
     let mut page = PageEncoder::new(header);
 
     // TODO: this is duplicated a lot
@@ -557,7 +565,11 @@ fn initialise_columns_table() -> Result<PageBytes> {
         index.add(col.id.into(), col_bytes);
     }
 
-    let header = PageHeader::new(PageType::Index);
+    let mut header = PageHeader::new(PageType::Index);
+
+    // TODO: For now, mark all pages to Leaf as I've not yet handled interior nodes
+    header.set_flag(PAGE_HEADER_FLAG_IS_LEAF);
+
     let mut page = PageEncoder::new(header);
 
     // TODO: this is duplicated a lot
@@ -625,7 +637,11 @@ fn initialise_indexes_table(
         index.add(index_record.id.into(), bytes);
     }
 
-    let header = PageHeader::new(PageType::Index);
+    let mut header = PageHeader::new(PageType::Index);
+
+    // TODO: For now, mark all pages to Leaf as I've not yet handled interior nodes
+    header.set_flag(PAGE_HEADER_FLAG_IS_LEAF);
+
     let mut page = PageEncoder::new(header);
 
     // TODO: this is duplicated a lot
