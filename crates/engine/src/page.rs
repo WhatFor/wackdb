@@ -76,6 +76,17 @@ pub struct PageHeader {
     pub total_allocated_bytes: u16,
 }
 
+#[derive(DekuRead, DekuWrite, Debug, PartialEq)]
+#[deku(endian = "big")]
+pub struct IndexNodePointer {
+    #[deku(bytes = 4)]
+    pub child_page_id: PageId,
+    #[deku(bytes = 1)]
+    pub key_len: u8,
+    #[deku(bytes = 128, count = "key_len")]
+    pub key: Vec<u8>,
+}
+
 impl PageHeader {
     pub fn new(page_type: PageType) -> Self {
         let free_space = PAGE_SIZE_BYTES - PAGE_HEADER_SIZE_BYTES;
