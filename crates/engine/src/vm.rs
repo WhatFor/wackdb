@@ -754,7 +754,7 @@ impl VirtualMachine {
             let payload_bytes = payload.to_bytes()?;
             let lsn = 0; // TODO
             let prev_lsn = None; // TODO
-            let txn_id = None; // TODO
+            let txn_id = None; // TODO: For now, don't support transactions. But this is important when I do.
             let log = WalLog::new(lsn, prev_lsn, txn_id, LogType::Insert, payload_bytes);
 
             storage
